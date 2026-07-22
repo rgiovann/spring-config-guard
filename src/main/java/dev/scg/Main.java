@@ -1,0 +1,63 @@
+package dev.scg;
+
+import dev.scg.core.*;
+import dev.scg.rules.ActuatorExposureRule;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * Entry point do CLI. Uso: java -jar spring-config-guard.jar [diretorio]
+ *
+ * Exit code 1 se houver algum Finding de severidade HIGH — é isso que faz
+ * a ferramenta útil em CI (o build falha automaticamente).
+ */
+public final class Main {
+
+    public static void main(String[] args) throws IOException {
+        // Não confiamos no locale do ambiente (runners de CI muitas vezes
+        // vêm com locale POSIX, sem UTF-8). Forçamos explicitamente aqui
+        // em vez de depender de -Dfile.encoding externo.
+        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
+
+        Path target = args.length > 0 ? Path.of(args[0]) : Path.of(".");
+
+        ConfigLoader loader = new ConfigLoader();
+        List<ConfigFile> configFiles = loader.loadDirectory(target);
+
+        if (configFiles.isEmpty()) {
+            System.out.println("Nenhum application*.properties/yml encontrado em: " + target.toAbsolutePath());
+            return;
+        }
+
+        RuleEngine engine = new RuleEngine(List.of(
+                new ActuatorExposureRule()
+                // próximas regras entram aqui, uma linha cada
+        ));
+
+        List<Finding> findings = engine.run(configFiles);
+
+        System.out.println("spring-config-guard — " + configFiles.size() + " arquivo(s) analisado(s), "
+                + engine.rules().size() + " regra(s) ativa(s)\n");
+
+        if (findings.isEmpty()) {
+            System.out.println("Nenhum problema encontrado.");
+            return;
+        }
+
+        boolean hasHigh = false;
+        for (Finding f : findings) {
+            System.out.println(f);
+            if (f.severity() == Severity.HIGH) hasHigh = true;
+        }
+
+        System.out.println("\n" + findings.size() + " achado(s) no total.");
+
+        if (hasHigh) {
+            System.exit(1); // faz o build falhar em CI quando plugado como step
+        }
+    }
+}
