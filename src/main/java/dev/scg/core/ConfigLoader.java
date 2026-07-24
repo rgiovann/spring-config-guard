@@ -22,6 +22,20 @@ public final class ConfigLoader {
      * Varre o diretório em busca de arquivos application*.properties/yml/yaml
      * e devolve um ConfigFile por arquivo encontrado (não mescla entre arquivos —
      * cada Finding precisa apontar pro arquivo exato onde o problema está).
+     *
+     * Navegação Recursiva: Files.walk(dir) percorre o diretório e todas as suas
+     * subpastas procurando arquivos.
+     *
+     * Filtro: A função isSpringConfigFile garante que só passem arquivos que
+     * comecem com application e terminem com  .properties, .yml ou .yaml (ex:
+     * application.yml, application-dev.properties).
+     *
+     * Decisão: Se terminar em .properties, ele chama o parser nativo do Java.
+     * Se for .yml/.yaml, ele chama o parser manual.
+     *
+     * Uso do try-with-resources: O Stream<Path> do Files.walk abre recursos do
+     * Sistema Operacional (handles de arquivos). O try (...) garante que tudo
+     * seja fechado corretamente para evitar vazamento de memória.
      */
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
@@ -68,9 +82,14 @@ public final class ConfigLoader {
      *
      * Suporta o que a maioria das configs do Spring realmente usa:
      * mapeamentos aninhados por indentação, comentários com #, valores
-     * escalares (string/number/boolean). NÃO suporta listas YAML (- item)
-     * nem âncoras/multi-doc — isso é uma limitação conhecida e documentada,
-     * não um bug escondido.
+     * escalares (string/number/boolean), e LISTAS DE VALORES SIMPLES
+     * (ex: "- https://a.com"), que viram chaves indexadas no estilo
+     * relaxed-binding do próprio Spring: allowed-origins[0], allowed-origins[1]...
+     *
+     * NÃO suporta listas de mapas (ex: "- name: x\n  url: y") nem
+     * âncoras/multi-doc — isso é uma limitação conhecida e documentada,
+     * não um bug escondido. Se precisar disso, considere trocar por
+     * snakeyaml (ver comentário no pom.xml).
      */
     private Map<String, String> loadYaml(Path p) throws IOException {
         List<String> lines = Files.readAllLines(p);
@@ -79,6 +98,12 @@ public final class ConfigLoader {
         // o caminho dotted conforme a indentação sobe e desce.
         Deque<int[]> indentStack = new ArrayDeque<>(); // [indent]
         Deque<String> keyStack = new ArrayDeque<>();
+
+        // Estado da lista "corrente" sendo lida (Nível A: só valores simples).
+        // Reseta sempre que a linha atual não é um item de lista, garantindo
+        // que a próxima lista comece do índice 0.
+        String currentListParentKey = null;
+        int currentListIndex = -1;
 
         for (String rawLine : lines) {
             String line = stripComment(rawLine);
@@ -92,6 +117,23 @@ public final class ConfigLoader {
                 indentStack.pop();
                 keyStack.pop();
             }
+
+            if (isListItem(content)) {
+                String parentKey = keyStack.isEmpty() ? "" : keyStack.peek();
+                int index = parentKey.equals(currentListParentKey) ? currentListIndex + 1 : 0;
+
+                String itemValue = unquote(content.substring(1).strip());
+                String fullKey = parentKey.isEmpty() ? "[" + index + "]" : parentKey + "[" + index + "]";
+                flat.put(fullKey, itemValue);
+
+                currentListParentKey = parentKey;
+                currentListIndex = index;
+                continue;
+            }
+
+            // Linha não é item de lista: qualquer lista em andamento termina aqui.
+            currentListParentKey = null;
+            currentListIndex = -1;
 
             int colonIdx = findKeyValueSeparator(content);
             if (colonIdx < 0) continue; // linha que não reconhecemos, ignora
@@ -111,9 +153,32 @@ public final class ConfigLoader {
         return flat;
     }
 
+    /**
+     * Detecta se a linha (já sem indentação, via .strip()) é um item de lista
+     * YAML de valor simples: "- algo". Note o espaço exigido após o traço —
+     * isso evita confundir com uma chave legítima que comece com hífen
+     * (raro, mas possível: "-secret-key: valor" não deveria cair aqui).
+     */
+    private static boolean isListItem(String content) {
+        return content.equals("-") || content.startsWith("- ");
+    }
+
     private static String stripComment(String line) {
-        int hashIdx = line.indexOf('#');
-        return hashIdx >= 0 ? line.substring(0, hashIdx) : line;
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+
+            if (c == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            } else if (c == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            } else if (c == '#' && !inSingleQuote && !inDoubleQuote) {
+                return line.substring(0, i);
+            }
+        }
+        return line;
     }
 
     private static int countLeadingSpaces(String s) {

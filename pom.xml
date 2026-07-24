@@ -36,7 +36,16 @@
             <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
+        <!-- Adicionar esta dependência para usar assertThat(...) -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.25.3</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+
 
     <build>
         <finalName>spring-config-guard</finalName>

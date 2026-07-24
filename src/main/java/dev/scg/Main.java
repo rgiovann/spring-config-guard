@@ -23,7 +23,12 @@ public final class Main {
         // em vez de depender de -Dfile.encoding externo.
         System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
 
+        // Se você não passar nenhum argumento, ele assume Path.of("."),
+        // ou seja, o diretório atual onde o comando tá sendo executado.
         Path target = args.length > 0 ? Path.of(args[0]) : Path.of(".");
+
+        // ConfigLoader busca todos os arquivos no formato application*.properties
+        // ou application*.yml dentro da pasta alvo.
 
         ConfigLoader loader = new ConfigLoader();
         List<ConfigFile> configFiles = loader.loadDirectory(target);
