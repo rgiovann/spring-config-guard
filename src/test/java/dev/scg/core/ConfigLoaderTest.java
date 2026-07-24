@@ -309,7 +309,7 @@ class ConfigLoaderTest {
         // 3. Assert (usando org.junit.jupiter.api.Assertions.*)
         assertEquals(1, configFiles.size(), "Deveria ter encontrado exatamente 1 arquivo");
 
-        ConfigFile configFile = configFiles.get(0);
+        ConfigFile configFile = configFiles.getFirst();
         assertEquals(propertiesFile, configFile.path());
 
         Map<String, String> properties = configFile.properties();
@@ -388,7 +388,7 @@ class ConfigLoaderTest {
         List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
 
         assertEquals(1, result.size());
-        Map<String, String> props = result.get(0).properties();
+        Map<String, String> props = result.getFirst().properties();
 
         assertEquals("8080", props.get("server.port"));
         assertEquals("Aplicação de Teste com Acentuação", props.get("app.description"));
@@ -411,7 +411,7 @@ class ConfigLoaderTest {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
-        return configFiles.get(0).properties();
+        return configFiles.getFirst().properties();
     }
 
 }
