@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
 import org.yaml.snakeyaml.Yaml;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Encontra e carrega arquivos de configuração do Spring Boot
@@ -20,13 +21,7 @@ import org.yaml.snakeyaml.Yaml;
 public final class ConfigLoader {
 
     /**
-     * Varre o diretório em busca de arquivos application*.properties/yml/yaml
-     * e devolve um ConfigFile por arquivo encontrado (não mescla entre arquivos —
-     * cada Finding precisa apontar pro arquivo exato onde o problema está).
-     *
-     * Navegação Recursiva: Files.walk(dir) percorre o diretório e todas as suas
-     * subpastas procurando arquivos.
-     *
+     * Varre um diretório recursivamente para carregar todos os arquivos de configuração do Spring Boot.
      * Filtro: A função isSpringConfigFile garante que só passem arquivos que
      * comecem com application e terminem com  .properties, .yml ou .yaml (ex:
      * application.yml, application-dev.properties).
@@ -37,6 +32,17 @@ public final class ConfigLoader {
      * Uso do try-with-resources: O Stream<Path> do Files.walk abre recursos do
      * Sistema Operacional (handles de arquivos). O try (...) garante que tudo
      * seja fechado corretamente para evitar vazamento de memória.
+     * <p>O método percorre a árvore de arquivos a partir do diretório fornecido, filtra aqueles que
+     * cumprem a convenção do Spring Boot através de {@link #isSpringConfigFile(Path)} e delega a leitura
+     * para {@link #loadProperties(Path)} ou {@link #loadYaml(Path)} dependendo da extensão do arquivo.</p>
+     *
+     * @param dir o caminho {@link Path} do diretório raiz a ser varrido
+     * @return uma lista de {@link ConfigFile} contendo o caminho e as propriedades achatadas de cada arquivo encontrado;
+     *         retorna uma lista vazia se o caminho fornecido não for um diretório válido
+     * @throws IOException se ocorrer algum erro de I/O ao percorrer a árvore de arquivos ou ao ler um deles
+     * Navegação Recursiva: Files.walk(dir) percorre o diretório e todas as suas
+     * subpastas procurando arquivos.
+     *
      */
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
@@ -59,17 +65,40 @@ public final class ConfigLoader {
         return result;
     }
 
+    /**
+     * Verifica se um determinado arquivo é um arquivo de configuração válido do Spring Boot.
+     *
+     * <p>A validação checa se o nome do arquivo inicia com a convenção {@code "application"}
+     * e termina com uma das extensões suportadas ({@code .properties}, {@code .yml} ou {@code .yaml}).</p>
+     *
+     * @param p o caminho {@link Path} do arquivo a ser verificado
+     * @return {@code true} se o arquivo seguir a convenção de nome e extensão do Spring;
+     *         {@code false} caso contrário
+     */
     private static boolean isSpringConfigFile(Path p) {
         String name = p.getFileName().toString();
         return name.startsWith("application")
                 && (name.endsWith(".properties") || name.endsWith(".yml") || name.endsWith(".yaml"));
     }
 
+    /**
+     * Carrega e processa um arquivo no formato {@code .properties}, convertendo seu conteúdo
+     * em um mapa plano de chave-valor.
+     *
+     * <p>O arquivo é lido através da classe {@link Properties} e transferido para um
+     * {@link LinkedHashMap} para garantir a preservação da ordem de inserção das propriedades.</p>
+     *
+     * @param p o caminho {@link Path} do arquivo de propriedades a ser carregado
+     * @return um {@link Map} contendo as chaves e seus respectivos valores como String
+     * @throws IOException se ocorrer algum erro de I/O ao abrir ou ler o arquivo
+     */
     private Map<String, String> loadProperties(Path p) throws IOException {
         Properties props = new Properties();
-        try (var in = Files.newInputStream(p)) {
-            props.load(in);
+
+        try (var reader = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
+            props.load(reader);
         }
+
         Map<String, String> flat = new LinkedHashMap<>();
         for (String name : props.stringPropertyNames()) {
             flat.put(name, props.getProperty(name));
@@ -77,6 +106,17 @@ public final class ConfigLoader {
         return flat;
     }
 
+    /**
+     * Carrega e processa um arquivo no formato YAML, convertendo sua estrutura hierárquica
+     * em um mapa plano de propriedades (notação por pontos).
+     *
+     * <p>O arquivo é lido através da biblioteca SnakeYAML e achatado via {@link #flatten(Object, String, Map)}
+     * para facilitar a verificação de regras de segurança no motor da aplicação.</p>
+     *
+     * @param p o caminho {@link Path} do arquivo YAML a ser carregado
+     * @return um {@link Map} contendo as chaves em formato achatado e seus respectivos valores como String
+     * @throws IOException se ocorrer algum erro de I/O ao abrir ou ler o arquivo
+     */
     private Map<String, String> loadYaml(Path p) throws IOException {
 
         Yaml yaml = new Yaml();
@@ -94,17 +134,18 @@ public final class ConfigLoader {
     }
 
     /**
-     * Carrega um arquivo YAML do Spring Boot e o converte para um mapa plano
-     * de propriedades.
-     * Apenas valores escalares (folhas da árvore YAML) são adicionados ao mapa.
-     * Nós intermediários (Map), listas e valores nulos não geram entradas.
-     * Exemplo:
-     * server:
-     *   port: 8080
-     * resulta em:
-     * server.port=8080
+     * Achata recursivamente a estrutura de nós gerada pelo parser de YAML (SnakeYAML),
+     * convertendo mapas e listas aninhadas em uma estrutura plana de chave-valor.
+     *
+     * <p>Para objetos do tipo {@link Map}, as chaves são concatenadas utilizando a notação de ponto
+     * (ex: {@code server.port}). Para coleções do tipo {@link List}, o índice do elemento é retido entre
+     * colchetes (ex: {@code spring.profiles[0]}). Tipos escalares são convertidos em String e salvos
+     * diretamente no mapa de saída.</p>
+     *
+     * @param yamlNode o nó atual da estrutura YAML (pode ser um {@link Map}, {@link List}, tipo escalar ou {@code null})
+     * @param prefix o prefixo acumulado da chave até o nó atual
+     * @param flat o mapa {@link Map} de destino onde as chaves achatadas e seus valores serão armazenados
      */
-
     private void flatten(Object yamlNode,
                          String prefix,
                          Map<String, String> flat) {

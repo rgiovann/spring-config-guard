@@ -1,4 +1,5 @@
 package dev.scg.core;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConfigLoaderTest {
 
     @Test
+    @DisplayName("Deve achatar o YAML mesmo com níveis de indentação complexos")
     void deveAchatarYamlComNiveisDeIndentacaoComplexos(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 server:
@@ -34,6 +36,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve achatar múltiplos níveis de aninhamento no YAML")
     void deveAchatarMultiplosNiveisDeAninhamento(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
@@ -46,6 +49,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve desempilhar múltiplos níveis de aninhamento ao retornar para a raiz no YAML")
     void deveDesempilharMultiplosNiveisDeUmaVezAoVoltarParaRaiz(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 a:
@@ -60,6 +64,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve ignorar linhas em branco e comentários ao processar o arquivo")
     void deveIgnorarComentariosELinhasEmBranco(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 # Comentario de topo
@@ -75,6 +80,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve remover aspas e espaços extras das extremidades dos valores")
     void deveLimparAspasEEspacosExtrasDosValores(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
@@ -87,6 +93,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve manter os dois-pontos (:) como parte do valor quando estiverem dentro de uma String no YAML")
     void deveTratarDoisPontosDentroDoValorComoParteDoValor(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 servidor:
@@ -99,6 +106,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve retornar um mapa vazio ao processar um arquivo contendo apenas comentários")
     void deveRetornarMapaVazioParaArquivoSoComComentarios(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 # Apenas comentarios
@@ -110,6 +118,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Não deve gerar entrada no mapa para uma chave pai que não possui filhos no YAML")
     void chavePaiSemFilhosNaoDeveGerarEntradaNoMapa(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 banco:
@@ -122,6 +131,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve concatenar corretamente uma chave já pontilhada ao prefixo do nó pai no YAML")
     void deveConcatenarChaveJaPontilhadaComPrefixoDeAninhamento(@TempDir Path tempDir) throws IOException {
         // Padrão comum em config Spring real: misturar "server.port: 8080" (chave já
         // dotted, uma linha só) com blocos aninhados de verdade no mesmo arquivo.
@@ -137,6 +147,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve resetar o caminho das chaves ao alternar entre blocos irmãos no YAML")
     void deveResetarCaminhoDeChaveEntreBlocosIrmaos(@TempDir Path tempDir) throws IOException {
         // Diferente do caso de dedent linear: aqui dois blocos filhos do MESMO pai
         // aparecem em sequência. Garante que o keyStack não "vaza" moduleA para moduleB.
@@ -153,6 +164,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve sobrescrever o valor mantendo a última ocorrência quando houver chave duplicada no mesmo nível")
     void chaveDuplicadaNoMesmoNivelDeveUsarUltimoValor(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
@@ -164,6 +176,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve diferenciar uma String vazia explícita com aspas de um nó pai sem valor no YAML")
     void stringVaziaExplicitaComAspasDeveDiferenciarDeNoPaiSemValor(@TempDir Path tempDir) throws IOException {
         // "" (com aspas) é um VALOR válido (string vazia). É diferente de uma chave
         // pai sem filhos (como no teste chavePaiSemFilhosNaoDeveGerarEntradaNoMapa).
@@ -180,6 +193,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve processar corretamente arquivos YAML com níveis de indentação não padronizados")
     void deveFuncionarComLargurasDeIndentacaoNaoPadronizadas(@TempDir Path tempDir) throws IOException {
         // YAML não exige indentação de largura fixa — só exige que filhos tenham
         // indentação MAIOR que o pai. A pilha compara indent relativo, não múltiplos de 2.
@@ -193,6 +207,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve converter uma lista de valores simples em chaves indexadas [0], [1] no YAML")
     void deveSuportarListaDeValoresSimplesComoChavesIndexadas(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             app:
@@ -208,6 +223,7 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Deve resetar os índices [0], [1] para cada nova lista encontrada no YAML")
     void duasListasSeguidasDevemResetarIndiceEntreElas(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             app:
@@ -241,6 +257,7 @@ class ConfigLoaderTest {
      * regra que precise inspecionar o CONTEÚDO de valores (não só a chave).
      */
     @Test
+    @DisplayName("Deve manter o caractere hash (#) no valor quando estiver entre aspas no YAML")
     void hashDentroDeAspasQuebraOValor(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
@@ -271,10 +288,130 @@ class ConfigLoaderTest {
         return line;
     }
 
+    @Test
+    @DisplayName("Deve carregar e processar corretamente um arquivo .properties válido")
+    void shouldLoadPropertiesFileCorrectly(@TempDir Path tempDir) throws IOException {
+        // 1. Arrange: Cria o arquivo application.properties temporário
+        Path propertiesFile = tempDir.resolve("application.properties");
+        String content = """
+            # Comentário que deve ser ignorado
+            server.port=8080
+            spring.datasource.url: jdbc:postgresql://localhost:5432/db
+            app.description = Aplicação de Teste
+            """;
+        Files.writeString(propertiesFile, content);
+
+        ConfigLoader configLoader = new ConfigLoader();
+
+        // 2. Act
+        List<ConfigFile> configFiles = configLoader.loadDirectory(tempDir);
+
+        // 3. Assert (usando org.junit.jupiter.api.Assertions.*)
+        assertEquals(1, configFiles.size(), "Deveria ter encontrado exatamente 1 arquivo");
+
+        ConfigFile configFile = configFiles.get(0);
+        assertEquals(propertiesFile, configFile.path());
+
+        Map<String, String> properties = configFile.properties();
+
+        assertNotNull(properties);
+        assertEquals("8080", properties.get("server.port"));
+        assertEquals("jdbc:postgresql://localhost:5432/db", properties.get("spring.datasource.url"));
+        assertEquals("Aplicação de Teste", properties.get("app.description"));
+    }
+
+    @Test
+    @DisplayName("Deve carregar arquivos .properties e .yml do mesmo diretório")
+    void shouldLoadBothYamlAndPropertiesFilesFromDirectory(@TempDir Path tempDir) throws IOException {
+        // Arrange
+        Path propFile = tempDir.resolve("application.properties");
+        Files.writeString(propFile, "server.port=8080\n");
+
+        Path yamlFile = tempDir.resolve("application.yml");
+        Files.writeString(yamlFile, "server:\n  port: 9090\n");
+
+        ConfigLoader configLoader = new ConfigLoader();
+
+        // Act
+        List<ConfigFile> configFiles = configLoader.loadDirectory(tempDir);
+
+        // Assert
+        assertEquals(2, configFiles.size(), "Deveria ter carregado 2 arquivos de configuração");
+    }
+
+    @Test
+    @DisplayName("Deve carregar e achatar listas no YAML com notação de índice [0], [1]")
+    void shouldFlattenYamlListsWithIndexNotation(@TempDir Path tempDir) throws IOException {
+        String content = """
+            spring:
+              profiles:
+                active:
+                  - dev
+                  - local
+            management:
+              endpoints:
+                web:
+                  exposure:
+                    include:
+                      - health
+                      - info
+            """;
+
+        Map<String, String> props = parse(tempDir, content);
+
+        assertEquals("dev", props.get("spring.profiles.active[0]"));
+        assertEquals("local", props.get("spring.profiles.active[1]"));
+        assertEquals("health", props.get("management.endpoints.web.exposure.include[0]"));
+        assertEquals("info", props.get("management.endpoints.web.exposure.include[1]"));
+    }
+
+    @Test
+    @DisplayName("Deve processar arquivo YAML vazio sem lançar exceções")
+    void shouldHandleEmptyYamlFileWithoutExceptions(@TempDir Path tempDir) throws IOException {
+        Map<String, String> props = parse(tempDir, "");
+
+        assertTrue(props.isEmpty(), "O mapa de propriedades para YAML vazio deve ser vazio");
+    }
+
+    @Test
+    @DisplayName("Deve carregar arquivo .properties preservando caracteres e acentuação em UTF-8")
+    void shouldLoadPropertiesFileWithUtf8Encoding(@TempDir Path tempDir) throws IOException {
+        Path propFile = tempDir.resolve("application.properties");
+        String content = """
+            # Configurações com acentos
+            server.port=8080
+            app.description=Aplicação de Teste com Acentuação
+            app.empty-value=
+            """;
+        Files.writeString(propFile, content);
+
+        List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
+
+        assertEquals(1, result.size());
+        Map<String, String> props = result.get(0).properties();
+
+        assertEquals("8080", props.get("server.port"));
+        assertEquals("Aplicação de Teste com Acentuação", props.get("app.description"));
+        assertEquals("", props.get("app.empty-value"));
+    }
+
+    @Test
+    @DisplayName("Deve ignorar arquivos que não seguem a convenção application*.properties/yml/yaml")
+    void shouldIgnoreNonSpringConfigFiles(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("readme.txt"), "instrucoes=true");
+        Files.writeString(tempDir.resolve("config.yml"), "server:\n  port: 8080");
+        Files.writeString(tempDir.resolve("application.json"), "{}");
+
+        List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
+
+        assertTrue(result.isEmpty(), "Nenhum arquivo fora da convenção do Spring deveria ser carregado");
+    }
+
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
         return configFiles.get(0).properties();
     }
+
 }
