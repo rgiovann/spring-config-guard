@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * Encontra e carrega arquivos de configuração do Spring Boot
@@ -76,133 +77,63 @@ public final class ConfigLoader {
         return flat;
     }
 
-    /**
-     * Parser YAML minimalista, feito à mão de propósito (v0.1 não tem
-     * dependências externas — veja o README sobre trocar por snakeyaml).
-     *
-     * Suporta o que a maioria das configs do Spring realmente usa:
-     * mapeamentos aninhados por indentação, comentários com #, valores
-     * escalares (string/number/boolean), e LISTAS DE VALORES SIMPLES
-     * (ex: "- https://a.com"), que viram chaves indexadas no estilo
-     * relaxed-binding do próprio Spring: allowed-origins[0], allowed-origins[1]...
-     *
-     * NÃO suporta listas de mapas (ex: "- name: x\n  url: y") nem
-     * âncoras/multi-doc — isso é uma limitação conhecida e documentada,
-     * não um bug escondido. Se precisar disso, considere trocar por
-     * snakeyaml (ver comentário no pom.xml).
-     */
     private Map<String, String> loadYaml(Path p) throws IOException {
-        List<String> lines = Files.readAllLines(p);
-        Map<String, String> flat = new LinkedHashMap<>();
-        // Pilha de (nível de indentação, prefixo de chave) para reconstruir
-        // o caminho dotted conforme a indentação sobe e desce.
-        Deque<int[]> indentStack = new ArrayDeque<>(); // [indent]
-        Deque<String> keyStack = new ArrayDeque<>();
 
-        // Estado da lista "corrente" sendo lida (Nível A: só valores simples).
-        // Reseta sempre que a linha atual não é um item de lista, garantindo
-        // que a próxima lista comece do índice 0.
-        String currentListParentKey = null;
-        int currentListIndex = -1;
+        Yaml yaml = new Yaml();
 
-        for (String rawLine : lines) {
-            String line = stripComment(rawLine);
-            if (line.isBlank()) continue;
+        try (var in = Files.newInputStream(p)) {
 
-            int indent = countLeadingSpaces(line);
-            String content = line.strip();
+            Object root = yaml.load(in);
 
-            // Desempilha níveis mais profundos que a indentação atual
-            while (!indentStack.isEmpty() && indentStack.peek()[0] >= indent) {
-                indentStack.pop();
-                keyStack.pop();
-            }
+            Map<String, String> flat = new LinkedHashMap<>();
 
-            if (isListItem(content)) {
-                String parentKey = keyStack.isEmpty() ? "" : keyStack.peek();
-                int index = parentKey.equals(currentListParentKey) ? currentListIndex + 1 : 0;
+            flatten(root, "", flat);
 
-                String itemValue = unquote(content.substring(1).strip());
-                String fullKey = parentKey.isEmpty() ? "[" + index + "]" : parentKey + "[" + index + "]";
-                flat.put(fullKey, itemValue);
-
-                currentListParentKey = parentKey;
-                currentListIndex = index;
-                continue;
-            }
-
-            // Linha não é item de lista: qualquer lista em andamento termina aqui.
-            currentListParentKey = null;
-            currentListIndex = -1;
-
-            int colonIdx = findKeyValueSeparator(content);
-            if (colonIdx < 0) continue; // linha que não reconhecemos, ignora
-
-            String key = content.substring(0, colonIdx).strip();
-            String value = content.substring(colonIdx + 1).strip();
-            String fullKey = keyStack.isEmpty() ? key : keyStack.peek() + "." + key;
-
-            if (value.isEmpty()) {
-                // é um mapeamento pai (as chaves filhas vêm nas próximas linhas)
-                indentStack.push(new int[]{indent});
-                keyStack.push(fullKey);
-            } else {
-                flat.put(fullKey, unquote(value));
-            }
+            return flat;
         }
-        return flat;
     }
 
     /**
-     * Detecta se a linha (já sem indentação, via .strip()) é um item de lista
-     * YAML de valor simples: "- algo". Note o espaço exigido após o traço —
-     * isso evita confundir com uma chave legítima que comece com hífen
-     * (raro, mas possível: "-secret-key: valor" não deveria cair aqui).
+     * Carrega um arquivo YAML do Spring Boot e o converte para um mapa plano
+     * de propriedades.
+     * Apenas valores escalares (folhas da árvore YAML) são adicionados ao mapa.
+     * Nós intermediários (Map), listas e valores nulos não geram entradas.
+     * Exemplo:
+     * server:
+     *   port: 8080
+     * resulta em:
+     * server.port=8080
      */
-    private static boolean isListItem(String content) {
-        return content.equals("-") || content.startsWith("- ");
-    }
 
-    private static String stripComment(String line) {
-        boolean inSingleQuote = false;
-        boolean inDoubleQuote = false;
+    private void flatten(Object yamlNode,
+                         String prefix,
+                         Map<String, String> flat) {
 
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
+        if (yamlNode == null) {
+            return;
+        }
 
-            if (c == '\'' && !inDoubleQuote) {
-                inSingleQuote = !inSingleQuote;
-            } else if (c == '"' && !inSingleQuote) {
-                inDoubleQuote = !inDoubleQuote;
-            } else if (c == '#' && !inSingleQuote && !inDoubleQuote) {
-                return line.substring(0, i);
+        if (yamlNode instanceof Map<?, ?> map) {
+
+            for (var entry : map.entrySet()) {
+
+                String child = prefix.isEmpty()
+                        ? entry.getKey().toString()
+                        : prefix + "." + entry.getKey();
+
+                flatten(entry.getValue(), child, flat);
             }
-        }
-        return line;
-    }
 
-    private static int countLeadingSpaces(String s) {
-        int i = 0;
-        while (i < s.length() && s.charAt(i) == ' ') i++;
-        return i;
-    }
+        } else if (yamlNode instanceof List<?> list) {
 
-    private static int findKeyValueSeparator(String content) {
-        // ":" seguido de espaço ou fim de linha (evita confundir com valores tipo "http://...")
-        for (int i = 0; i < content.length(); i++) {
-            if (content.charAt(i) == ':' && (i == content.length() - 1 || content.charAt(i + 1) == ' ')) {
-                return i;
+            for (int i = 0; i < list.size(); i++) {
+                flatten(list.get(i), prefix + "[" + i + "]", flat);
             }
-        }
-        return -1;
-    }
 
-    private static String unquote(String value) {
-        if (value.length() >= 2 &&
-                ((value.startsWith("\"") && value.endsWith("\"")) ||
-                 (value.startsWith("'") && value.endsWith("'")))) {
-            return value.substring(1, value.length() - 1);
+        } else {
+
+            flat.put(prefix, String.valueOf(yamlNode));
+
         }
-        return value;
     }
 }

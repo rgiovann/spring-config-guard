@@ -18,8 +18,8 @@
     <!--
         v0.1 é zero-dependency de propósito (o parser YAML é escrito à mão em
         ConfigLoader). Se quiser suporte a YAML mais completo (listas, âncoras,
-        multi-doc) no futuro, descomente o snakeyaml abaixo e reescreva loadYaml
-        pra usá-lo. Ficou comentado pra você decidir isso conscientemente,
+        multidoc) no futuro, descomente o snakeyaml abaixo e reescreva loadYaml
+        para usá-lo. Ficou comentado para você decidir isso conscientemente,
         não por acidente.
 
         <dependency>
