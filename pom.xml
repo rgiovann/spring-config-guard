@@ -40,8 +40,13 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.25.3</version>
+            <version>3.27.7</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>2.2</version> <!-- Use a versão estável mais recente -->
         </dependency>
     </dependencies>
 
