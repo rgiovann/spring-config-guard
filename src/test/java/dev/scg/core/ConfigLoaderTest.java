@@ -242,23 +242,9 @@ class ConfigLoaderTest {
         assertEquals("z", values.get("app.segunda[2]"));
     }
 
-    /**
-     * TESTE DE CARACTERIZAÇÃO (não é um "deveria passar assim").
-     *
-     * Documenta um bug conhecido: stripComment() corta a linha no primeiro '#',
-     * mesmo se ele estiver dentro de uma string entre aspas. Isso significa que
-     * um valor como "secr3t#123" é truncado incorretamente.
-     *
-     * Este teste existe para que, se alguém corrigir esse bug no futuro, o teste
-     * QUEBRE de propósito — te forçando a vir aqui e atualizar a expectativa
-     * conscientemente, em vez de a correção passar despercebida.
-     *
-     * TODO(SCG): tornar stripComment "quote-aware" antes de escrever qualquer
-     * regra que precise inspecionar o CONTEÚDO de valores (não só a chave).
-     */
     @Test
     @DisplayName("Deve manter o caractere hash (#) no valor quando estiver entre aspas no YAML")
-    void hashDentroDeAspasQuebraOValor(@TempDir Path tempDir) throws IOException {
+    void hashDentroDeAspasDeveSerPreservado(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
                   password: "secr3t#123"
@@ -266,26 +252,7 @@ class ConfigLoaderTest {
 
         // Comportamento ATUAL (incorreto): o valor fica truncado e com aspa sobrando.
         assertEquals("secr3t#123", values.get("app.password"),
-                "se este assert falhar, o bug do '#' dentro de aspas foi corrigido — "
-                        + "atualize este teste para assertEquals(\"secr3t#123\", ...) e remova este comentário");
-    }
-
-    private static String stripComment(String line) {
-        boolean inSingleQuote = false;
-        boolean inDoubleQuote = false;
-
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-
-            if (c == '\'' && !inDoubleQuote) {
-                inSingleQuote = !inSingleQuote;
-            } else if (c == '"' && !inSingleQuote) {
-                inDoubleQuote = !inDoubleQuote;
-            } else if (c == '#' && !inSingleQuote && !inDoubleQuote) {
-                return line.substring(0, i);
-            }
-        }
-        return line;
+                "Deveria ter preservado hash dentro de aspas.");
     }
 
     @Test
@@ -407,6 +374,23 @@ class ConfigLoaderTest {
         assertTrue(result.isEmpty(), "Nenhum arquivo fora da convenção do Spring deveria ser carregado");
     }
 
+    @Test
+    @DisplayName("Deve achatar lista de mapas (Nível B) automaticamente via snakeyaml")
+    void deveSuportarListaDeMapasComSnakeyaml(@TempDir Path tempDir) throws IOException {
+        Map<String, String> values = parse(tempDir, """
+            cors:
+              origins:
+                - name: producao
+                  url: https://a.com
+                - name: staging
+                  url: https://b.com
+            """);
+
+        assertEquals("producao", values.get("cors.origins[0].name"));
+        assertEquals("https://a.com", values.get("cors.origins[0].url"));
+        assertEquals("staging", values.get("cors.origins[1].name"));
+        assertEquals("https://b.com", values.get("cors.origins[1].url"));
+    }
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);

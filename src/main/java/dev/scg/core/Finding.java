@@ -1,21 +1,25 @@
 package dev.scg.core;
 
+package dev.scg.core;
+
 /**
  * Representa um problema encontrado por uma regra.
  *
- * Por que record e não classe comum? Finding é puro dado imutável — não tem
- * comportamento, só carrega informação de um ponto (a regra) para outro
- * (o relatório). Record elimina boilerplate de getters/equals/hashCode/toString
- * sem esconder nada: é exatamente o que parece ser.
+ * profileLabel identifica em qual configuração efetiva o achado ocorreu
+ * ("base", "dev", "prod", etc) — nunca nulo ou vazio, mesma convenção
+ * de EffectiveConfig.profileLabel(). Isso permite que a mesma regra,
+ * rodando contra o mesmo arquivo, aponte problemas diferentes em
+ * profiles diferentes sem ambiguidade na mensagem final.
  */
 public record Finding(
         String ruleId,
         Severity severity,
         String message,
-        String sourceFile
+        String sourceFile,
+        String profileLabel
 ) {
     @Override
     public String toString() {
-        return "[%s] %s (%s) — %s".formatted(severity, ruleId, sourceFile, message);
+        return "[%s] %s (%s) [profile: %s] — %s".formatted(severity, ruleId, sourceFile, profileLabel, message);
     }
 }

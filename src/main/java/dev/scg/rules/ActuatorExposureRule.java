@@ -1,5 +1,6 @@
 package dev.scg.rules;
 
+import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
 import dev.scg.core.Rule;
 import dev.scg.core.Severity;
@@ -43,7 +44,7 @@ public final class ActuatorExposureRule implements Rule {
     }
 
     @Override
-    public List<Finding> check(Map<String, String> config, String sourceFile) {
+    public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
 
         String exposure = config.get(EXPOSURE_KEY);
