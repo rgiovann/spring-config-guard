@@ -16,7 +16,7 @@ import java.util.List;
  * a ferramenta útil em CI (o build falha automaticamente).
  */
 public final class Main {
-
+/*
     public static void main(String[] args) throws IOException {
         // Não confiamos no locale do ambiente (runners de CI muitas vezes
         // vêm com locale POSIX, sem UTF-8). Forçamos explicitamente aqui
@@ -65,4 +65,27 @@ public final class Main {
             System.exit(1); // faz o build falhar em CI quando plugado como step
         }
     }
+*/
+public static void main(String[] args) throws IOException {
+    System.out.println("spring-config-guard: pipeline em refatoração (multi-profile), Main desativado temporariamente.");
+
+    // TODO: reativar quando ProfileMerger existir.
+    // O bloco abaixo está comentado porque RuleEngine.run() agora espera
+    // List<EffectiveConfig>, e ainda não temos a peça que converte
+    // List<ConfigFile> -> List<EffectiveConfig>.
+
+        /*
+        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
+        Path target = args.length > 0 ? Path.of(args[0]) : Path.of(".");
+        ConfigLoader loader = new ConfigLoader();
+        List<ConfigFile> configFiles = loader.loadDirectory(target);
+        if (configFiles.isEmpty()) {
+            System.out.println("Nenhum application*.properties/yml encontrado em: " + target.toAbsolutePath());
+            return;
+        }
+        RuleEngine engine = new RuleEngine(List.of(new ActuatorExposureRule()));
+        List<Finding> findings = engine.run(configFiles);
+        ...
+        */
+}
 }

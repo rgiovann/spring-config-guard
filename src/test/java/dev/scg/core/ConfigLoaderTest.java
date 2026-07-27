@@ -279,7 +279,7 @@ class ConfigLoaderTest {
         ConfigFile configFile = configFiles.getFirst();
         assertEquals(propertiesFile, configFile.path());
 
-        Map<String, String> properties = configFile.properties();
+        Map<String, String> properties = configFile.documents().get(0).properties();
 
         assertNotNull(properties);
         assertEquals("8080", properties.get("server.port"));
@@ -355,7 +355,7 @@ class ConfigLoaderTest {
         List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
 
         assertEquals(1, result.size());
-        Map<String, String> props = result.getFirst().properties();
+        Map<String, String> props = result.getFirst().documents().get(0).properties();
 
         assertEquals("8080", props.get("server.port"));
         assertEquals("Aplicação de Teste com Acentuação", props.get("app.description"));
@@ -391,11 +391,22 @@ class ConfigLoaderTest {
         assertEquals("staging", values.get("cors.origins[1].name"));
         assertEquals("https://b.com", values.get("cors.origins[1].url"));
     }
+
+    @Test
+    @DisplayName("TODO: documento YAML vazio ou ausente após o último '---' não deve quebrar o parsing")
+    void documentoVazioAposUltimoSeparadorNaoDeveQuebrar(@TempDir Path tempDir) throws IOException {
+        assertTrue(false, "TESTE A SER IMPLEMENTADO");
+
+        // TODO: testar arquivo terminando em "---" sozinho na última linha
+        // (ou dois "---" seguidos), garantindo que loadAll() não produza
+        // um elemento null que quebre a extração de profile.
+    }
+
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
-        return configFiles.getFirst().properties();
+        return configFiles.getFirst().documents().get(0).properties();
     }
 
 }
