@@ -47,7 +47,7 @@ public final class ActuatorExposureRule implements Rule {
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
 
-        String exposure = config.get(EXPOSURE_KEY);
+        String exposure = config.properties().get(EXPOSURE_KEY);
         if (exposure == null || !exposure.contains("*")) {
             return findings; // não expõe tudo, nada a checar aqui
         }
@@ -55,8 +55,8 @@ public final class ActuatorExposureRule implements Rule {
         List<String> stillEnabled = new ArrayList<>();
         for (String endpoint : SENSITIVE_ENDPOINTS) {
             String enabledKey = "management.endpoint." + endpoint + ".enabled";
-            String enabledValue = config.get(enabledKey);
             // se a chave não existe, o Spring assume enabled=true por padrão
+            String enabledValue = config.properties().get(enabledKey);
             boolean explicitlyDisabled = "false".equalsIgnoreCase(enabledValue);
             if (!explicitlyDisabled) {
                 stillEnabled.add(endpoint);
@@ -70,7 +70,8 @@ public final class ActuatorExposureRule implements Rule {
                     "%s=* expõe todos os endpoints via HTTP, e estes seguem habilitados sem restrição explícita: %s. "
                             .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
                             + "Considere management.endpoint.<nome>.enabled=false para cada um, ou trocar '*' por uma lista explícita.",
-                    sourceFile
+                    config.sourceFile().toString(),
+                    config.profileLabel()
             ));
         }
 

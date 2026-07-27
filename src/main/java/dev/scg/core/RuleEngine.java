@@ -19,12 +19,11 @@ public final class RuleEngine {
         this.rules = List.copyOf(rules);
     }
 
-    public List<Finding> run(List<ConfigFile> configFiles) {
+    public List<Finding> run(List<EffectiveConfig> effectiveConfigs){
         List<Finding> findings = new ArrayList<>();
-        for (ConfigFile file : configFiles) {
-            String sourceName = file.path().toString();
+        for (EffectiveConfig effectiveConfig : effectiveConfigs) {
             for (Rule rule : rules) {
-                findings.addAll(rule.check(file.properties(), sourceName));
+                findings.addAll(rule.check(effectiveConfig));
             }
         }
         return findings;

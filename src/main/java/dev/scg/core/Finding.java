@@ -1,7 +1,5 @@
 package dev.scg.core;
 
-package dev.scg.core;
-
 /**
  * Representa um problema encontrado por uma regra.
  *
