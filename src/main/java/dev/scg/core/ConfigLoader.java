@@ -1,6 +1,7 @@
 package dev.scg.core;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
@@ -42,7 +43,7 @@ public final class ConfigLoader {
 
             for (Path p : candidates) {
                 List<ConfigDocument> documents = p.toString().endsWith(".properties")
-                        ? List.of(new ConfigDocument(Optional.empty(), loadProperties(p)))
+                        ? loadProperties(p)
                         : loadYaml(p);
                 result.add(new ConfigFile(p, documents));
             }
@@ -56,18 +57,90 @@ public final class ConfigLoader {
                 && (name.endsWith(".properties") || name.endsWith(".yml") || name.endsWith(".yaml"));
     }
 
-    private Map<String, String> loadProperties(Path p) throws IOException {
+    private List<ConfigDocument> loadProperties(Path p) throws IOException {
+        List<String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+
+        // Estrutura intermediária para agrupar documentos pelo profile
+        Map<String, List<Map<String, String>>> groupedByLabel = new LinkedHashMap<>();
+
+        StringBuilder currentDocBuilder = new StringBuilder();
+
+        for (String line : lines) {
+            // O Spring Boot exige que o separador seja exatamente '#---' (ignorando espaços nas pontas)
+            if (line.trim().equals("#---")) {
+                processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
+                currentDocBuilder.setLength(0); // Limpa o buffer para o próximo documento
+            } else {
+                currentDocBuilder.append(line).append("\n");
+            }
+        }
+        // Processa o último (ou único) bloco do arquivo
+        processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
+
+        return buildConfigDocuments(groupedByLabel);
+    }
+
+    private void processPropertiesDocument(
+            String rawContent,
+            Map<String, List<Map<String, String>>> groupedByLabel
+    ) throws IOException {
+        if (rawContent.isBlank()) {
+            return;
+        }
+
         Properties props = new Properties();
+        props.load(new StringReader(rawContent));
 
-        try (var reader = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
-            props.load(reader);
+        if (props.isEmpty()) {
+            return;
         }
 
-        Map<String, String> flat = new LinkedHashMap<>();
+        Map<String, String> flatDocument = new LinkedHashMap<>();
         for (String name : props.stringPropertyNames()) {
-            flat.put(name, props.getProperty(name));
+            flatDocument.put(name, props.getProperty(name));
         }
-        return flat;
+
+        // Extrai o profile usando a mesma chave constante ON_PROFILE_KEY
+        String profileValue = flatDocument.get(ON_PROFILE_KEY);
+        String label = (profileValue == null || profileValue.isBlank())
+                ? BASE_LABEL
+                : profileValue.strip();
+
+        // Remove a chave de infraestrutura para não poluir as regras de linting
+        flatDocument.remove(ON_PROFILE_KEY);
+
+        groupedByLabel
+                .computeIfAbsent(label, key -> new ArrayList<>())
+                .add(flatDocument);
+    }
+
+    private List<ConfigDocument> buildConfigDocuments(
+            Map<String, List<Map<String, String>>> groupedByLabel
+    ) {
+        List<ConfigDocument> result = new ArrayList<>();
+
+        for (var entry : groupedByLabel.entrySet()) {
+            String label = entry.getKey();
+            List<Map<String, String>> mapsForLabel = entry.getValue();
+
+            Map<String, String> merged = new LinkedHashMap<>();
+            for (Map<String, String> flatDocument : mapsForLabel) {
+                merged.putAll(flatDocument); // Último valor ganha em caso de chaves duplicadas no mesmo perfil
+            }
+
+            Optional<String> profile = label.equals(BASE_LABEL)
+                    ? Optional.empty()
+                    : Optional.of(label);
+
+            result.add(new ConfigDocument(profile, merged));
+        }
+
+        // Mantém o invariante: todo ConfigFile possui ao menos 1 ConfigDocument
+        if (result.isEmpty()) {
+            result.add(new ConfigDocument(Optional.empty(), new LinkedHashMap<>()));
+        }
+
+        return result;
     }
 
     /**
@@ -116,28 +189,8 @@ public final class ConfigLoader {
                         .add(flatDocument);
             }
 
-            List<ConfigDocument> result = new ArrayList<>();
-            for (var entry : groupedByLabel.entrySet()) {
-                String label = entry.getKey();
-                List<Map<String, String>> mapsForLabel = entry.getValue();
+            return buildConfigDocuments(groupedByLabel);
 
-                Map<String, String> merged = new LinkedHashMap<>();
-                for (Map<String, String> flatDocument : mapsForLabel) {
-                    merged.putAll(flatDocument); // último valor de chave duplicada vence
-                }
-
-                Optional<String> profile = label.equals(BASE_LABEL) ? Optional.empty() : Optional.of(label);
-                result.add(new ConfigDocument(profile, merged));
-            }
-
-            // Garante o invariante "todo ConfigFile tem pelo menos 1 documento",
-            // mesmo quando o arquivo é vazio ou só tem comentários (todos os
-            // documentos brutos eram null e foram descartados no ponto de risco 1).
-            if (result.isEmpty()) {
-                result.add(new ConfigDocument(Optional.empty(), new LinkedHashMap<>()));
-            }
-
-            return result;
         }
     }
 
