@@ -66,8 +66,9 @@ public final class ConfigLoader {
         StringBuilder currentDocBuilder = new StringBuilder();
 
         for (String line : lines) {
-            // O Spring Boot exige que o separador seja exatamente '#---' (ignorando espaços nas pontas)
-            if (line.trim().equals("#---")) {
+            // O Spring Boot exige que o separador seja exatamente '#---' ou "!---"
+            // (ignorando espaços nas pontas) (docs do Spring Boot)
+            if (line.trim().equals("#---") || line.trim().equals("!---"))  {
                 processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
                 currentDocBuilder.setLength(0); // Limpa o buffer para o próximo documento
             } else {

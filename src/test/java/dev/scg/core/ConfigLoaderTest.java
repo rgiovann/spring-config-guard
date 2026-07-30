@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -402,11 +403,132 @@ class ConfigLoaderTest {
         // um elemento null que quebre a extração de profile.
     }
 
+    //===============================================================================================//
+    //===============================================================================================//
+
+    @Test
+    @DisplayName("Deve separar um .properties em 2 documentos usando '#---' como separador")
+    void devePropertiesComHashTresTracosSepararDoisDocumentos(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            server.port=8080
+            #---
+            spring.config.activate.on-profile=dev
+            management.endpoints.web.exposure.include=*
+            """);
+
+        assertEquals(2, docs.size());
+        assertTrue(docs.get(0).profile().isEmpty());
+        assertEquals("8080", docs.get(0).properties().get("server.port"));
+
+        assertEquals(Optional.of("dev"), docs.get(1).profile());
+        assertEquals("*", docs.get(1).properties().get("management.endpoints.web.exposure.include"));
+    }
+
+    /**
+     * Este é o teste de regressão do bug que encontramos: o Spring Boot aceita
+     * tanto "#---" quanto "!---" como separador de documento em .properties.
+     * Antes da correção, "!---" era tratado como uma linha de comentário comum
+     * (ignorada), e os dois blocos ficavam indevidamente fundidos num só.
+     */
+    @Test
+    @DisplayName("Deve separar um .properties em 2 documentos usando '!---' como separador (mesmo comportamento de '#---')")
+    void devePropertiesComExclamacaoTresTracosSepararDoisDocumentos(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            server.port=8080
+            !---
+            spring.config.activate.on-profile=dev
+            management.endpoints.web.exposure.include=*
+            """);
+
+        assertEquals(2, docs.size());
+        assertTrue(docs.get(0).profile().isEmpty());
+        assertEquals(Optional.of("dev"), docs.get(1).profile());
+        assertEquals("*", docs.get(1).properties().get("management.endpoints.web.exposure.include"));
+
+        // Ponto crítico do bug original: sem o profile "dev", exposure.include=*
+        // não deveria "vazar" para o documento base.
+        assertFalse(docs.get(0).properties().containsKey("management.endpoints.web.exposure.include"));
+    }
+
+    @Test
+    @DisplayName("Deve fundir dois blocos .properties que compartilham o mesmo profile nomeado")
+    void duasBlocosPropertiesComMesmoProfileDevemSerFundidos(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            #---
+            spring.config.activate.on-profile=dev
+            server.port=9090
+            #---
+            spring.config.activate.on-profile=dev
+            management.endpoints.web.exposure.include=*
+            """);
+
+        assertEquals(1, docs.size());
+        assertEquals(Optional.of("dev"), docs.get(0).profile());
+        assertEquals("9090", docs.get(0).properties().get("server.port"));
+        assertEquals("*", docs.get(0).properties().get("management.endpoints.web.exposure.include"));
+    }
+
+    @Test
+    @DisplayName("Deve gerar 1 documento base vazio para .properties vazio ou só com comentários")
+    void propertiesVazioOuSoComentarioDeveGerarUmDocumentoBaseVazio(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            # apenas um comentario
+            # outro comentario
+            """);
+
+        assertEquals(1, docs.size());
+        assertTrue(docs.get(0).profile().isEmpty());
+        assertTrue(docs.get(0).properties().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Deve gerar apenas 1 documento base quando o .properties não tem nenhum separador (não-regressão)")
+    void propertiesSemSeparadorDeveGerarApenasUmDocumentoBase(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            server.port=8080
+            app.name=MeuApp
+            """);
+
+        assertEquals(1, docs.size());
+        assertTrue(docs.get(0).profile().isEmpty());
+        assertEquals("8080", docs.get(0).properties().get("server.port"));
+        assertEquals("MeuApp", docs.get(0).properties().get("app.name"));
+    }
+
+    @Test
+    @DisplayName("A chave spring.config.activate.on-profile deve ser removida do mapa final em .properties")
+    void onProfileDeveSerRemovidoDoMapaFinalEmProperties(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseProperties(tempDir, """
+            #---
+            spring.config.activate.on-profile=dev
+            server.port=9090
+            """);
+
+        assertEquals(1, docs.size());
+        assertFalse(docs.get(0).properties().containsKey("spring.config.activate.on-profile"),
+                "a chave de metadado não deveria sobrar no mapa de propriedades de negócio");
+    }
+
+
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
         return configFiles.getFirst().documents().get(0).properties();
     }
+    /**
+     * Análogo ao parse(), mas para .properties e devolvendo a List<ConfigDocument>
+     * completa (não o mapa achatado de 1 documento só) — necessário porque aqui
+     * queremos verificar quantos documentos foram produzidos e como cada um
+     * ficou, não só o resultado final de um documento único.
+     */
+    private List<ConfigDocument> parseProperties(Path tempDir, String content) throws IOException {
+        Path file = tempDir.resolve("application.properties");
+        Files.writeString(file, content);
+        List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
+        assertEquals(1, configFiles.size());
+        return configFiles.getFirst().documents();
+    }
+
 
 }
