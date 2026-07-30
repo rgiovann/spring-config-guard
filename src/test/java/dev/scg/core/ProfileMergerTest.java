@@ -221,4 +221,210 @@ class ProfileMergerTest {
         assertEquals("WARN", prod.properties().get("logging.level.root"));
         assertFalse(prod.properties().containsKey("management.endpoints.web.exposure.include"));
     }
+
+    @Test
+    @DisplayName("Profile deve poder adicionar uma lista nova mesmo que base não a tenha")
+    void profileAdicionaListaNovaQueNaoExisteNoBase() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("server.port", "8080")),
+                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of(
+                        "cors.origins[0]", "http://localhost"
+                )))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("8080", dev.properties().get("server.port"));
+        assertEquals("http://localhost", dev.properties().get("cors.origins[0]"));
+    }
+
+    @Test
+    @DisplayName("Profile deve poder expandir uma lista com mais índices do que o base tinha")
+    void profileDeveExpandirListaComMaisIndicesQueOBase() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("app.tags[0]", "v1");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("app.tags[0]", "v2");
+        devProps.put("app.tags[1]", "v3");
+        devProps.put("app.tags[2]", "v4");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+        EffectiveConfig base = findByLabel(result, "base");
+
+        // dev deve ter os 3 elementos NOVOS do profile, não uma mistura com o base
+        assertEquals(3, dev.properties().size());
+        assertEquals("v2", dev.properties().get("app.tags[0]"));
+        assertEquals("v3", dev.properties().get("app.tags[1]"));
+        assertEquals("v4", dev.properties().get("app.tags[2]"));
+
+        // base não deve ter sido afetado pelo merge feito para "dev"
+        assertEquals(1, base.properties().size());
+        assertEquals("v1", base.properties().get("app.tags[0]"));
+    }
+
+    @Test
+    @DisplayName("Profile deve conseguir sobrescrever duas listas distintas simultaneamente, sem interferência cruzada")
+    void profileSobrescreveMultiplasListasDistintasSimultaneamente() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.origins[0]", "a.com");
+        baseProps.put("cors.origins[1]", "b.com");
+        baseProps.put("logging.ignored[0]", "foo");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("cors.origins[0]", "x.com");
+        devProps.put("logging.ignored[0]", "bar");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals(2, dev.properties().size());
+        assertEquals("x.com", dev.properties().get("cors.origins[0]"));
+        assertFalse(dev.properties().containsKey("cors.origins[1]"),
+                "cors.origins[1] do base deveria ter sido removido junto com a purga de cors.origins[0]");
+        assertEquals("bar", dev.properties().get("logging.ignored[0]"));
+    }
+
+    @Test
+    @DisplayName("LIMITAÇÃO CONHECIDA: chave escalar no profile não purga lista de mesmo prefixo no base, gerando estado inconsistente")
+    void chaveEscalarNaoRemoveListaDoBaseComPrefixoSimilar() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.allowed-origins[0]", "a.com");
+        baseProps.put("cors.allowed-origins[1]", "b.com");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("cors.allowed-origins", "explicit-value"); // escalar (relaxed-binding do Spring), não lista
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        // TODO(backlog): comportamento atual é INCONSISTENTE — o profile pretendia
+        // redefinir allowed-origins via relaxed-binding (String separada por vírgula
+        // vira List<String> no Spring real), mas o algoritmo de purga só detecta '['
+        // na chave do overlay, então os índices antigos do base sobrevivem junto com
+        // o valor escalar novo. Ver item de backlog "purga de lista não detecta
+        // redefinição via relaxed-binding escalar".
+        assertEquals("explicit-value", dev.properties().get("cors.allowed-origins"));
+        assertEquals("a.com", dev.properties().get("cors.allowed-origins[0]"), "ainda presente — comportamento conhecido, não corrigido");
+        assertEquals("b.com", dev.properties().get("cors.allowed-origins[1]"), "ainda presente — comportamento conhecido, não corrigido");
+        assertEquals(3, dev.properties().size(), "estado inconsistente esperado até o backlog ser resolvido");
+    }
+
+    @Test
+    @DisplayName("LIMITAÇÃO CONHECIDA: se existirem 2 documentos base (violando invariante do ConfigLoader), apenas o primeiro é usado e o segundo é silenciosamente perdido")
+    void doisDocumentosBaseApenasPrimeiroEUsadoSegundoEPerdido() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("a", "1"))),
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("b", "2"))), // ignorado
+                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("c", "3")))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        // TODO(backlog): esta é uma violação da invariante que o ConfigLoader
+        // garante na prática (nunca entrega 2 documentos com profile vazio no
+        // mesmo ConfigFile). Este teste documenta o comportamento ATUAL do
+        // ProfileMerger sob essa violação — não é o comportamento desejado.
+        // Ver item de backlog "findBaseProperties perde dado silenciosamente
+        // se invariante de documento único-base for violada".
+        assertEquals("1", base.properties().get("a"));
+        assertNull(base.properties().get("b"), "'b' do segundo documento base é perdido — comportamento conhecido, não corrigido");
+
+        assertEquals("1", dev.properties().get("a"));
+        assertNull(dev.properties().get("b"), "'b' nunca chega no profile dev, pois nem chegou no base");
+        assertEquals("3", dev.properties().get("c"));
+    }
+
+    @Test
+    @DisplayName("Documento base posicionado após profiles nomeados ainda deve ser encontrado e usado como base, independente de ordem")
+    void baseAposProfilesDeveSerEncontradoIndependenteDeOrdem() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("x", "1"))),
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("base-only", "true")))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("true", base.properties().get("base-only"));
+        assertEquals("true", dev.properties().get("base-only"), "dev deveria herdar base-only mesmo o base estando depois na lista");
+        assertEquals("1", dev.properties().get("x"));
+    }
+
+    @Test
+    @DisplayName("LIMITAÇÃO CONHECIDA: profile nomeado explicitamente 'base' colide com o rótulo sintético do base real")
+    void profileExplicitamenteChamadoBaseColideComBaseSintetico() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("a", "1")),
+                new ConfigDocument(Optional.of("base"), Map.of("b", "2")) // nome de profile real igual à sentinela
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+
+        // TODO(backlog, prioridade alta): 2 EffectiveConfig com profileLabel="base"
+        // coexistem — uma sintética (só o base real) e outra do profile nomeado
+        // "base" pelo usuário, já fundida. Isso torna uma delas inacessível por
+        // busca-por-nome (findFirst() sempre pega a primeira). Ver item de backlog
+        // "sentinela 'base' colide com nome de profile real".
+        long comLabelBase = result.stream().filter(e -> e.profileLabel().equals("base")).count();
+        assertEquals(2, comLabelBase, "colisão de rótulo confirmada — comportamento conhecido, não corrigido");
+    }
+
+    @Test
+    @DisplayName("Merge não deve mutar o mapa original do documento de profile")
+    void mergeNaoDeveMutarMapaDoProfile() {
+        Map<String, String> profileProps = new LinkedHashMap<>(Map.of("x", "1"));
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("a", "1")),
+                new ConfigDocument(Optional.of("dev"), profileProps)
+        ));
+
+        merger.merge(file);
+
+        assertEquals(1, profileProps.size());
+        assertEquals("1", profileProps.get("x"));
+    }
+
+    @Test
+    @DisplayName("LIMITAÇÃO CONHECIDA: EffectiveConfig.properties() não é protegido contra mutação externa, podendo vazar entre Rules")
+    void effectiveConfigNaoEProtegidoContraMutacaoExterna() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("a", "1")),
+                new ConfigDocument(Optional.of("dev"), Map.of("x", "1"))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        // TODO(backlog): o mapa retornado por properties() aceita mutação direta.
+        // Como RuleEngine reutiliza o mesmo EffectiveConfig entre múltiplas Rules,
+        // uma Rule com bug pode corromper silenciosamente o input das próximas.
+        // Correção sugerida (baixo custo): Collections.unmodifiableMap() em
+        // ProfileMerger antes de construir cada EffectiveConfig. Ver backlog
+        // "EffectiveConfig.properties() não blindado contra mutação".
+        assertDoesNotThrow(() -> dev.properties().put("chave-maliciosa", "valor-injetado"),
+                "hoje NÃO lança exceção — comportamento conhecido, não corrigido");
+        assertTrue(dev.properties().containsKey("chave-maliciosa"),
+                "a mutação persiste e seria visível por qualquer Rule que rodasse depois sobre o mesmo objeto");
+    }
 }
