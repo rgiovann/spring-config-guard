@@ -404,27 +404,25 @@ class ProfileMergerTest {
         assertEquals(1, profileProps.size());
         assertEquals("1", profileProps.get("x"));
     }
-
     @Test
-    @DisplayName("LIMITAÇÃO CONHECIDA: EffectiveConfig.properties() não é protegido contra mutação externa, podendo vazar entre Rules")
-    void effectiveConfigNaoEProtegidoContraMutacaoExterna() {
+    @DisplayName("EffectiveConfig.properties() deve ser protegido contra mutação externa (BL-01 corrigido)")
+    void effectiveConfigDeveSerProtegidoContraMutacaoExterna() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
                 new ConfigDocument(Optional.of("dev"), Map.of("x", "1"))
         ));
 
         List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig base = findByLabel(result, "base");
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // TODO(backlog): o mapa retornado por properties() aceita mutação direta.
-        // Como RuleEngine reutiliza o mesmo EffectiveConfig entre múltiplas Rules,
-        // uma Rule com bug pode corromper silenciosamente o input das próximas.
-        // Correção sugerida (baixo custo): Collections.unmodifiableMap() em
-        // ProfileMerger antes de construir cada EffectiveConfig. Ver backlog
-        // "EffectiveConfig.properties() não blindado contra mutação".
-        assertDoesNotThrow(() -> dev.properties().put("chave-maliciosa", "valor-injetado"),
-                "hoje NÃO lança exceção — comportamento conhecido, não corrigido");
-        assertTrue(dev.properties().containsKey("chave-maliciosa"),
-                "a mutação persiste e seria visível por qualquer Rule que rodasse depois sobre o mesmo objeto");
+        assertThrows(UnsupportedOperationException.class,
+                () -> base.properties().put("chave-maliciosa", "valor-injetado"),
+                "EffectiveConfig do base deveria bloquear mutação externa");
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> dev.properties().put("chave-maliciosa", "valor-injetado"),
+                "EffectiveConfig do profile deveria bloquear mutação externa");
     }
+
 }

@@ -28,7 +28,7 @@ public final class ProfileMerger {
         result.add(new EffectiveConfig(
                 configFile.path(),
                 BASE_PROFILE_LABEL,
-                new LinkedHashMap<>(baseProperties)
+                Collections.unmodifiableMap(new LinkedHashMap<>(baseProperties))
         ));
 
         for (ConfigDocument document : configFile.documents()) {
@@ -37,7 +37,7 @@ public final class ProfileMerger {
             }
             String profileLabel = document.profile().get();
             Map<String, String> merged = mergeProperties(baseProperties, document.properties());
-            result.add(new EffectiveConfig(configFile.path(), profileLabel, merged));
+            result.add(new EffectiveConfig(configFile.path(), profileLabel, Collections.unmodifiableMap(merged)));
         }
 
         return result;

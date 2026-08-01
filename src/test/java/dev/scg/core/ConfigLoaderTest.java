@@ -394,13 +394,41 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("TODO: documento YAML vazio ou ausente após o último '---' não deve quebrar o parsing")
+    @DisplayName("Documento YAML vazio ou ausente após separador '---' não deve quebrar o parsing")
     void documentoVazioAposUltimoSeparadorNaoDeveQuebrar(@TempDir Path tempDir) throws IOException {
-        assertTrue(false, "TESTE A SER IMPLEMENTADO");
+        // Sub-caso A: "---" sozinho no fim do arquivo (documento fantasma no final)
+        List<ConfigDocument> docsA = parseYaml(tempDir, "caseA", """
+            server:
+              port: 8080
+            ---
+            """);
 
-        // TODO: testar arquivo terminando em "---" sozinho na última linha
-        // (ou dois "---" seguidos), garantindo que loadAll() não produza
-        // um elemento null que quebre a extração de profile.
+        assertEquals(1, docsA.size(), "o '---' final sozinho não deveria gerar documento fantasma");
+        assertTrue(docsA.get(0).profile().isEmpty());
+        assertEquals("8080", docsA.get(0).properties().get("server.port"));
+
+        // Sub-caso B: dois "---" seguidos (documento vazio no meio do arquivo)
+        List<ConfigDocument> docsB = parseYaml(tempDir, "caseB", """
+            server:
+              port: 8080
+            ---
+            ---
+            spring:
+              config:
+                activate:
+                  on-profile: dev
+            management:
+              endpoints:
+                web:
+                  exposure:
+                    include: "*"
+            """);
+
+        assertEquals(2, docsB.size(), "o bloco vazio entre os dois '---' deveria ser ignorado, não virar documento");
+        assertTrue(docsB.get(0).profile().isEmpty());
+        assertEquals("8080", docsB.get(0).properties().get("server.port"));
+        assertEquals(Optional.of("dev"), docsB.get(1).profile());
+        assertEquals("*", docsB.get(1).properties().get("management.endpoints.web.exposure.include"));
     }
 
     //===============================================================================================//
@@ -529,6 +557,13 @@ class ConfigLoaderTest {
         assertEquals(1, configFiles.size());
         return configFiles.getFirst().documents();
     }
-
+    private List<ConfigDocument> parseYaml(Path tempDir, String subDirName, String yamlContent) throws IOException {
+        Path subDir = tempDir.resolve(subDirName);
+        Files.createDirectories(subDir);
+        Files.writeString(subDir.resolve("application.yml"), yamlContent);
+        List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(subDir);
+        assertEquals(1, configFiles.size());
+        return configFiles.getFirst().documents();
+    }
 
 }
