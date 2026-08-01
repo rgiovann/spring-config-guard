@@ -45,8 +45,13 @@ public final class ProfileMerger {
 
     /**
      * Encontra o documento sem profile (o base). Se não existir nenhum
-     * (arquivo onde todo bloco declara um profile), devolve mapa vazio —
-     * representa "nenhuma config incondicional existe nesse arquivo".
+     * (arquivo onde todo bloco declara um profile), devolve mapa vazio.
+     *
+     * PRECONDIÇÃO (não verificada aqui): assume no máximo 1 ConfigDocument
+     * com profile vazio por ConfigFile — garantido pelo ConfigLoader no
+     * pipeline real. Se violada, o primeiro documento-base "vence" e os
+     * demais são silenciosamente descartados. Decisão consciente: ver
+     * BL-04 (WON'T FIX) em BACKLOG.md.
      */
     private Map<String, String> findBaseProperties(ConfigFile configFile) {
         for (ConfigDocument document : configFile.documents()) {
