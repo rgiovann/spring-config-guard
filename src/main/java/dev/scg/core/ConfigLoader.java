@@ -30,6 +30,19 @@ public final class ConfigLoader {
     /** Rótulo interno usado na estrutura de agrupamento para representar "sem profile" (base). */
     private static final String BASE_LABEL = "";
 
+    /**
+     * Sufixo de chave-sentinela emitido quando o YAML define uma lista
+     * EXPLICITAMENTE vazia (ex: "allowed-origins: []"). Sem isso, uma lista
+     * vazia produz zero chaves achatadas — indistinguível de "a chave nunca
+     * foi mencionada" — e o ProfileMerger não teria como saber que o profile
+     * queria limpar a lista herdada do base (BL-03, cenário a).
+     *
+     * Pacote-visível de propósito: ProfileMerger precisa reconhecer e depois
+     * remover essa chave antes de expor o resultado a qualquer Rule — ela é
+     * um sinal interno de infraestrutura, não dado de configuração real.
+     */
+    static final String EMPTY_LIST_SENTINEL_SUFFIX = ".__empty_list__";
+
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
         if (!Files.isDirectory(dir)) {
@@ -216,8 +229,16 @@ public final class ConfigLoader {
 
         } else if (yamlNode instanceof List<?> list) {
 
-            for (int i = 0; i < list.size(); i++) {
-                flatten(list.get(i), prefix + "[" + i + "]", flat);
+            if (list.isEmpty()) {
+                // BL-03 (cenário a): lista explicitamente vazia não deixa
+                // rastro nenhum se simplesmente não iterarmos nada. Emitimos
+                // uma sentinela pra ProfileMerger conseguir distinguir
+                // "profile redefiniu como vazia" de "profile nem mencionou".
+                flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
+            } else {
+                for (int i = 0; i < list.size(); i++) {
+                    flatten(list.get(i), prefix + "[" + i + "]", flat);
+                }
             }
 
         } else {

@@ -28,12 +28,12 @@ public final class ProfileMerger {
         result.add(new EffectiveConfig(
                 configFile.path(),
                 BASE_PROFILE_LABEL,
-                Collections.unmodifiableMap(new LinkedHashMap<>(baseProperties))
+                Collections.unmodifiableMap(stripEmptyListSentinels(baseProperties))
         ));
 
         for (ConfigDocument document : configFile.documents()) {
             if (document.profile().isEmpty()) {
-                continue; // já processado como base acima
+                continue;
             }
             String profileLabel = document.profile().get();
             Map<String, String> merged = mergeProperties(baseProperties, document.properties());
@@ -43,16 +43,6 @@ public final class ProfileMerger {
         return result;
     }
 
-    /**
-     * Encontra o documento sem profile (o base). Se não existir nenhum
-     * (arquivo onde todo bloco declara um profile), devolve mapa vazio.
-     *
-     * PRECONDIÇÃO (não verificada aqui): assume no máximo 1 ConfigDocument
-     * com profile vazio por ConfigFile — garantido pelo ConfigLoader no
-     * pipeline real. Se violada, o primeiro documento-base "vence" e os
-     * demais são silenciosamente descartados. Decisão consciente: ver
-     * BL-04 (WON'T FIX) em BACKLOG.md.
-     */
     private Map<String, String> findBaseProperties(ConfigFile configFile) {
         for (ConfigDocument document : configFile.documents()) {
             if (document.profile().isEmpty()) {
@@ -77,15 +67,24 @@ public final class ProfileMerger {
             int bracketIdx = key.indexOf('[');
             if (bracketIdx >= 0) {
                 listRootsInOverlay.add(key.substring(0, bracketIdx));
+            } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
+                listRootsInOverlay.add(key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length()));
             }
         }
 
         for (String listRoot : listRootsInOverlay) {
-            String prefix = listRoot + "[";
-            merged.keySet().removeIf(k -> k.startsWith(prefix));
+            String bracketPrefix = listRoot + "[";
+            String sentinelKey = listRoot + ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX;
+            merged.keySet().removeIf(k -> k.startsWith(bracketPrefix) || k.equals(sentinelKey));
         }
 
         merged.putAll(overlay);
-        return merged;
+        return stripEmptyListSentinels(merged);
+    }
+
+    private static Map<String, String> stripEmptyListSentinels(Map<String, String> map) {
+        Map<String, String> stripped = new LinkedHashMap<>(map);
+        stripped.keySet().removeIf(k -> k.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX));
+        return stripped;
     }
 }

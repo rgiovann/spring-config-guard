@@ -425,4 +425,73 @@ class ProfileMergerTest {
                 "EffectiveConfig do profile deveria bloquear mutação externa");
     }
 
+    @Test
+    @DisplayName("BL-03(a): profile com lista vazia explícita deve limpar a lista perigosa herdada do base")
+    void profileComListaVaziaExplicitaDeveLimparListaDoBase() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.allowed-origins[0]", "*");
+
+        Map<String, String> prodProps = new LinkedHashMap<>();
+        prodProps.put("cors.allowed-origins.__empty_list__", "true");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("prod"), prodProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig prod = findByLabel(result, "prod");
+        EffectiveConfig base = findByLabel(result, "base");
+
+        assertFalse(prod.properties().containsKey("cors.allowed-origins[0]"));
+        assertFalse(prod.properties().containsKey("cors.allowed-origins.__empty_list__"),
+                "a sentinela nunca deveria sobrar no resultado final exposto a uma Rule");
+        assertEquals("*", base.properties().get("cors.allowed-origins[0]"),
+                "base não deveria ser afetado pelo merge feito para prod");
+    }
+
+    @Test
+    @DisplayName("BL-03(a): profile pode redefinir lista vazia como não-vazia, substituindo por completo")
+    void profileRedefineListaVaziaComoNaoVazia() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.allowed-origins[0]", "a.com");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("cors.allowed-origins[0]", "novo.com");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("novo.com", dev.properties().get("cors.allowed-origins[0]"));
+    }
+
+    @Test
+    @DisplayName("BL-03(a): base com lista vazia explícita, profile que não menciona a chave, deve herdar vazio sem vazar sentinela")
+    void baseComListaVaziaHerdaVazioSemVazarSentinela() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.allowed-origins.__empty_list__", "true");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("server.port", "9090");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+        EffectiveConfig base = findByLabel(result, "base");
+
+        assertFalse(dev.properties().containsKey("cors.allowed-origins[0]"));
+        assertFalse(dev.properties().containsKey("cors.allowed-origins.__empty_list__"));
+        assertFalse(base.properties().containsKey("cors.allowed-origins.__empty_list__"));
+        assertEquals("9090", dev.properties().get("server.port"));
+    }
+
 }

@@ -537,6 +537,18 @@ class ConfigLoaderTest {
                 "a chave de metadado não deveria sobrar no mapa de propriedades de negócio");
     }
 
+    @Test
+    @DisplayName("Lista YAML explicitamente vazia deve gerar chave-sentinela, sem índices")
+    void deveEmitirSentinelaParaListaYamlVaziaExplicita(@TempDir Path tempDir) throws IOException {
+        Map<String, String> values = parse(tempDir, """
+            cors:
+              allowed-origins: []
+            """);
+
+        assertEquals("true", values.get("cors.allowed-origins.__empty_list__"));
+        assertFalse(values.containsKey("cors.allowed-origins[0]"));
+    }
+
 
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
