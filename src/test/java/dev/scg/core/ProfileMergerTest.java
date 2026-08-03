@@ -513,4 +513,29 @@ class ProfileMergerTest {
         assertEquals("9090", dev.properties().get("server.port"));
     }
 
+    @Test
+    @DisplayName("BL-03(a): lista de objetos vazia (não só lista de escalares) também deve purgar corretamente via sentinela")
+    void listaDeObjetosVaziaTambemDevePurgarCorretamente() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("users[0].name", "admin");
+        baseProps.put("users[0].role", "SUPERUSER");
+        baseProps.put("users[1].name", "guest");
+        baseProps.put("users[1].role", "READONLY");
+
+        Map<String, String> prodProps = new LinkedHashMap<>();
+        prodProps.put("users.__empty_list__", "true");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("prod"), prodProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig prod = findByLabel(result, "prod");
+        EffectiveConfig base = findByLabel(result, "base");
+
+        assertTrue(prod.properties().isEmpty(), "lista de objetos inteira deveria ter sido purgada");
+        assertEquals(4, base.properties().size(), "base não deveria ser afetado pelo merge feito para prod");
+    }
+
 }
