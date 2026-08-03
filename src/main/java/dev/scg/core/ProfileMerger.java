@@ -69,6 +69,8 @@ public final class ProfileMerger {
                 listRootsInOverlay.add(key.substring(0, bracketIdx));
             } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
                 listRootsInOverlay.add(key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length()));
+            } else if (isScalarRedefiningListInBase(key, base)) {
+                listRootsInOverlay.add(key);
             }
         }
 
@@ -80,6 +82,18 @@ public final class ProfileMerger {
 
         merged.putAll(overlay);
         return stripEmptyListSentinels(merged);
+    }
+
+    /**
+     * Detecta o cenário (b) do BL-03: overlayKey é uma chave escalar (sem
+     * '[') cujo nome coincide exatamente com uma raiz de lista já indexada
+     * no base (ex: overlayKey="cors.allowed-origins", e base tem
+     * "cors.allowed-origins[0]"). Isso sinaliza relaxed-binding redefinindo
+     * a lista inteira via string única.
+     */
+    private boolean isScalarRedefiningListInBase(String overlayKey, Map<String, String> base) {
+        String prefix = overlayKey + "[";
+        return base.keySet().stream().anyMatch(k -> k.startsWith(prefix));
     }
 
     private static Map<String, String> stripEmptyListSentinels(Map<String, String> map) {

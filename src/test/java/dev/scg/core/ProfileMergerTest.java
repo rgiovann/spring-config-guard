@@ -298,14 +298,14 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("LIMITAÇÃO CONHECIDA: chave escalar no profile não purga lista de mesmo prefixo no base, gerando estado inconsistente")
-    void chaveEscalarNaoRemoveListaDoBaseComPrefixoSimilar() {
+    @DisplayName("BL-03(b): chave escalar (relaxed-binding) redefinindo lista do base deve purgar índices órfãos")
+    void chaveEscalarRedefinindoListaDoBaseDevePurgarIndicesOrfaos() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
         baseProps.put("cors.allowed-origins[1]", "b.com");
 
         Map<String, String> devProps = new LinkedHashMap<>();
-        devProps.put("cors.allowed-origins", "explicit-value"); // escalar (relaxed-binding do Spring), não lista
+        devProps.put("cors.allowed-origins", "explicit-value"); // relaxed-binding do Spring
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
@@ -315,16 +315,35 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // TODO(backlog): comportamento atual é INCONSISTENTE — o profile pretendia
-        // redefinir allowed-origins via relaxed-binding (String separada por vírgula
-        // vira List<String> no Spring real), mas o algoritmo de purga só detecta '['
-        // na chave do overlay, então os índices antigos do base sobrevivem junto com
-        // o valor escalar novo. Ver item de backlog "purga de lista não detecta
-        // redefinição via relaxed-binding escalar".
         assertEquals("explicit-value", dev.properties().get("cors.allowed-origins"));
-        assertEquals("a.com", dev.properties().get("cors.allowed-origins[0]"), "ainda presente — comportamento conhecido, não corrigido");
-        assertEquals("b.com", dev.properties().get("cors.allowed-origins[1]"), "ainda presente — comportamento conhecido, não corrigido");
-        assertEquals(3, dev.properties().size(), "estado inconsistente esperado até o backlog ser resolvido");
+        assertFalse(dev.properties().containsKey("cors.allowed-origins[0]"),
+                "índice órfão do base não deveria sobreviver quando o profile redefine via escalar");
+        assertFalse(dev.properties().containsKey("cors.allowed-origins[1]"));
+        assertEquals(1, dev.properties().size());
+    }
+
+    @Test
+    @DisplayName("BL-03(b): redefinição escalar de uma lista não deve afetar outra lista não relacionada")
+    void redefinicaoEscalarNaoDeveAfetarListaNaoRelacionada() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("cors.origins[0]", "a.com");
+        baseProps.put("cors.origins[1]", "b.com");
+        baseProps.put("logging.ignored[0]", "foo");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("cors.origins", "escalar-novo");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("escalar-novo", dev.properties().get("cors.origins"));
+        assertFalse(dev.properties().containsKey("cors.origins[0]"));
+        assertEquals("foo", dev.properties().get("logging.ignored[0]"), "lista não relacionada deveria continuar herdada intacta");
     }
 
     @Test
