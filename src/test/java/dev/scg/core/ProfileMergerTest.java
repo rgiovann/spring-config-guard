@@ -43,7 +43,7 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
 
         assertEquals(1, result.size());
-        assertEquals("base", result.get(0).profileLabel());
+        assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.get(0).profileLabel());
         assertEquals("8080", result.get(0).properties().get("server.port"));
     }
 
@@ -63,7 +63,7 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
         assertEquals(2, result.size());
 
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         // base não deve ter sido contaminado pelo profile dev
@@ -87,7 +87,7 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
 
         assertEquals("WARN", findByLabel(result, "prod").properties().get("logging.level.root"));
-        assertEquals("INFO", findByLabel(result, "base").properties().get("logging.level.root"));
+        assertEquals("INFO", findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().get("logging.level.root"));
     }
 
     @Test
@@ -116,7 +116,7 @@ class ProfileMergerTest {
                 "índice [2] do base não deveria sobrar quando o profile redefine a lista");
 
         // base não deve ter sido afetado pelo merge feito para "dev"
-        assertEquals(3, findByLabel(result, "base").properties().size());
+        assertEquals(3, findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().size());
     }
 
     @Test
@@ -156,7 +156,7 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
 
         assertEquals(3, result.size()); // base(vazio) + dev + prod
-        assertTrue(findByLabel(result, "base").properties().isEmpty());
+        assertTrue(findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().isEmpty());
 
         EffectiveConfig dev = findByLabel(result, "dev");
         assertEquals("9090", dev.properties().get("server.port"));
@@ -202,7 +202,7 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
         assertEquals(3, result.size()); // base + dev + prod
 
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig prod = findByLabel(result, "prod");
 
@@ -257,7 +257,7 @@ class ProfileMergerTest {
 
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
         // dev deve ter os 3 elementos NOVOS do profile, não uma mistura com o base
         assertEquals(3, dev.properties().size());
@@ -356,7 +356,7 @@ class ProfileMergerTest {
         ));
 
         List<EffectiveConfig> result = merger.merge(file);
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         // TODO(backlog): esta é uma violação da invariante que o ConfigLoader
@@ -382,31 +382,12 @@ class ProfileMergerTest {
         ));
 
         List<EffectiveConfig> result = merger.merge(file);
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("true", base.properties().get("base-only"));
         assertEquals("true", dev.properties().get("base-only"), "dev deveria herdar base-only mesmo o base estando depois na lista");
         assertEquals("1", dev.properties().get("x"));
-    }
-
-    @Test
-    @DisplayName("LIMITAÇÃO CONHECIDA: profile nomeado explicitamente 'base' colide com o rótulo sintético do base real")
-    void profileExplicitamenteChamadoBaseColideComBaseSintetico() {
-        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
-                new ConfigDocument(Optional.empty(), Map.of("a", "1")),
-                new ConfigDocument(Optional.of("base"), Map.of("b", "2")) // nome de profile real igual à sentinela
-        ));
-
-        List<EffectiveConfig> result = merger.merge(file);
-
-        // TODO(backlog, prioridade alta): 2 EffectiveConfig com profileLabel="base"
-        // coexistem — uma sintética (só o base real) e outra do profile nomeado
-        // "base" pelo usuário, já fundida. Isso torna uma delas inacessível por
-        // busca-por-nome (findFirst() sempre pega a primeira). Ver item de backlog
-        // "sentinela 'base' colide com nome de profile real".
-        long comLabelBase = result.stream().filter(e -> e.profileLabel().equals("base")).count();
-        assertEquals(2, comLabelBase, "colisão de rótulo confirmada — comportamento conhecido, não corrigido");
     }
 
     @Test
@@ -432,7 +413,7 @@ class ProfileMergerTest {
         ));
 
         List<EffectiveConfig> result = merger.merge(file);
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertThrows(UnsupportedOperationException.class,
@@ -460,7 +441,7 @@ class ProfileMergerTest {
 
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
         assertFalse(prod.properties().containsKey("cors.allowed-origins[0]"));
         assertFalse(prod.properties().containsKey("cors.allowed-origins.__empty_list__"),
@@ -505,7 +486,7 @@ class ProfileMergerTest {
 
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
         assertFalse(dev.properties().containsKey("cors.allowed-origins[0]"));
         assertFalse(dev.properties().containsKey("cors.allowed-origins.__empty_list__"));
@@ -532,10 +513,30 @@ class ProfileMergerTest {
 
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
-        EffectiveConfig base = findByLabel(result, "base");
+        EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
         assertTrue(prod.properties().isEmpty(), "lista de objetos inteira deveria ter sido purgada");
         assertEquals(4, base.properties().size(), "base não deveria ser afetado pelo merge feito para prod");
+    }
+
+    @Test
+    @DisplayName("BL-02 resolvido: profile explicitamente chamado 'base' não colide mais com o rótulo sintético")
+    void profileExplicitamenteChamadoBaseNaoColideMaisComRotuloSintetico() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("a", "1")),
+                new ConfigDocument(Optional.of("base"), Map.of("b", "2"))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+
+        assertEquals(2, result.size());
+
+        EffectiveConfig sintetico = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
+        EffectiveConfig doUsuario = findByLabel(result, "base");
+
+        assertFalse(sintetico.properties().containsKey("b"), "o rótulo sintético não deveria ter herdado nada do profile 'base' real");
+        assertEquals("1", doUsuario.properties().get("a"));
+        assertEquals("2", doUsuario.properties().get("b"));
     }
 
 }

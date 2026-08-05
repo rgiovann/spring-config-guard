@@ -19,7 +19,17 @@ import java.util.*;
  */
 public final class ProfileMerger {
 
-    private static final String BASE_PROFILE_LABEL = "base";
+     /**
+     * Rótulo sintético usado para "nenhum profile ativo". Deliberadamente
+     * um nome improvável de colidir com um profile Spring real (BL-02):
+     * antes era a string simples "base", que colidia se algum profile real
+     * fosse nomeado literalmente "base" (sintaticamente válido no Spring,
+     * embora raro na prática). Pacote-visível de propósito, para que
+     * ProfileMergerTest referencie esta constante em vez de duplicar a
+     * string literal — evita o mesmo tipo de fragilidade se o valor mudar
+     * de novo no futuro.
+     */
+    static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
 
     public List<EffectiveConfig> merge(ConfigFile configFile) {
         Map<String, String> baseProperties = findBaseProperties(configFile);
