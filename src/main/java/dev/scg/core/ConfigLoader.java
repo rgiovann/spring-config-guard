@@ -43,6 +43,31 @@ public final class ConfigLoader {
      */
     static final String EMPTY_LIST_SENTINEL_SUFFIX = ".__empty_list__";
 
+    /**
+     * BL-08: sufixo de chave-sentinela para Map/objeto YAML explicitamente
+     * vazio (ex: "headers: {}"). Emitida no flatten() pelo mesmo motivo da
+     * sentinela de lista — um Map vazio não deixa rastro no mapa achatado
+     * sem isso.
+     *
+     * DIFERENÇA CRUCIAL em relação a EMPTY_LIST_SENTINEL_SUFFIX: esta
+     * sentinela é SÓ INFORMATIVA. Ela NUNCA aciona purga no ProfileMerger,
+     * porque Map e List se comportam DIFERENTE entre profiles no Spring
+     * real:
+     *   - List: o profile de maior prioridade SUBSTITUI a lista inteira
+     *     (documentado oficialmente) — por isso a sentinela de lista aciona
+     *     purga dos índices órfãos do base.
+     *   - Map: as chaves são compostas de MÚLTIPLAS fontes — cada chave
+     *     sobrevive ou é sobrescrita individualmente, nunca o objeto inteiro
+     *     de uma vez (também documentado oficialmente). "headers: {}" num
+     *     profile NÃO apaga as sub-chaves que o base já definiu.
+     *
+     * Se um dia alguém for "completar a analogia" com a lista e adicionar
+     * purga aqui, isso introduziria um bug: o merge passaria a divergir do
+     * comportamento real do Spring, potencialmente escondendo (falso
+     * negativo) configuração perigosa que o Spring de verdade manteria.
+     */
+    static final String  EMPTY_MAP_SENTINEL_SUFFIX = ".__empty_map__";
+
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
         if (!Files.isDirectory(dir)) {
@@ -217,6 +242,11 @@ public final class ConfigLoader {
         }
 
         if (yamlNode instanceof Map<?, ?> map) {
+
+            if (map.isEmpty()) {
+                flat.put(prefix + EMPTY_MAP_SENTINEL_SUFFIX, "true");
+                return;
+            }
 
             for (var entry : map.entrySet()) {
 

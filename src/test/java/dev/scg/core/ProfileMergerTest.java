@@ -539,4 +539,29 @@ class ProfileMergerTest {
         assertEquals("2", doUsuario.properties().get("b"));
     }
 
+    @Test
+    @DisplayName("BL-08: Map vazio no profile NÃO deve purgar chaves do base (diferente de lista)")
+    void mapVazioNoProfileNaoDevePurgarChavesDoBase() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("headers.x-app-name", "minha-app");
+        baseProps.put("headers.x-region", "brasil");
+
+        Map<String, String> prodProps = new LinkedHashMap<>();
+        prodProps.put("headers.__empty_map__", "true"); // "headers: {}" no profile
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("prod"), prodProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig prod = findByLabel(result, "prod");
+
+        assertEquals("minha-app", prod.properties().get("headers.x-app-name"),
+                "Map funde por chave — diferente de List, headers:{} não apaga o que o base definiu");
+        assertEquals("brasil", prod.properties().get("headers.x-region"));
+        assertFalse(prod.properties().containsKey("headers.__empty_map__"),
+                "a sentinela nunca deveria sobrar no resultado exposto a uma Rule");
+    }
+
 }

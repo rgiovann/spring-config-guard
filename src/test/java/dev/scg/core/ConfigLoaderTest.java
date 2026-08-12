@@ -549,6 +549,17 @@ class ConfigLoaderTest {
         assertFalse(values.containsKey("cors.allowed-origins[0]"));
     }
 
+    @Test
+    @DisplayName("Map/objeto YAML explicitamente vazio deve gerar chave-sentinela")
+    void deveEmitirSentinelaParaMapYamlVazioExplicito(@TempDir Path tempDir) throws IOException {
+        Map<String, String> values = parse(tempDir, """
+            headers: {}
+            """);
+
+        assertEquals("true", values.get("headers.__empty_map__"));
+        assertEquals(1, values.size());
+    }
+
 
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);

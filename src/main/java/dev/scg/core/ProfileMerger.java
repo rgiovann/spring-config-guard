@@ -38,7 +38,7 @@ public final class ProfileMerger {
         result.add(new EffectiveConfig(
                 configFile.path(),
                 BASE_PROFILE_LABEL,
-                Collections.unmodifiableMap(stripEmptyListSentinels(baseProperties))
+                Collections.unmodifiableMap(stripInternalSentinels(baseProperties))
         ));
 
         for (ConfigDocument document : configFile.documents()) {
@@ -91,7 +91,7 @@ public final class ProfileMerger {
         }
 
         merged.putAll(overlay);
-        return stripEmptyListSentinels(merged);
+        return stripInternalSentinels(merged);
     }
 
     /**
@@ -106,9 +106,10 @@ public final class ProfileMerger {
         return base.keySet().stream().anyMatch(k -> k.startsWith(prefix));
     }
 
-    private static Map<String, String> stripEmptyListSentinels(Map<String, String> map) {
+    private static Map<String, String> stripInternalSentinels(Map<String, String> map) {
         Map<String, String> stripped = new LinkedHashMap<>(map);
-        stripped.keySet().removeIf(k -> k.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX));
+        stripped.keySet().removeIf(k -> k.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)
+                || k.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX));
         return stripped;
     }
 }
