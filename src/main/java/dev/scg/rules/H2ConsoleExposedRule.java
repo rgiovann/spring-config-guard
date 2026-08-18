@@ -5,9 +5,7 @@ import dev.scg.core.Finding;
 import dev.scg.core.Rule;
 import dev.scg.core.Severity;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * SCG002 — detecta spring.h2.console.enabled=true fora de profiles de
@@ -29,7 +27,11 @@ import java.util.Map;
  */
 public final class H2ConsoleExposedRule implements Rule {
 
-    private static final String H2_ENABLED_KEY = ""; // TODO 1
+    private static final String H2_ENABLED_KEY = "spring.h2.console.enabled";
+
+    private static final Set<String> SAFE_PROFILES = Set.of(
+            "dev", "development", "test", "testing", "local"
+    );
 
     @Override
     public String id() {
@@ -42,20 +44,27 @@ public final class H2ConsoleExposedRule implements Rule {
     }
 
     @Override
-    public List<Finding> check(EffectiveConfig config)  {
+    public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
 
-        // TODO 2: se o sourceFile indicar profile de dev/test, retorne
-        // findings vazio aqui (early return, mesmo padrão do SCG001
-        // quando exposure.include não continha "*").
+        String currentProfile = config.profileLabel().toLowerCase(Locale.ROOT);
+        if (SAFE_PROFILES.contains(currentProfile)) {
+            return findings; // Ignora perfis seguros/locais
+        }
 
-        // TODO 1 (continuação): pegue o valor da chave H2_ENABLED_KEY
-        // do config e verifique se é "true" (cuidado: comparação de
-        // String ignorando maiúsculas/minúsculas, igual fizemos em
-        // ActuatorExposureRule com equalsIgnoreCase).
-
-        // TODO 3: se estiver habilitado, adicione o Finding com
-        // Severity.HIGH e uma mensagem explicando o risco + sugestão.
+        String enabledValue = config.properties().get(H2_ENABLED_KEY);
+        if ("true".equalsIgnoreCase(enabledValue)) {
+            findings.add(new Finding(
+                    id(),
+                    Severity.HIGH,
+                    "H2 console habilitado (%s=true) no perfil '%s'. "
+                            .formatted(H2_ENABLED_KEY, config.profileLabel())
+                            + "Risco elevado de execução remota de código (RCE) e exposição de dados. "
+                            + "Desabilite via 'spring.h2.console.enabled=false' fora de ambientes locais.",
+                    config.sourceFile().toString(),
+                    config.profileLabel()
+            ));
+        }
 
         return findings;
     }

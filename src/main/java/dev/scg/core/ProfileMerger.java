@@ -29,7 +29,7 @@ public final class ProfileMerger {
      * string literal — evita o mesmo tipo de fragilidade se o valor mudar
      * de novo no futuro.
      */
-    static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
+    public static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
 
     public List<EffectiveConfig> merge(ConfigFile configFile) {
         Map<String, String> baseProperties = findBaseProperties(configFile);
