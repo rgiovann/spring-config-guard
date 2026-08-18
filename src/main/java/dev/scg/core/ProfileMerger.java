@@ -70,27 +70,37 @@ public final class ProfileMerger {
      * do base misturado com índice novo do overlay.
      */
     private Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
-        Map<String, String> merged = new LinkedHashMap<>(base);
 
+        Map<String, String> merged = new LinkedHashMap<>(base);
         Set<String> listRootsInOverlay = new LinkedHashSet<>();
+        Map<String, String> nullOverrides = new LinkedHashMap<>();
+
         for (String key : overlay.keySet()) {
-            int bracketIdx = key.indexOf('[');
-            if (bracketIdx >= 0) {
-                listRootsInOverlay.add(key.substring(0, bracketIdx));
-            } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
-                listRootsInOverlay.add(key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length()));
-            } else if (isScalarRedefiningListInBase(key, base)) {
-                listRootsInOverlay.add(key);
+            if (key.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX)) {
+                String targetKey = key.substring(0, key.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
+                nullOverrides.put(targetKey, null);
+                listRootsInOverlay.add(targetKey); // garante purga de eventuais filhos/índices se o base era lista/mapa
+            } else {
+                int bracketIdx = key.indexOf('[');
+                if (bracketIdx >= 0) {
+                    listRootsInOverlay.add(key.substring(0, bracketIdx));
+                } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
+                    listRootsInOverlay.add(key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length()));
+                } else if (isScalarRedefiningListInBase(key, base)) {
+                    listRootsInOverlay.add(key);
+                }
             }
         }
 
-        for (String listRoot : listRootsInOverlay) {
-            String bracketPrefix = listRoot + "[";
-            String sentinelKey = listRoot + ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX;
-            merged.keySet().removeIf(k -> k.startsWith(bracketPrefix) || k.equals(sentinelKey));
+        for (String root : listRootsInOverlay) {
+            String bracketPrefix = root + "[";
+            String dotPrefix = root + ".";
+            String sentinelKey = root + ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX;
+            merged.keySet().removeIf(k -> k.startsWith(bracketPrefix) || k.startsWith(dotPrefix) || k.equals(sentinelKey) || k.equals(root));
         }
 
         merged.putAll(overlay);
+        merged.putAll(nullOverrides);
         return stripInternalSentinels(merged);
     }
 
@@ -109,7 +119,8 @@ public final class ProfileMerger {
     private static Map<String, String> stripInternalSentinels(Map<String, String> map) {
         Map<String, String> stripped = new LinkedHashMap<>(map);
         stripped.keySet().removeIf(k -> k.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)
-                || k.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX));
+                || k.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX)
+                || k.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX));
         return stripped;
     }
 }

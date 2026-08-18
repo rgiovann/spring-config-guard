@@ -68,6 +68,8 @@ public final class ConfigLoader {
      */
     static final String  EMPTY_MAP_SENTINEL_SUFFIX = ".__empty_map__";
 
+    static final String NULL_SCALAR_SENTINEL_SUFFIX = ".__null_scalar__";
+
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
         if (!Files.isDirectory(dir)) {
@@ -238,6 +240,9 @@ public final class ConfigLoader {
                          Map<String, String> flat) {
 
         if (yamlNode == null) {
+            if (!prefix.isEmpty()) {
+                flat.put(prefix + NULL_SCALAR_SENTINEL_SUFFIX, "true");
+            }
             return;
         }
 

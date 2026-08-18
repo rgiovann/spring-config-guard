@@ -560,6 +560,19 @@ class ConfigLoaderTest {
         assertEquals(1, values.size());
     }
 
+    @Test
+    @DisplayName("Escalar null explícito no YAML deve emitir chave-sentinela de nulo")
+    void deveEmitirSentinelaParaEscalarNullExplicito(@TempDir Path tempDir) throws IOException {
+        Map<String, String> values = parse(tempDir, """
+        app:
+          enabled: null
+          description: ~
+        """);
+
+        assertEquals("true", values.get("app.enabled.__null_scalar__"));
+        assertEquals("true", values.get("app.description.__null_scalar__"));
+    }
+
 
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);

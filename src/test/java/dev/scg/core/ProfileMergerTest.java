@@ -564,4 +564,49 @@ class ProfileMergerTest {
                 "a sentinela nunca deveria sobrar no resultado exposto a uma Rule");
     }
 
+    @Test
+    @DisplayName("BL-09: Profile com escalar null explícito deve redefinir chave do base para null")
+    void profileComNullExplicitoDeveRedefinirChaveParaNull() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("app.feature-x.enabled", "true");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("app.feature-x.enabled.__null_scalar__", "true");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertTrue(dev.properties().containsKey("app.feature-x.enabled"), "A chave deve existir no mapa");
+        assertNull(dev.properties().get("app.feature-x.enabled"), "O valor da chave deve ser null");
+    }
+
+    @Test
+    @DisplayName("BL-09: Profile com escalar null em nó que era objeto no base deve purgar sub-chaves e resultar em null")
+    void profileComNullEmNoObjetoDevePurgarSubChaves() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("db.connection.timeout", "30");
+        baseProps.put("db.connection.host", "localhost");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("db.connection.__null_scalar__", "true");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertFalse(dev.properties().containsKey("db.connection.timeout"));
+        assertFalse(dev.properties().containsKey("db.connection.host"));
+        assertTrue(dev.properties().containsKey("db.connection"));
+        assertNull(dev.properties().get("db.connection"));
+    }
+
 }
