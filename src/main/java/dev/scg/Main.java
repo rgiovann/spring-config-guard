@@ -1,91 +1,75 @@
 package dev.scg;
 
+import dev.scg.cli.CliArgumentParser;
+import dev.scg.cli.CliOptions;
+import dev.scg.cli.CliUsageException;
+import dev.scg.cli.ExitCodeResolver;
 import dev.scg.core.*;
+import dev.scg.report.ConsoleReporter;
+import dev.scg.report.JsonReporter;
+import dev.scg.report.Reporter;
 import dev.scg.rules.ActuatorExposureRule;
+import dev.scg.rules.H2ConsoleExposedRule;
 
 import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Entry point do CLI. Uso: java -jar spring-config-guard.jar [diretorio]
- *
- * Exit code 1 se houver algum Finding de severidade HIGH — é isso que faz
- * a ferramenta útil em CI (o build falha automaticamente).
- */
 public final class Main {
-/*
-    public static void main(String[] args) throws IOException {
-        // Não confiamos no locale do ambiente (runners de CI muitas vezes
-        // vêm com locale POSIX, sem UTF-8). Forçamos explicitamente aqui
-        // em vez de depender de -Dfile.encoding externo.
-        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
 
-        // Se você não passar nenhum argumento, ele assume Path.of("."),
-        // ou seja, o diretório atual onde o comando tá sendo executado.
-        Path target = args.length > 0 ? Path.of(args[0]) : Path.of(".");
-
-        // ConfigLoader busca todos os arquivos no formato application*.properties
-        // ou application*.yml dentro da pasta alvo.
-
-        ConfigLoader loader = new ConfigLoader();
-        List<ConfigFile> configFiles = loader.loadDirectory(target);
-
-        if (configFiles.isEmpty()) {
-            System.out.println("Nenhum application*.properties/yml encontrado em: " + target.toAbsolutePath());
-            return;
-        }
-
-        RuleEngine engine = new RuleEngine(List.of(
-                new ActuatorExposureRule()
-                // próximas regras entram aqui, uma linha cada
-        ));
-
-        List<Finding> findings = engine.run(configFiles);
-
-        System.out.println("spring-config-guard — " + configFiles.size() + " arquivo(s) analisado(s), "
-                + engine.rules().size() + " regra(s) ativa(s)\n");
-
-        if (findings.isEmpty()) {
-            System.out.println("Nenhum problema encontrado.");
-            return;
-        }
-
-        boolean hasHigh = false;
-        for (Finding f : findings) {
-            System.out.println(f);
-            if (f.severity() == Severity.HIGH) hasHigh = true;
-        }
-
-        System.out.println("\n" + findings.size() + " achado(s) no total.");
-
-        if (hasHigh) {
-            System.exit(1); // faz o build falhar em CI quando plugado como step
-        }
+    public static void main(String[] args) {
+        System.exit(run(args));
     }
-*/
-public static void main(String[] args) throws IOException {
-    System.out.println("spring-config-guard: pipeline em refatoração (multi-profile), Main desativado temporariamente.");
 
-    // TODO: reativar quando ProfileMerger existir.
-    // O bloco abaixo está comentado porque RuleEngine.run() agora espera
-    // List<EffectiveConfig>, e ainda não temos a peça que converte
-    // List<ConfigFile> -> List<EffectiveConfig>.
-
-        /*
-        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
-        Path target = args.length > 0 ? Path.of(args[0]) : Path.of(".");
-        ConfigLoader loader = new ConfigLoader();
-        List<ConfigFile> configFiles = loader.loadDirectory(target);
-        if (configFiles.isEmpty()) {
-            System.out.println("Nenhum application*.properties/yml encontrado em: " + target.toAbsolutePath());
-            return;
+    // Separado de main() para ser testável sem matar a JVM do processo de teste.
+    static int run(String[] args) {
+        CliOptions options;
+        try {
+            options = new CliArgumentParser().parse(args);
+        } catch (CliUsageException e) {
+            System.err.println("Erro de uso: " + e.getMessage());
+            return ExitCodeResolver.USAGE_ERROR;
         }
-        RuleEngine engine = new RuleEngine(List.of(new ActuatorExposureRule()));
-        List<Finding> findings = engine.run(configFiles);
-        ...
-        */
-}
+
+        if (!Files.isDirectory(options.directory())) {
+            System.err.println("Erro: '%s' não é um diretório válido.".formatted(options.directory()));
+            return ExitCodeResolver.USAGE_ERROR;
+        }
+
+        List<EffectiveConfig> effectiveConfigs;
+        try {
+            effectiveConfigs = loadEffectiveConfigs(options.directory());
+        } catch (IOException e) {
+            System.err.println("Erro ao ler configurações: " + e.getMessage());
+            return ExitCodeResolver.USAGE_ERROR;
+        }
+
+        RuleEngine engine = new RuleEngine(defaultRules());
+        List<Finding> findings = engine.run(effectiveConfigs);
+
+        Reporter reporter = options.jsonOutput() ? new JsonReporter() : new ConsoleReporter();
+        reporter.report(findings, System.out);
+
+        return new ExitCodeResolver().resolve(findings, options.failOnSeverity());
+    }
+
+    private static List<EffectiveConfig> loadEffectiveConfigs(Path directory) throws IOException {
+        ConfigLoader loader = new ConfigLoader();
+        ProfileMerger merger = new ProfileMerger();
+
+        List<EffectiveConfig> result = new ArrayList<>();
+        for (ConfigFile configFile : loader.loadDirectory(directory)) {
+            result.addAll(merger.merge(configFile));
+        }
+        return result;
+    }
+
+    private static List<Rule> defaultRules() {
+        return List.of(
+                new ActuatorExposureRule(),
+                new H2ConsoleExposedRule()
+        );
+    }
 }

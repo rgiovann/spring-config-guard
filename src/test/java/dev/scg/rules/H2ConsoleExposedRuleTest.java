@@ -1,10 +1,9 @@
-package dev.sgc.rules;
+package dev.scg.rules;
 
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
 import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
-import dev.scg.rules.H2ConsoleExposedRule;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

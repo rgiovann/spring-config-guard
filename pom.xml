@@ -15,42 +15,33 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <!--
-        v0.1 é zero-dependency de propósito (o parser YAML é escrito à mão em
-        ConfigLoader). Se quiser suporte a YAML mais completo (listas, âncoras,
-        multidoc) no futuro, descomente o snakeyaml abaixo e reescreva loadYaml
-        para usá-lo. Ficou comentado para você decidir isso conscientemente,
-        não por acidente.
-
+    <dependencies>
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>2.2</version>
         </dependency>
-    -->
 
-    <dependencies>
+        <!-- Serialização do relatório JSON (JsonReporter) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.18.2</version>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
-        <!-- Adicionar esta dependência para usar assertThat(...) -->
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>3.27.7</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
-            <version>2.2</version> <!-- Use a versão estável mais recente -->
-        </dependency>
     </dependencies>
-
-
 
     <build>
         <finalName>spring-config-guard</finalName>
@@ -66,6 +57,30 @@
                         </manifest>
                     </archive>
                 </configuration>
+            </plugin>
+
+            <!-- Gera o fat-jar: snakeyaml e jackson-databind embutidos,
+                 permitindo "java -jar target/spring-config-guard.jar ..."
+                 sem precisar montar classpath manualmente. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>dev.scg.Main</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
