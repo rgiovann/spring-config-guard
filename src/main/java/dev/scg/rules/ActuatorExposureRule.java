@@ -47,9 +47,12 @@ public final class ActuatorExposureRule implements Rule {
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
 
-        String exposure = config.properties().get(EXPOSURE_KEY);
-        if (exposure == null || !exposure.contains("*")) {
-            return findings; // não expõe tudo, nada a checar aqui
+        boolean hasWildcardExposure = config.properties().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith(EXPOSURE_KEY))
+                .anyMatch(entry -> entry.getValue() != null && entry.getValue().contains("*"));
+
+        if (!hasWildcardExposure) {
+            return findings; // não expõe tudo via *, nada a checar aqui
         }
 
         List<String> stillEnabled = new ArrayList<>();
