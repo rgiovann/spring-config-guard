@@ -5,32 +5,27 @@ import dev.scg.core.Finding;
 import dev.scg.core.Rule;
 import dev.scg.core.Severity;
 
-import java.util.*;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
- * SCG002 — detecta spring.h2.console.enabled=true fora de profiles de
- * dev/test. O H2 console é uma UI web que permite rodar SQL arbitrário
- * contra o banco da aplicação — extremamente útil em dev, extremamente
- * perigoso se for parar em produção (é um dos achados mais comuns em
- * relatórios de pentest de apps Spring Boot).
+ * SCG002 — Detecta spring.h2.console.enabled=true fora de perfis de dev/test/local.
  *
- * TODO 1: decida a chave a checar. Dica: mesma lógica de EXPOSURE_KEY
- * no ActuatorExposureRule, mas pra "spring.h2.console.enabled".
- *
- * TODO 2: decida como identificar "isso é um profile de dev/test".
- * Pergunta pra te guiar: o `sourceFile` que chega no método check()
- * já contém o nome do arquivo. Que substring nesse nome indicaria
- * "isso é seguro, pula a checagem"?
- *
- * TODO 3: monte o Finding. Reaproveite a estrutura de ActuatorExposureRule
- * como referência de estilo (severidade, mensagem clara, sugestão de correção).
+ * O H2 Console é uma interface web que permite execução de SQL arbitrário na aplicação.
+ * É extremamente útil para desenvolvimento local, mas um vetor crítico de RCE
+ * (Remote Code Execution) e vazamento de dados se exposto em ambientes produtivos.
  */
 public final class H2ConsoleExposedRule implements Rule {
 
     private static final String H2_ENABLED_KEY = "spring.h2.console.enabled";
 
-    private static final Set<String> SAFE_PROFILES = Set.of(
+    private static final Set<String> SAFE_PROFILE_TOKENS = Set.of(
             "dev", "development", "test", "testing", "local"
+    );
+
+    private static final Set<String> TRUTHY_VALUES = Set.of(
+            "true", "yes", "on", "1"
     );
 
     @Override
@@ -40,25 +35,24 @@ public final class H2ConsoleExposedRule implements Rule {
 
     @Override
     public String description() {
-        return "H2 console habilitada fora de profile de dev/test";
+        return "H2 console habilitado fora de perfil de dev/test/local";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
-        List<Finding> findings = new ArrayList<>();
-
         String currentProfile = config.profileLabel().toLowerCase(Locale.ROOT);
-        if (SAFE_PROFILES.contains(currentProfile)) {
-            return findings; // Ignora perfis seguros/locais
+
+        if (isSafeProfile(currentProfile)) {
+            return List.of(); // Perfis locais/dev são isentos da checagem
         }
 
         String enabledValue = config.properties().get(H2_ENABLED_KEY);
-        if ("true".equalsIgnoreCase(enabledValue)) {
-            findings.add(new Finding(
+        if (isTruthy(enabledValue)) {
+            return List.of(new Finding(
                     id(),
                     Severity.HIGH,
-                    "H2 console habilitado (%s=true) no perfil '%s'. "
-                            .formatted(H2_ENABLED_KEY, config.profileLabel())
+                    "H2 console habilitado (%s=%s) no perfil '%s'. "
+                            .formatted(H2_ENABLED_KEY, enabledValue, config.profileLabel())
                             + "Risco elevado de execução remota de código (RCE) e exposição de dados. "
                             + "Desabilite via 'spring.h2.console.enabled=false' fora de ambientes locais.",
                     config.sourceFile().toString(),
@@ -66,6 +60,29 @@ public final class H2ConsoleExposedRule implements Rule {
             ));
         }
 
-        return findings;
+        return List.of();
+    }
+
+    /**
+     * Verifica se o nome do perfil contém algum token seguro (ex: 'dev', 'test', 'local').
+     * A divisão por hífens, sublinhados ou pontos evita falsos negativos em palavras
+     * como 'delivery' ou 'devices'.
+     */
+    private boolean isSafeProfile(String profile) {
+        String[] tokens = profile.split("[-_.]");
+        for (String token : tokens) {
+            if (SAFE_PROFILE_TOKENS.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Avalia se a propriedade booleana é verdadeira considerando o relaxed binding
+     * do Spring Boot (true, yes, on, 1).
+     */
+    private boolean isTruthy(String value) {
+        return value != null && TRUTHY_VALUES.contains(value.trim().toLowerCase(Locale.ROOT));
     }
 }

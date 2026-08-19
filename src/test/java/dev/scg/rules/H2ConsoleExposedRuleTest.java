@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -51,6 +52,23 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
+    @DisplayName("Deve gerar Finding para variantes truthy do Spring Boot (yes, on, 1)")
+    void deveGerarFindingParaVariantesTruthy() {
+        List<String> truthyValues = List.of("yes", "YES", "on", "1");
+
+        for (String value : truthyValues) {
+            EffectiveConfig config = new EffectiveConfig(
+                    FAKE_PATH,
+                    "prod",
+                    Map.of("spring.h2.console.enabled", value)
+            );
+
+            List<Finding> findings = rule.check(config);
+            assertEquals(1, findings.size(), "Deveria ter gerado Finding para o valor truthy: " + value);
+        }
+    }
+
+    @Test
     @DisplayName("NÃO deve gerar Finding quando H2 console estiver habilitado em perfil seguro (dev/test/local)")
     void naoDeveGerarFindingEmPerfilDevOuTest() {
         EffectiveConfig devConfig = new EffectiveConfig(
@@ -70,6 +88,39 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
+    @DisplayName("NÃO deve gerar Finding para perfis compostos seguros (dev-local, cloud-test, local_db)")
+    void naoDeveGerarFindingParaPerfisCompostosSeguros() {
+        List<String> safeCompositeProfiles = List.of("dev-local", "cloud-test", "local_db", "test.ci");
+
+        for (String profile : safeCompositeProfiles) {
+            EffectiveConfig config = new EffectiveConfig(
+                    FAKE_PATH,
+                    profile,
+                    Map.of("spring.h2.console.enabled", "true")
+            );
+
+            assertTrue(rule.check(config).isEmpty(), "Deveria ser ignorado por ser um perfil composto seguro: " + profile);
+        }
+    }
+
+    @Test
+    @DisplayName("Deve gerar Finding para nomes de perfis que contêm palavras-chave como substring (delivery, devices)")
+    void deveGerarFindingParaPerfisNaoSegurosComSubstringsSemelhantes() {
+        List<String> unsafeProfiles = List.of("delivery", "devices", "contest");
+
+        for (String profile : unsafeProfiles) {
+            EffectiveConfig config = new EffectiveConfig(
+                    FAKE_PATH,
+                    profile,
+                    Map.of("spring.h2.console.enabled", "true")
+            );
+
+            List<Finding> findings = rule.check(config);
+            assertEquals(1, findings.size(), "Deveria ter gerado Finding para o perfil: " + profile);
+        }
+    }
+
+    @Test
     @DisplayName("NÃO deve gerar Finding quando H2 console estiver desabilitado ou ausente")
     void naoDeveGerarFindingQuandoDesabilitadoOuAusente() {
         EffectiveConfig disabledConfig = new EffectiveConfig(
@@ -86,5 +137,16 @@ class H2ConsoleExposedRuleTest {
 
         assertTrue(rule.check(disabledConfig).isEmpty());
         assertTrue(rule.check(missingConfig).isEmpty());
+    }
+
+    @Test
+    @DisplayName("NÃO deve lançar exceção nem gerar Finding quando valor da propriedade for nulo")
+    void naoDeveLancarExcecaoQuandoPropriedadeForNula() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("spring.h2.console.enabled", null);
+
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
+
+        assertDoesNotThrow(() -> assertTrue(rule.check(config).isEmpty()));
     }
 }
