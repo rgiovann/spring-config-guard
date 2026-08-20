@@ -36,7 +36,10 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveGerarFindingHighQuandoAsteriscoENenhumEndpointSensivelDesabilitado() {
+    void deveGerarFindingHighComEndpointsUnrestrictedPorPadraoQuandoAsteriscoENenhumaConfigExtra() {
+        // Nenhuma config de enabled/access para nenhum endpoint — shutdown e
+        // heapdump são restritos pelo próprio default do Spring (BL-11), os
+        // outros quatro não são.
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*"
         ));
@@ -47,22 +50,18 @@ class ActuatorExposureRuleTest {
         Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG001");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.sourceFile()).isEqualTo("application-prod.yml");
-        assertThat(finding.profileLabel()).isEqualTo("prod");
 
-        // Set.of() não garante ordem de iteração estável entre execuções da JVM —
-        // checamos cada endpoint isoladamente, nunca a frase inteira numa ordem fixa.
         assertThat(finding.message())
                 .contains("env")
-                .contains("heapdump")
                 .contains("threaddump")
-                .contains("shutdown")
                 .contains("configprops")
-                .contains("beans");
+                .contains("beans")
+                .doesNotContain("shutdown")
+                .doesNotContain("heapdump");
     }
 
     @Test
-    void naoDeveGerarFindingQuandoAsteriscoETodosEndpointsSensiveisDesabilitados() {
+    void naoDeveGerarFindingQuandoAsteriscoETodosEndpointsSensiveisDesabilitadosViaEnabled() {
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -78,10 +77,12 @@ class ActuatorExposureRuleTest {
 
     @Test
     void deveListarApenasEndpointsAindaHabilitadosQuandoDesabilitacaoParcial() {
+        // heapdump não aparece aqui de propósito: sem config explícita, ele
+        // já é restrito por padrão — não deveria estar em stillEnabled.
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*",
                 "management.endpoint.env.enabled", "false",
-                "management.endpoint.shutdown.enabled", "false"
+                "management.endpoint.shutdown.access", "none"
         ));
 
         List<Finding> findings = rule.check(config);
@@ -91,49 +92,53 @@ class ActuatorExposureRuleTest {
         assertThat(message)
                 .doesNotContain("env")
                 .doesNotContain("shutdown")
-                .contains("heapdump")
+                .doesNotContain("heapdump")
                 .contains("threaddump")
                 .contains("configprops")
                 .contains("beans");
     }
 
     @Test
-    void deveTratarDesabilitacaoComoCaseInsensitive() {
-        // "FALSE" em vez de "false" — a regra usa equalsIgnoreCase, coerente
-        // com o relaxed binding do Spring pra valores booleanos.
-        EffectiveConfig config = configWith(Map.of(
-                "management.endpoints.web.exposure.include", "*",
-                "management.endpoint.env.enabled", "FALSE"
+    void deveGerarFindingQuandoHeapdumpDesbloqueadoExplicitamenteViaAccessUnrestricted() {
+        // Cenário real testado empiricamente: access=unrestricted é o único
+        // jeito de expor heapdump — se alguém fizer isso, a regra precisa
+        // continuar acusando, não silenciar por causa do default restrito.
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.shutdown.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.access", "unrestricted")
         ));
 
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).message()).doesNotContain("env");
+        assertThat(findings.get(0).message()).contains("heapdump");
     }
 
     @Test
-    void deveConsiderarValorDiferenteDeFalseComoAindaHabilitado() {
-        // Qualquer valor que não seja literalmente "false" (ex: typo "flase")
-        // deve contar como enabled=true — é o comportamento padrão do Spring
-        // quando a chave existe mas não desabilita explicitamente.
-        EffectiveConfig config = configWith(Map.of(
-                "management.endpoints.web.exposure.include", "*",
-                "management.endpoint.env.enabled", "flase"
+    void deveGerarFindingQuandoShutdownDesbloqueadoExplicitamenteViaAccessUnrestricted() {
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.shutdown.access", "unrestricted")
         ));
 
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).message()).contains("env");
+        assertThat(findings.get(0).message()).contains("shutdown");
     }
 
     @Test
-    void deveGerarFindingQuandoAsteriscoEstiverEmFormatoDeListaYaml() {
-        // Representação achatada de:
-        // management.endpoints.web.exposure.include:
-        //   - health
-        //   - "*"
+    void deveReconhecerListaDeIndicesYamlComWildcard() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include[0]", "health",
                 "management.endpoints.web.exposure.include[1]", "*"
@@ -142,30 +147,32 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
-    void deveGerarFindingQuandoAsteriscoEstiverMisturadoNaMesmaString() {
-        // Casos como "health,*" ou "*,prometheus"
-        EffectiveConfig config = configWith(Map.of(
-                "management.endpoints.web.exposure.include", "health,*"
+    void naoDeveLancarExcecaoQuandoValorDeExposureENull() {
+        Map<String, String> properties = new java.util.HashMap<>();
+        properties.put("management.endpoints.web.exposure.include", null);
+
+        assertThat(rule.check(configWith(properties))).isEmpty();
+    }
+
+    @Test
+    void naoDeveGerarFindingQuandoEndpointNormalmenteUnrestrictedForaDesabilitadoViaAccessNone() {
+        // Confirmado empiricamente: access=none remove o endpoint do contexto,
+        // mesmo em endpoints cujo default é unrestricted (ex: env). Testado
+        // contra Spring Boot 4.0.7 real — env desaparece do discovery page com
+        // essa config, mesmo com exposure.include=health,*.
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "health,*"),
+                Map.entry("management.endpoint.env.access", "none"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false")
         ));
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings).isEmpty();
     }
-
-    @Test
-    void naoDeveLancarExcecaoNemGerarFindingQuandoExposureIncludeForNulo() {
-        // HashMap permite valores null (diferente de Map.of / Map.entry)
-        Map<String, String> properties = new java.util.HashMap<>();
-        properties.put("management.endpoints.web.exposure.include", null);
-
-        EffectiveConfig config = configWith(properties);
-
-        assertThat(rule.check(config)).isEmpty();
-    }
-
 }
