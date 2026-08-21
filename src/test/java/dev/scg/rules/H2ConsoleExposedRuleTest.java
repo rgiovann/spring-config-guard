@@ -149,4 +149,59 @@ class H2ConsoleExposedRuleTest {
 
         assertDoesNotThrow(() -> assertTrue(rule.check(config).isEmpty()));
     }
+
+    @Test
+    @DisplayName("Deve escalar a mensagem quando web-allow-others estiver habilitado junto com o console")
+    void deveEscalarMensagemQuandoWebAllowOthersHabilitado() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "spring.h2.console.enabled", "true",
+                        "spring.h2.console.settings.web-allow-others", "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertEquals(1, findings.size());
+        Finding finding = findings.getFirst();
+        assertEquals(Severity.HIGH, finding.severity()); // severidade não muda, só a mensagem
+        assertTrue(finding.message().contains("AGRAVANTE"));
+        assertTrue(finding.message().contains("spring.h2.console.settings.web-allow-others=true"));
+    }
+
+    @Test
+    @DisplayName("NÃO deve escalar a mensagem quando web-allow-others estiver ausente")
+    void naoDeveEscalarMensagemQuandoWebAllowOthersAusente() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of("spring.h2.console.enabled", "true")
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertEquals(1, findings.size());
+        assertFalse(findings.getFirst().message().contains("AGRAVANTE"));
+    }
+
+    @Test
+    @DisplayName("NÃO deve escalar a mensagem quando web-allow-others estiver explicitamente false")
+    void naoDeveEscalarMensagemQuandoWebAllowOthersFalse() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "spring.h2.console.enabled", "true",
+                        "spring.h2.console.settings.web-allow-others", "false"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertEquals(1, findings.size());
+        assertFalse(findings.getFirst().message().contains("AGRAVANTE"));
+    }
+
 }
