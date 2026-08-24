@@ -1,6 +1,7 @@
 package dev.scg.core;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -13,7 +14,12 @@ import java.util.Optional;
  * EffectiveConfig (o resultado já mesclado, pronto pras regras).
  */
 public record ConfigDocument(
-        Optional<String> profile,   // vazio = documento base (sem on-profile)
+        Optional<String> profile,
         Map<String, String> properties
 ) {
+    public ConfigDocument {
+        Objects.requireNonNull(profile, "profile não pode ser null");
+        Objects.requireNonNull(profile, "profile não pode ser null (use Optional.empty())");
+        properties = Map.copyOf(properties);
+    }
 }

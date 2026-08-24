@@ -57,11 +57,23 @@ public final class Main {
 
     private static List<EffectiveConfig> loadEffectiveConfigs(Path directory) throws IOException {
         ConfigLoader loader = new ConfigLoader();
+        ConfigFileGrouper grouper = new ConfigFileGrouper();
         ProfileMerger merger = new ProfileMerger();
 
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(directory));
+
         List<EffectiveConfig> result = new ArrayList<>();
-        for (ConfigFile configFile : loader.loadDirectory(directory)) {
-            result.addAll(merger.merge(configFile));
+        for (GroupedConfigFile group : groups) {
+            for (EffectiveConfig effectiveConfig : merger.merge(group.mergedFile())) {
+                Path correctedSource = group.sourceByProfileLabel()
+                        .getOrDefault(effectiveConfig.profileLabel(), group.mergedFile().path());
+
+                result.add(new EffectiveConfig(
+                        correctedSource,
+                        effectiveConfig.profileLabel(),
+                        effectiveConfig.properties()
+                ));
+            }
         }
         return result;
     }
