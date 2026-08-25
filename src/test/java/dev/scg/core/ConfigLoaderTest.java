@@ -573,6 +573,51 @@ class ConfigLoaderTest {
         assertEquals("true", values.get("app.description.__null_scalar__"));
     }
 
+    @Test
+    @DisplayName("Deve reconhecer onProfile em camelCase como ativação de profile")
+    void deveReconhecerOnProfileEmCamelCaseComoAtivacaoDeProfile(@TempDir Path tempDir) throws IOException {
+        // Regressão: antes do fix, "onProfile" (camelCase) não era reconhecido
+        // como spring.config.activate.on-profile, e o documento virava base
+        // silenciosamente em vez de ser tratado como overlay de profile.
+        List<ConfigDocument> documents = parseYaml(tempDir, "camel-case-test", """
+            key: base-value
+            ---
+            spring:
+              config:
+                activate:
+                  onProfile: prod
+            key: prod-value
+            """);
+
+        ConfigDocument prodDocument = documents.stream()
+                .filter(doc -> doc.profile().equals(Optional.of("prod")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Documento com profile 'prod' não foi reconhecido"));
+
+        assertEquals("prod-value", prodDocument.properties().get("key"), "Deveria conter a chave 'key' com o valor 'prod-value'");
+    }
+
+    @Test
+    @DisplayName("Não deve vazar chave onProfile camelCase como propriedade de negócio")
+    void naoDeveVazarChaveOnProfileCamelCaseComoPropriedadeDeNegocio(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> documents = parseYaml(tempDir, "leak-test", """
+            spring:
+              config:
+                activate:
+                  onProfile: prod
+            key: value
+            """);
+
+        ConfigDocument document = documents.get(0);
+
+        boolean hasOnProfileKey = document.properties().keySet().stream()
+                .anyMatch(key -> RelaxedProperties.canonicalize(key)
+                        .equals(RelaxedProperties.canonicalize("spring.config.activate.on-profile")));
+
+        assertFalse(hasOnProfileKey, "A chave 'onProfile' não deveria estar presente no mapa de propriedades de negócio");
+    }
+
+
 
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);

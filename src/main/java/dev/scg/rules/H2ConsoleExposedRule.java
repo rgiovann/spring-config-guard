@@ -1,9 +1,6 @@
 package dev.scg.rules;
 
-import dev.scg.core.EffectiveConfig;
-import dev.scg.core.Finding;
-import dev.scg.core.Rule;
-import dev.scg.core.Severity;
+import dev.scg.core.*;
 
 import java.util.List;
 
@@ -41,12 +38,15 @@ public final class H2ConsoleExposedRule implements Rule {
             return List.of(); // Perfis locais/dev são isentos da checagem
         }
 
-        String enabledValue = config.properties().get(H2_ENABLED_KEY);
+        //String enabledValue = config.properties().get(H2_ENABLED_KEY);
+        String enabledValue = RelaxedProperties.get(config.properties(), H2_ENABLED_KEY);
+
         if (!RelaxedBoolean.isTruthy(enabledValue)) {
             return List.of();
         }
 
-        boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(config.properties().get(WEB_ALLOW_OTHERS_KEY));
+        //boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(config.properties().get(WEB_ALLOW_OTHERS_KEY));
+        boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(RelaxedProperties.get(config.properties(), WEB_ALLOW_OTHERS_KEY));
 
         return List.of(new Finding(
                 id(),

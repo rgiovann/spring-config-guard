@@ -141,14 +141,17 @@ public final class ConfigLoader {
             flatDocument.put(name, props.getProperty(name));
         }
 
-        // Extrai o profile usando a mesma chave constante ON_PROFILE_KEY
-        String profileValue = flatDocument.get(ON_PROFILE_KEY);
+         // Extrai o profile usando relaxed binding — spring.config.activate.on-profile,
+        // onProfile, ON_PROFILE etc. são a mesma chave para o Spring real.
+        Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
+        String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
         String label = (profileValue == null || profileValue.isBlank())
                 ? BASE_LABEL
                 : profileValue.strip();
 
-        // Remove a chave de infraestrutura para não poluir as regras de linting
-        flatDocument.remove(ON_PROFILE_KEY);
+        // Remove a chave de infraestrutura REAL (pode não ser o literal ON_PROFILE_KEY)
+        // para não poluir as regras de linting
+        onProfileActualKey.ifPresent(flatDocument::remove);
 
         groupedByLabel
                 .computeIfAbsent(label, key -> new ArrayList<>())
@@ -215,15 +218,19 @@ public final class ConfigLoader {
                 Map<String, String> flatDocument = new LinkedHashMap<>();
                 flatten(rawDocument, "", flatDocument);
 
-                String profileValue = flatDocument.get(ON_PROFILE_KEY);
+                Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
+                String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
                 String label = (profileValue == null || profileValue.isBlank())
                         ? BASE_LABEL
                         : profileValue.strip();
 
                 // Ponto de risco 4: remove o metadado do mapa de dados — quem consome
                 // o ConfigDocument não deveria enxergar essa chave como se fosse uma
-                // propriedade de negócio comum.
-                flatDocument.remove(ON_PROFILE_KEY);
+                // propriedade de negócio comum. Remove a chave REAL encontrada (pode ser
+                // on-profile, onProfile, ON_PROFILE etc.), não a constante literal —
+                // relaxed binding aplicado também na detecção do próprio metadado de
+                // ativação de profile.
+                onProfileActualKey.ifPresent(flatDocument::remove);
 
                 groupedByLabel
                         .computeIfAbsent(label, key -> new ArrayList<>())

@@ -1,9 +1,6 @@
 package dev.scg.rules;
 
-import dev.scg.core.EffectiveConfig;
-import dev.scg.core.Finding;
-import dev.scg.core.Rule;
-import dev.scg.core.Severity;
+import dev.scg.core.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +12,19 @@ import java.util.Set;
  *
  * Endpoints sensíveis segundo a doc do Spring Boot: env, heapdump, threaddump,
  * shutdown, configprops, beans.
+ *
+ * DECISÃO DELIBERADA (sessão de 21/08/2026): esta regra NÃO isenta profiles
+ * seguros (dev/test/local), diferente de H2ConsoleExposedRule. Não é uma
+ * lacuna a corrigir — foi avaliado e decidido explicitamente manter assim.
+ * Motivos: (1) natureza do vazamento é diferente — H2 console expõe uma
+ * ferramenta de acesso a um banco em memória, o Actuator (env, configprops,
+ * heapdump) expõe segredos reais em memória (tokens de API, senhas,
+ * variáveis de ambiente); (2) é comum ambientes dev/local compartilharem
+ * credenciais reais ou semi-reais de staging/serviços externos, então um
+ * /env exposto em dev conectado à rede corporativa já é vetor de ataque
+ * direto; (3) a prática correta do Spring Boot é o base declarar só
+ * endpoints seguros (health, info) — include=* no base já é anti-pattern,
+ * independente de profile.
  *
  * A partir do Spring Boot 3.4, o controle de acesso por endpoint migrou de
  * management.endpoint.<id>.enabled (booleano, deprecated) para
@@ -57,11 +67,14 @@ public final class ActuatorExposureRule implements Rule {
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
+        boolean hasWildcardExposure = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY)
+                .stream()
+                .anyMatch(value -> value != null && value.contains("*"));
 
-        boolean hasWildcardExposure = config.properties().entrySet().stream()
-                .filter(entry -> entry.getKey().equals(EXPOSURE_KEY)
-                        || entry.getKey().startsWith(EXPOSURE_KEY + "["))
-                .anyMatch(entry -> entry.getValue() != null && entry.getValue().contains("*"));
+//        boolean hasWildcardExposure = config.properties().entrySet().stream()
+//                .filter(entry -> entry.getKey().equals(EXPOSURE_KEY)
+//                        || entry.getKey().startsWith(EXPOSURE_KEY + "["))
+//                .anyMatch(entry -> entry.getValue() != null && entry.getValue().contains("*"));
 
         if (!hasWildcardExposure) {
             return findings;
@@ -104,12 +117,16 @@ public final class ActuatorExposureRule implements Rule {
      * isso importar na prática.
      */
     private boolean isRestricted(EffectiveConfig config, String endpoint) {
-        String accessValue = config.properties().get("management.endpoint." + endpoint + ".access");
+        //String accessValue = config.properties().get("management.endpoint." + endpoint + ".access");
+        String accessValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".access");
+
         if (accessValue != null) {
             return RESTRICTED_ACCESS_VALUE.equalsIgnoreCase(accessValue.trim());
         }
 
-        String enabledValue = config.properties().get("management.endpoint." + endpoint + ".enabled");
+        //String enabledValue = config.properties().get("management.endpoint." + endpoint + ".enabled");
+        String enabledValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".enabled");
+
         if (enabledValue != null) {
             return "false".equalsIgnoreCase(enabledValue.trim());
         }

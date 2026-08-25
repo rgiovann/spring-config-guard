@@ -18,8 +18,8 @@ public record ConfigDocument(
         Map<String, String> properties
 ) {
     public ConfigDocument {
-        Objects.requireNonNull(profile, "profile não pode ser null");
         Objects.requireNonNull(profile, "profile não pode ser null (use Optional.empty())");
+        Objects.requireNonNull(properties, "properties não pode ser null");
         properties = Map.copyOf(properties);
     }
 }
