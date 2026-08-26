@@ -19,9 +19,7 @@ public final class ConsoleReporter implements Reporter {
         }
 
         findings.stream()
-                .sorted(Comparator.comparing(Finding::severity)
-                        .thenComparing(Finding::sourceFile)
-                        .thenComparing(Finding::profileLabel))
+                .sorted(Finding.DEFAULT_ORDER)
                 .forEach(out::println);
 
         Map<Severity, Long> counts = findings.stream()

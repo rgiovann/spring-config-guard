@@ -46,7 +46,17 @@ public final class Main {
             return ExitCodeResolver.USAGE_ERROR;
         }
 
-        RuleEngine engine = new RuleEngine(defaultRules());
+        List<Rule> rules = RuleRegistry.discoverRules();
+        if (rules.isEmpty()) {
+            System.err.println(
+                    "Erro: nenhuma regra encontrada via ServiceLoader " +
+                            "(META-INF/services/dev.scg.core.Rule). Verifique se o arquivo " +
+                            "de serviço existe no classpath e lista implementações válidas."
+            );
+            return ExitCodeResolver.USAGE_ERROR;
+        }
+
+        RuleEngine engine = new RuleEngine(rules);
         List<Finding> findings = engine.run(effectiveConfigs);
 
         Reporter reporter = options.jsonOutput() ? new JsonReporter() : new ConsoleReporter();
@@ -78,10 +88,5 @@ public final class Main {
         return result;
     }
 
-    private static List<Rule> defaultRules() {
-        return List.of(
-                new ActuatorExposureRule(),
-                new H2ConsoleExposedRule()
-        );
-    }
+
 }

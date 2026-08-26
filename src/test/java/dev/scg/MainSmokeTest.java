@@ -11,8 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class MainSmokeTest {
 
@@ -110,12 +109,16 @@ class MainSmokeTest {
         // Actuator — as duas regras têm políticas de profile diferentes por design.
         boolean devHasH2Violation = output.lines()
                 .anyMatch(line -> line.contains("SCG002") && line.contains("[profile: dev]"));
-        assertEquals(false, devHasH2Violation, "O perfil dev deve continuar isento de H2 console (regra específica do H2), mas não de Actuator");
-
+        assertFalse(devHasH2Violation, "O perfil dev deve continuar isento de H2 console (regra específica do H2), mas não de Actuator");
         // Total de violações esperadas:
         // SCG001: base + qa + dev = 3
         // SCG002: prod (com agravante) + qa (sem agravante) = 2
         // Total = 5 violações HIGH
+
+        boolean prodHasActuatorViolation = output.lines()
+                .anyMatch(line -> line.contains("SCG001") && line.contains("[profile: prod]"));
+        assertFalse(prodHasActuatorViolation, "O perfil prod redefiniu a propriedade e NÃO deve ter violação de Actuator");
+
         assertTrue(output.contains("Resumo: 5 violação(ões) — HIGH: 5, MEDIUM: 0, LOW: 0"),
                 "O resumo deve contabilizar exatamente 5 violações HIGH");
     }

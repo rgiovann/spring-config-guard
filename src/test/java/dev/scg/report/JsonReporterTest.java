@@ -45,4 +45,19 @@ class JsonReporterTest {
 
         assertThat(deserialized).isEmpty();
     }
+
+    @Test
+    void deveSerializarSempreNaMesmaOrdemIndependenteDaOrdemDeEntrada() throws Exception {
+        Finding low = new Finding("SCG010", Severity.LOW, "msg", "b.yml", "dev");
+        Finding high = new Finding("SCG001", Severity.HIGH, "msg", "a.yml", "prod");
+        Finding medium = new Finding("SCG005", Severity.MEDIUM, "msg", "a.yml", "dev");
+
+        // Passados fora de ordem de propósito, igual já fazíamos no ConsoleReporterTest —
+        // regressão específica para a instabilidade de ordem entre execuções que
+        // ConfigFileGrouper/Files.walk podia introduzir no output JSON.
+        String json = captureReport(List.of(low, medium, high));
+        List<Finding> deserialized = mapper.readValue(json, new TypeReference<List<Finding>>() {});
+
+        assertThat(deserialized).containsExactly(high, medium, low);
+    }
 }

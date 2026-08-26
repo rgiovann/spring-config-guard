@@ -16,8 +16,9 @@ public final class JsonReporter implements Reporter {
 
     @Override
     public void report(List<Finding> findings, PrintStream out) {
+        List<Finding> sorted = findings.stream().sorted(Finding.DEFAULT_ORDER).toList();
         try {
-            out.println(mapper.writeValueAsString(findings));
+            out.println(mapper.writeValueAsString(sorted));
         } catch (IOException e) {
             throw new UncheckedIOException("Falha ao serializar findings para JSON", e);
         }

@@ -1,5 +1,7 @@
 package dev.scg.core;
 
+import java.util.Comparator;
+
 /**
  * Representa um problema encontrado por uma regra.
  *
@@ -15,7 +17,12 @@ public record Finding(
         String message,
         String sourceFile,
         String profileLabel
+
 ) {
+    public static final Comparator<Finding> DEFAULT_ORDER =
+            Comparator.comparing(Finding::severity)
+                    .thenComparing(Finding::sourceFile)
+                    .thenComparing(Finding::profileLabel);
     @Override
     public String toString() {
         return "[%s] %s (%s) [profile: %s] — %s".formatted(severity, ruleId, sourceFile, profileLabel, message);

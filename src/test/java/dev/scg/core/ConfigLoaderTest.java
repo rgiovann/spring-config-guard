@@ -14,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Testes do parser YAML manual em ConfigLoader.loadYaml.
- *
  * Cada teste isola um comportamento específico da lógica de indentação
  * (pilha), separação de comentários, ou tratamento de valores — para que,
  * se algum deles quebrar no futuro (ex: ao refatorar pra usar snakeyaml),
@@ -280,7 +279,7 @@ class ConfigLoaderTest {
         ConfigFile configFile = configFiles.getFirst();
         assertEquals(propertiesFile, configFile.path());
 
-        Map<String, String> properties = configFile.documents().get(0).properties();
+        Map<String, String> properties = configFile.documents().getFirst().properties();
 
         assertNotNull(properties);
         assertEquals("8080", properties.get("server.port"));
@@ -356,7 +355,7 @@ class ConfigLoaderTest {
         List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
 
         assertEquals(1, result.size());
-        Map<String, String> props = result.getFirst().documents().get(0).properties();
+        Map<String, String> props = result.getFirst().documents().getFirst().properties();
 
         assertEquals("8080", props.get("server.port"));
         assertEquals("Aplicação de Teste com Acentuação", props.get("app.description"));
@@ -404,8 +403,8 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docsA.size(), "o '---' final sozinho não deveria gerar documento fantasma");
-        assertTrue(docsA.get(0).profile().isEmpty());
-        assertEquals("8080", docsA.get(0).properties().get("server.port"));
+        assertTrue(docsA.getFirst().profile().isEmpty());
+        assertEquals("8080", docsA.getFirst().properties().get("server.port"));
 
         // Sub-caso B: dois "---" seguidos (documento vazio no meio do arquivo)
         List<ConfigDocument> docsB = parseYaml(tempDir, "caseB", """
@@ -491,9 +490,9 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertEquals(Optional.of("dev"), docs.get(0).profile());
-        assertEquals("9090", docs.get(0).properties().get("server.port"));
-        assertEquals("*", docs.get(0).properties().get("management.endpoints.web.exposure.include"));
+        assertEquals(Optional.of("dev"), docs.getFirst().profile());
+        assertEquals("9090", docs.getFirst().properties().get("server.port"));
+        assertEquals("*", docs.getFirst().properties().get("management.endpoints.web.exposure.include"));
     }
 
     @Test
@@ -505,8 +504,8 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(docs.get(0).profile().isEmpty());
-        assertTrue(docs.get(0).properties().isEmpty());
+        assertTrue(docs.getFirst().profile().isEmpty());
+        assertTrue(docs.getFirst().properties().isEmpty());
     }
 
     @Test
@@ -518,9 +517,9 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(docs.get(0).profile().isEmpty());
-        assertEquals("8080", docs.get(0).properties().get("server.port"));
-        assertEquals("MeuApp", docs.get(0).properties().get("app.name"));
+        assertTrue(docs.getFirst().profile().isEmpty());
+        assertEquals("8080", docs.getFirst().properties().get("server.port"));
+        assertEquals("MeuApp", docs.getFirst().properties().get("app.name"));
     }
 
     @Test
@@ -533,7 +532,7 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertFalse(docs.get(0).properties().containsKey("spring.config.activate.on-profile"),
+        assertFalse(docs.getFirst().properties().containsKey("spring.config.activate.on-profile"),
                 "a chave de metadado não deveria sobrar no mapa de propriedades de negócio");
     }
 
@@ -608,7 +607,7 @@ class ConfigLoaderTest {
             key: value
             """);
 
-        ConfigDocument document = documents.get(0);
+        ConfigDocument document = documents.getFirst();
 
         boolean hasOnProfileKey = document.properties().keySet().stream()
                 .anyMatch(key -> RelaxedProperties.canonicalize(key)
@@ -623,7 +622,7 @@ class ConfigLoaderTest {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
-        return configFiles.getFirst().documents().get(0).properties();
+        return configFiles.getFirst().documents().getFirst().properties();
     }
     /**
      * Análogo ao parse(), mas para .properties e devolvendo a List<ConfigDocument>
