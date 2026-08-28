@@ -3,6 +3,7 @@ package dev.scg.rules;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
 import dev.scg.core.Severity;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -10,10 +11,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ActuatorExposureRuleTest {
 
     private final ActuatorExposureRule rule = new ActuatorExposureRule();
+    private static final Path FAKE_PATH = Path.of("application.yml");
 
     private EffectiveConfig configWith(Map<String, String> properties) {
         return new EffectiveConfig(Path.of("application-prod.yml"), "prod", properties);
@@ -174,5 +177,17 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Deve disparar violação quando exposure.include usa placeholder com fallback '*'")
+    void deveDispararViolacaoQuandoActuatorExposureUsaPlaceholderComFallbackWildcard() {
+        Map<String, String> props = Map.of("management.endpoints.web.exposure.include", "${ACTUATOR_EXPOSURE:*}");
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", props);
+
+        List<Finding> findings = rule.check(config);
+
+        assertEquals(1, findings.size());
+        assertEquals("SCG001", findings.getFirst().ruleId());
     }
 }

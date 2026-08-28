@@ -70,38 +70,66 @@ public final class ProfileMerger {
      * do base misturado com índice novo do overlay.
      */
     private Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
-
         Map<String, String> merged = new LinkedHashMap<>(base);
-        Set<String> listRootsInOverlay = new LinkedHashSet<>();
+
+        Set<String> canonicalListRootsInOverlay = new LinkedHashSet<>();
+        Set<String> canonicalDotPrefixesInOverlay = new LinkedHashSet<>();
         Map<String, String> nullOverrides = new LinkedHashMap<>();
 
         for (String key : overlay.keySet()) {
             if (key.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX)) {
                 String targetKey = key.substring(0, key.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
                 nullOverrides.put(targetKey, null);
-                listRootsInOverlay.add(targetKey); // garante purga de eventuais filhos/índices se o base era lista/mapa
+
+                String canonicalTarget = RelaxedProperties.canonicalize(targetKey);
+                canonicalListRootsInOverlay.add(canonicalTarget);
+                canonicalDotPrefixesInOverlay.add(canonicalTarget + ".");
             } else {
                 int bracketIdx = key.indexOf('[');
                 if (bracketIdx >= 0) {
-                    listRootsInOverlay.add(key.substring(0, bracketIdx));
+                    String root = key.substring(0, bracketIdx);
+                    canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(root));
                 } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
-                    listRootsInOverlay.add(key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length()));
+                    String root = key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length());
+                    canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(root));
                 } else if (isScalarRedefiningListInBase(key, base)) {
-                    listRootsInOverlay.add(key);
+                    canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(key));
                 }
             }
         }
 
-        for (String root : listRootsInOverlay) {
-            String bracketPrefix = root + "[";
-            String dotPrefix = root + ".";
-            String sentinelKey = root + ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX;
-            merged.keySet().removeIf(k -> k.startsWith(bracketPrefix) || k.startsWith(dotPrefix) || k.equals(sentinelKey) || k.equals(root));
-        }
+        // Purga canônica: remove chaves indexadas de listas ou sub-propriedades (ponto)
+        // herdadas do base que foram redefinidas no overlay
+        merged.keySet().removeIf(baseKey -> {
+            String canonicalBaseKey = RelaxedProperties.canonicalize(baseKey);
+            String canonicalBaseRoot = extractCanonicalRoot(baseKey);
+
+            boolean isListMatch = canonicalListRootsInOverlay.contains(canonicalBaseRoot);
+            boolean isDotMatch = canonicalDotPrefixesInOverlay.stream().anyMatch(canonicalBaseKey::startsWith);
+
+            return isListMatch || isDotMatch;
+        });
 
         merged.putAll(overlay);
         merged.putAll(nullOverrides);
         return stripInternalSentinels(merged);
+    }
+    private String extractCanonicalRoot(String key) {
+        String cleanKey = key;
+        if (cleanKey.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
+            cleanKey = cleanKey.substring(0, cleanKey.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length());
+        } else if (cleanKey.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX)) {
+            cleanKey = cleanKey.substring(0, cleanKey.length() - ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX.length());
+        } else if (cleanKey.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX)) {
+            cleanKey = cleanKey.substring(0, cleanKey.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
+        }
+
+        int bracketIdx = cleanKey.indexOf('[');
+        if (bracketIdx >= 0) {
+            cleanKey = cleanKey.substring(0, bracketIdx);
+        }
+
+        return RelaxedProperties.canonicalize(cleanKey);
     }
 
     /**
@@ -112,8 +140,11 @@ public final class ProfileMerger {
      * a lista inteira via string única.
      */
     private boolean isScalarRedefiningListInBase(String overlayKey, Map<String, String> base) {
-        String prefix = overlayKey + "[";
-        return base.keySet().stream().anyMatch(k -> k.startsWith(prefix));
+        String canonicalOverlayKey = RelaxedProperties.canonicalize(overlayKey);
+        return base.keySet().stream().anyMatch(baseKey -> {
+            String canonicalBaseRoot = extractCanonicalRoot(baseKey);
+            return canonicalBaseRoot.equals(canonicalOverlayKey);
+        });
     }
 
     private static Map<String, String> stripInternalSentinels(Map<String, String> map) {

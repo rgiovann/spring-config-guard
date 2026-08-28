@@ -15,8 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Testes do ProfileMerger — a peça que funde o documento base (sem profile)
  * de um ConfigFile com cada documento de profile nomeado, produzindo a
  * List<EffectiveConfig> que o RuleEngine efetivamente avalia.
- *
- * Diferente de ConfigLoaderTest, aqui construímos ConfigFile/ConfigDocument
+  * Diferente de ConfigLoaderTest, aqui construímos ConfigFile/ConfigDocument
  * diretamente em memória (sem passar por parsing de YAML/properties), para
  * isolar e testar só a lógica de merge, não a leitura de arquivo.
  */
@@ -26,12 +25,7 @@ class ProfileMergerTest {
 
     private final ProfileMerger merger = new ProfileMerger();
 
-    private EffectiveConfig findByLabel(List<EffectiveConfig> configs, String label) {
-        return configs.stream()
-                .filter(e -> e.profileLabel().equals(label))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Nenhuma EffectiveConfig encontrada com label: " + label));
-    }
+
 
     @Test
     @DisplayName("Arquivo com apenas documento base (sem profile nomeado) deve gerar exatamente 1 EffectiveConfig")
@@ -43,8 +37,8 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
 
         assertEquals(1, result.size());
-        assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.get(0).profileLabel());
-        assertEquals("8080", result.get(0).properties().get("server.port"));
+        assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.getFirst().profileLabel());
+        assertEquals("8080", result.getFirst().properties().get("server.port"));
     }
 
     @Test
@@ -607,6 +601,60 @@ class ProfileMergerTest {
         assertFalse(dev.properties().containsKey("db.connection.host"));
         assertTrue(dev.properties().containsKey("db.connection"));
         assertNull(dev.properties().get("db.connection"));
+    }
+
+    @Test
+    @DisplayName("Purga de Lista: Profile com lista menor deve expurgar totalmente índices sobressalentes do base")
+    void profileComListaMenorDeveExpurgarIndicesSobressalentesDoBase() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("management.endpoints.web.exposure.include[0]", "health");
+        baseProps.put("management.endpoints.web.exposure.include[1]", "info");
+        baseProps.put("management.endpoints.web.exposure.include[2]", "env");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("management.endpoints.web.exposure.include[0]", "*");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("*", dev.properties().get("management.endpoints.web.exposure.include[0]"));
+        assertFalse(dev.properties().containsKey("management.endpoints.web.exposure.include[1]"));
+        assertFalse(dev.properties().containsKey("management.endpoints.web.exposure.include[2]"));
+    }
+
+    @Test
+    @DisplayName("Purga de Lista Canônica: Redefinição de lista em camelCase no dev deve purgar lista em kebab-case do base")
+    void redefinicaoDeListaEmCamelCaseDevePurgarKebabCaseDoBase() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("my-custom-list[0]", "item1");
+        baseProps.put("my-custom-list[1]", "item2");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("myCustomList[0]", "overrideItem");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig dev = findByLabel(result, "dev");
+
+        assertEquals("overrideItem", dev.properties().get("myCustomList[0]"));
+        assertFalse(dev.properties().containsKey("my-custom-list[0]"));
+        assertFalse(dev.properties().containsKey("my-custom-list[1]"));
+    }
+
+    private EffectiveConfig findByLabel(List<EffectiveConfig> configs, String label) {
+        return configs.stream()
+                .filter(e -> e.profileLabel().equals(label))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Nenhuma EffectiveConfig encontrada com label: " + label));
     }
 
 }
