@@ -68,12 +68,10 @@ public final class ActuatorExposureRule implements Rule {
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
-         // Resolve placeholders ao checar a chave de exposição
+
         boolean hasWildcardExposure = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY)
                 .stream()
-                .map(EnvironmentPlaceholder::resolve)
-                .flatMap(Optional::stream)
-                .anyMatch(value -> value.contains("*"));
+                .anyMatch(this::mayContainWildcard);
 
         if (!hasWildcardExposure) {
             return findings;
@@ -101,6 +99,21 @@ public final class ActuatorExposureRule implements Rule {
         return findings;
     }
 
+    private boolean mayContainWildcard(String value) {
+        if (value == null) {
+            return false; // null explícito (BL-09): redefinição intencional, não é risco
+        }
+
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
+        if (resolved.isEmpty()) {
+            // Placeholder dinâmico sem default: não sabemos o valor real,
+            // assumimos que PODE ser "*" — postura de segurança.
+            return true;
+        }
+
+        return resolved.get().contains("*");
+    }
+
     /**
      * Um endpoint é considerado restrito (não exposto na prática) quando:
      * 1. management.endpoint.<id>.access = "none" (mecanismo atual, 3.4+), OU
@@ -117,16 +130,21 @@ public final class ActuatorExposureRule implements Rule {
      */
     private boolean isRestricted(EffectiveConfig config, String endpoint) {
         String rawAccessValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".access");
-        Optional<String> accessValue = EnvironmentPlaceholder.resolve(rawAccessValue);
-
-        if (accessValue.isPresent()) {
-            return RESTRICTED_ACCESS_VALUE.equalsIgnoreCase(accessValue.get().trim());
+        if (rawAccessValue != null) {
+            Optional<String> accessValue = EnvironmentPlaceholder.resolve(rawAccessValue);
+            return accessValue.filter(s -> RESTRICTED_ACCESS_VALUE.equalsIgnoreCase(s.trim())).isPresent();
+            // access está presente mas é um placeholder dinâmico sem default:
+            // não continuamos a cadeia de fallback (que poderia mascarar o
+            // risco via RESTRICTED_BY_DEFAULT) — assumimos não-restrito.
         }
 
         String rawEnabledValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".enabled");
-        Optional<String> enabledValue = EnvironmentPlaceholder.resolve(rawEnabledValue);
+        if (rawEnabledValue != null) {
+            Optional<String> enabledValue = EnvironmentPlaceholder.resolve(rawEnabledValue);
+            // mesma postura: dinâmico sem default -> assume não-restrito
+            return enabledValue.filter(s -> "false".equalsIgnoreCase(s.trim())).isPresent();
+        }
 
-        return enabledValue.map(s -> "false".equalsIgnoreCase(s.trim())).orElseGet(() -> RESTRICTED_BY_DEFAULT.contains(endpoint));
-
+        return RESTRICTED_BY_DEFAULT.contains(endpoint);
     }
 }

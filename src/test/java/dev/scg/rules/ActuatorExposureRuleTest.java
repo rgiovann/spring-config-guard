@@ -190,4 +190,39 @@ class ActuatorExposureRuleTest {
         assertEquals(1, findings.size());
         assertEquals("SCG001", findings.getFirst().ruleId());
     }
+
+    @Test
+    void deveFlagarQuandoExposureIncludeForPlaceholderDinamicoSemDefault() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "${EXPOSURE_ENDPOINTS}"
+        ));
+
+        assertThat(rule.check(config)).hasSize(1);
+    }
+
+    @Test
+    void naoDeveFlagarQuandoExposureIncludeForPlaceholderComDefaultSeguro() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "${EXPOSURE_ENDPOINTS:health,info}"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    void deveTratarEndpointComoNaoRestritoQuandoAccessForPlaceholderDinamicoSemDefault() {
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.access", "${HEAPDUMP_ACCESS}")
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.get(0).message()).contains("heapdump");
+    }
 }

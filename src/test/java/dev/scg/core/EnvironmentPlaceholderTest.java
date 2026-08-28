@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EnvironmentPlaceholderTest {
 
@@ -59,6 +60,36 @@ class EnvironmentPlaceholderTest {
     void seUmPlaceholderNaoTiverDefaultDeveRetornarEmpty() {
         Optional<String> result = EnvironmentPlaceholder.resolve("host-${ENV:dev}-port-${PORT}");
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void deveResolverPlaceholderAninhadoUsandoODefaultMaisInterno() {
+        assertThat(EnvironmentPlaceholder.resolve("${OUTER:${INNER:default}}"))
+                .contains("default");
+    }
+
+    @Test
+    void deveRetornarVazioQuandoPlaceholderInternoNaoTemDefault() {
+        assertThat(EnvironmentPlaceholder.resolve("${OUTER:${INNER}}")).isEmpty();
+    }
+
+    @Test
+    void deveResolverPlaceholderAninhadoMisturadoComTextoLiteral() {
+        assertThat(EnvironmentPlaceholder.resolve("prefix-${OUTER:${INNER:mid}}-suffix"))
+                .contains("prefix-mid-suffix");
+    }
+
+    @Test
+    void deveContinuarResolvendoMultiplosPlaceholdersSimplesCorretamente() {
+        // Regressão: garante que a reescrita do parser não quebrou o caso
+        // multi-placeholder não aninhado que já funcionava antes.
+        assertThat(EnvironmentPlaceholder.resolve("${A:1}-${B:2}")).contains("1-2");
+    }
+
+    @Test
+    void deveTratarChaveNaoFechadaComoLiteral() {
+        assertThat(EnvironmentPlaceholder.resolve("tr${incompleto"))
+                .contains("tr${incompleto");
     }
 
 }

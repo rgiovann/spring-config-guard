@@ -54,4 +54,17 @@ class RelaxedBooleanTest {
         assertThat(RelaxedBoolean.isTruthy("")).isFalse();
         assertThat(RelaxedBoolean.isTruthy("   ")).isFalse();
     }
+
+    @Test
+    void deveRetornarTrueParaPlaceholderDinamicoSemDefault() {
+        // Postura de segurança: valor não determinável estaticamente é tratado
+        // como potencial risco, não como ausência de risco.
+        assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR}")).isTrue();
+    }
+
+    @Test
+    void deveResolverPlaceholderComDefaultNormalmente() {
+        assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR:true}")).isTrue();
+        assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR:false}")).isFalse();
+    }
 }

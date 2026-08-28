@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class H2ConsoleExposedRuleTest {
 
@@ -202,6 +203,35 @@ class H2ConsoleExposedRuleTest {
 
         assertEquals(1, findings.size());
         assertFalse(findings.getFirst().message().contains("AGRAVANTE"));
+    }
+
+    @Test
+    void deveGerarFindingQuandoEnabledForPlaceholderDinamicoSemDefault() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
+                Map.of("spring.h2.console.enabled", "${H2_ENABLED}"));
+
+        assertThat(rule.check(config)).hasSize(1);
+    }
+
+    @Test
+    void naoDeveGerarFindingQuandoEnabledForPlaceholderComDefaultFalse() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
+                Map.of("spring.h2.console.enabled", "${H2_ENABLED:false}"));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    void deveEscalarMensagemQuandoWebAllowOthersForPlaceholderDinamicoSemDefault() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.h2.console.enabled", "true",
+                "spring.h2.console.settings.web-allow-others", "${ALLOW_REMOTE}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains("AGRAVANTE");
     }
 
 }
