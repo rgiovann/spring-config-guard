@@ -6,16 +6,16 @@ import java.util.ArrayList;
 import java.util.Optional;
 
 /**
- * Compara e busca chaves de propriedade respeitando o relaxed binding do
- * Spring Boot: kebab-case, camelCase e snake_case dentro do mesmo segmento
- * (entre pontos) são a mesma propriedade. Confirmado na wiki oficial
- * (Relaxed Binding 2.0): a comparação real remove '-'/'_' e converte para
- * minúsculas — NÃO reconstrói kebab-case, evitando qualquer ambiguidade de
- * onde inserir hífen em acrônimos (ex: apiURL).
- *
- * Escopo deliberado: não trata a regra de env var (underscore vira ponto),
- * que é exclusiva de variáveis de ambiente do SO — ConfigLoader só lê
- * arquivos .properties/.yml, nunca env vars.
+ * Compares and searches for property keys while respecting Spring Boot's
+ * relaxed binding: kebab-case, camelCase, and snake_case within the same
+ * segment (between dots) are treated as the same property. Confirmed in the
+ * official wiki (Relaxed Binding 2.0): the actual comparison removes '-'/ '_'
+ * and converts to lowercase — it does NOT reconstruct kebab-case, avoiding any
+ * ambiguity about where to insert hyphens in acronyms (e.g., apiURL).
+ * <p>
+ * Deliberate scope: does not handle the env var rule (underscore becomes a dot),
+ * which is exclusive to OS environment variables — ConfigLoader only reads
+ * .properties/.yml files, never env vars.
  */
 public final class RelaxedProperties {
 

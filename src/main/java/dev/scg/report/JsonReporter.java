@@ -20,7 +20,7 @@ public final class JsonReporter implements Reporter {
         try {
             out.println(mapper.writeValueAsString(sorted));
         } catch (IOException e) {
-            throw new UncheckedIOException("Falha ao serializar findings para JSON", e);
+            throw new UncheckedIOException("Failed to serialize findings to JSON", e);
         }
     }
 }

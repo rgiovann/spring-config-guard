@@ -1,15 +1,18 @@
 package dev.scg.rules;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+
 class SafeProfileClassifierTest {
 
     @Test
-    void deveConsiderarSeguroQuandoProfileForToken() {
+    @DisplayName("Should consider safe when profile is a token")
+    void shouldConsiderSafeWhenProfileIsToken() {
         assertThat(SafeProfileClassifier.isSafeProfile("dev")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("test")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("local")).isTrue();
@@ -18,9 +21,10 @@ class SafeProfileClassifierTest {
     }
 
     @Test
-    void deveSerCaseInsensitive() {
-        // Regressão: bug real introduzido durante a extração da classe utilitária
-        // (o lowercase, antes feito pelo chamador, tinha desaparecido do pipeline).
+    @DisplayName("Should be case insensitive")
+    void shouldBeCaseInsensitive() {
+        // Regression: real bug introduced during the utility class extraction
+        // (the lowercase conversion, previously done by the caller, had disappeared from the pipeline).
         assertThat(SafeProfileClassifier.isSafeProfile("DEV")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("Dev")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("TEST")).isTrue();
@@ -28,7 +32,8 @@ class SafeProfileClassifierTest {
     }
 
     @Test
-    void deveConsiderarSeguroParaPerfisCompostosComToken() {
+    @DisplayName("Should consider safe for profiles composed with a token")
+    void shouldConsiderSafeForProfilesComposedWithToken() {
         assertThat(SafeProfileClassifier.isSafeProfile("dev-local")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("cloud-test")).isTrue();
         assertThat(SafeProfileClassifier.isSafeProfile("local_db")).isTrue();
@@ -36,28 +41,33 @@ class SafeProfileClassifierTest {
     }
 
     @Test
-    void naoDeveConsiderarSeguroParaSubstringSemSeparador() {
-        // "delivery" contém "dev" como substring, mas sem separador não é o
-        // mesmo que o token "dev" isolado — não deve disparar falso negativo.
+    @DisplayName("Should not consider safe for substring without separator")
+    void shouldNotConsiderSafeForSubstringWithoutSeparator() {
+        // "delivery" contains "dev" as a substring, but without a separator it is not the
+        // same as the isolated "dev" token — it should not trigger a false negative.
         assertThat(SafeProfileClassifier.isSafeProfile("delivery")).isFalse();
         assertThat(SafeProfileClassifier.isSafeProfile("devices")).isFalse();
         assertThat(SafeProfileClassifier.isSafeProfile("contest")).isFalse();
     }
 
     @Test
-    void naoDeveConsiderarSeguroParaProfileDeProducao() {
+    @DisplayName("Should not consider safe for production profile")
+    void shouldNotConsiderSafeForProductionProfile() {
         assertThat(SafeProfileClassifier.isSafeProfile("prod")).isFalse();
         assertThat(SafeProfileClassifier.isSafeProfile("production")).isFalse();
         assertThat(SafeProfileClassifier.isSafeProfile("staging")).isFalse();
     }
 
     @Test
-    void deveRetornarFalseQuandoProfileForNull() {
+    @DisplayName("Should return false when profile is null")
+    void shouldReturnFalseWhenProfileIsNull() {
         assertThat(SafeProfileClassifier.isSafeProfile(null)).isFalse();
     }
 
     @Test
-    void deveRetornarFalseQuandoProfileForVazio() {
+    @DisplayName("Should return false when profile is empty")
+    void shouldReturnFalseWhenProfileIsEmpty() {
         assertThat(SafeProfileClassifier.isSafeProfile("")).isFalse();
     }
 }
+

@@ -1,5 +1,6 @@
 package dev.scg.core;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,13 +11,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+
 class ConfigFileGrouperTest {
 
     private final ConfigLoader loader = new ConfigLoader();
     private final ConfigFileGrouper grouper = new ConfigFileGrouper();
 
     @Test
-    void deveAgruparApplicationYmlEApplicationProdYmlNoMesmoGrupo(@TempDir Path dir) throws IOException {
+    @DisplayName("Should group application.yml and application-prod.yml in the same group")
+    void shouldGroupApplicationYmlAndApplicationProdYmlInSameGroup(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("application.yml"), """
                 management:
                   endpoints:
@@ -38,17 +41,18 @@ class ConfigFileGrouperTest {
     }
 
     @Test
-    void deveDerivarProfileDoNomeDoArquivoIgnorandoOnProfileInterno(@TempDir Path dir) throws IOException {
-        // Simula o cenário confirmado: on-profile dentro de um arquivo específico
-        // é inválido no Spring real, mas nosso parser ainda consegue ler o YAML.
-        // O nome do arquivo deve vencer, não o conteúdo.
+    @DisplayName("Should derive the profile from the file name, ignoring the internal on-profile")
+    void shouldDeriveProfileFromFileNameIgnoringInternalOnProfile(@TempDir Path dir) throws IOException {
+        // Simulates the confirmed scenario: on-profile inside a specific file
+        // is invalid in real Spring, but our parser can still read the YAML.
+        // The file name should take precedence, not the content.
         Files.writeString(dir.resolve("application.yml"), "server.port: 8080");
         Files.writeString(dir.resolve("application-staging.yml"), """
                 spring:
                   config:
                     activate:
-                      on-profile: outro-nome-qualquer
-                custom.key: valor
+                      on-profile: another-name
+                custom.key: value
                 """);
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
@@ -64,7 +68,8 @@ class ConfigFileGrouperTest {
     }
 
     @Test
-    void naoDeveAgruparArquivosDeDiretoriosDiferentes(@TempDir Path dir) throws IOException {
+    @DisplayName("Should not group files from different directories")
+    void shouldNotGroupFilesFromDifferentDirectories(@TempDir Path dir) throws IOException {
         Path moduleA = Files.createDirectories(dir.resolve("module-a"));
         Path moduleB = Files.createDirectories(dir.resolve("module-b"));
 
@@ -73,11 +78,12 @@ class ConfigFileGrouperTest {
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
-        assertThat(groups).hasSize(2); // um grupo por diretório, nunca misturados
+        assertThat(groups).hasSize(2); // one group per directory, never mixed
     }
 
     @Test
-    void deveRastrearArquivoFisicoCorretoParaCadaProfileLabel(@TempDir Path dir) throws IOException {
+    @DisplayName("Should track the correct physical file for each profile label")
+    void shouldTrackCorrectPhysicalFileForEachProfileLabel(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("application.yml"), "base.key: valor");
         Files.writeString(dir.resolve("application-dev.yml"), "dev.key: valor");
 
@@ -90,14 +96,16 @@ class ConfigFileGrouperTest {
     }
 
     @Test
-    void deveTratarApplicationComTracoSemSufixoComoBaseNaoComoProfileVazio(@TempDir Path dir) throws IOException {
-        // Edge case defensivo, não confirmado contra Spring real: "application-.yml"
-        // (traço sem nada depois) cai no branch de profile "malformado" —
-        // tratado como base, não deve lançar exceção.
+    @DisplayName("Should treat application with a trailing hyphen and no suffix as base, not as an empty profile")
+    void shouldTreatApplicationWithHyphenWithoutSuffixAsBaseNotEmptyProfile(@TempDir Path dir) throws IOException {
+        // Defensive edge case, not confirmed against real Spring: "application-.yml"
+        // falls into the "malformed" profile branch —
+        // treated as base and should not throw an exception.
         Files.writeString(dir.resolve("application-.yml"), "key: valor");
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
-        assertThat(groups).hasSize(1); // não deve lançar exceção
+        assertThat(groups).hasSize(1); // should not throw an exception
     }
 }
+

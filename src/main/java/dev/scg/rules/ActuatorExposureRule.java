@@ -8,35 +8,27 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * SCG001 — detecta management.endpoints.web.exposure.include=* sem que os
- * endpoints sensíveis estejam explicitamente restritos.
- *
- * Endpoints sensíveis segundo a doc do Spring Boot: env, heapdump, threaddump,
- * shutdown, configprops, beans.
- *
- * DECISÃO DELIBERADA (sessão de 21/08/2026): esta regra NÃO isenta profiles
- * seguros (dev/test/local), diferente de H2ConsoleExposedRule. Não é uma
- * lacuna a corrigir — foi avaliado e decidido explicitamente manter assim.
- * Motivos: (1) natureza do vazamento é diferente — H2 console expõe uma
- * ferramenta de acesso a um banco em memória, o Actuator (env, configprops,
- * heapdump) expõe segredos reais em memória (tokens de API, senhas,
- * variáveis de ambiente); (2) é comum ambientes dev/local compartilharem
- * credenciais reais ou semi-reais de staging/serviços externos, então um
- * /env exposto em dev conectado à rede corporativa já é vetor de ataque
- * direto; (3) a prática correta do Spring Boot é o base declarar só
- * endpoints seguros (health, info) — include=* no base já é anti-pattern,
- * independente de profile.
- *
- * A partir do Spring Boot 3.4, o controle de acesso por endpoint migrou de
- * management.endpoint.<id>.enabled (booleano, deprecated) para
- * management.endpoint.<id>.access (none | read-only | unrestricted).
- * Confirmado no Spring Boot 3.4 Configuration Changelog (wiki oficial do
- * repositório spring-projects/spring-boot) que a maioria dos endpoints tem
- * access=unrestricted por padrão — MAS shutdown (default=none desde a 3.4) e
- * heapdump (default=none desde a 3.5) são exceção. Confirmado também
- * empiricamente contra uma aplicação Spring Boot 4.1 real: heapdump só
- * aparece no discovery page depois de access=unrestricted explícito, mesmo
- * com exposure.include=*.
+ * SCG001 — detects management.endpoints.web.exposure.include=* when sensitive endpoints
+ * are not explicitly restricted.
+ * Sensitive endpoints according to the Spring Boot documentation: env, heapdump, threaddump, shutdown,
+ * configprops, beans.
+*  DELIBERATE DECISION (session on 2026-08-21): this rule does NOT exempt safe profiles (dev/test/local),
+ *  unlike H2ConsoleExposedRule. This is not a gap to be fixed — it was explicitly evaluated and the
+ *  decision was made to keep it this way. Reasons: (1) the nature of the exposure is different —
+ *  the H2 console exposes a database access tool, while Actuator (env, configprops, heapdump)
+ *  exposes actual secrets in memory (API tokens, passwords, environment variables);
+ *  (2) dev/local environments commonly share real or semi-real credentials from staging/external services,
+ *  so an exposed /env endpoint in a dev environment connected to the corporate network is already a direct
+ *  attack vector; (3) the correct Spring Boot practice is for the base configuration to declare only safe
+ *  endpoints (health, info) — include=* in the base configuration is already an anti-pattern, regardless
+ *  of the profile.
+ * Starting with Spring Boot 3.4, endpoint access control migrated from management.endpoint.<id>.enabled
+ * (boolean, deprecated) to management.endpoint.<id>.access (none | read-only | unrestricted).
+ * Confirmed in the Spring Boot 3.4 Configuration Changelog (official wiki of the
+ * spring-projects/spring-boot repository) that most endpoints have access=unrestricted by default —
+ * BUT shutdown (default=none since 3.4) and heapdump (default=none since 3.5) are exceptions.
+ * Also empirically confirmed against a real Spring Boot 4.1 application: heapdump only appears on
+ * the discovery page after explicitly setting access=unrestricted, even with exposure.include=*.
  */
 public final class ActuatorExposureRule implements Rule {
 
@@ -46,11 +38,11 @@ public final class ActuatorExposureRule implements Rule {
             "env", "heapdump", "threaddump", "shutdown", "configprops", "beans"
     );
 
-    // Confirmado: management.endpoint.shutdown.access e
-    // management.endpoint.heapdump.access têm default "none" (restrito),
-    // diferente dos outros endpoints sensíveis (default "unrestricted").
-    // Sem essa distinção a regra gera falso positivo pra esses dois quando
-    // nenhuma config explícita existe (BL-11).
+    //Confirmed: management.endpoint.shutdown.access and management.endpoint.heapdump.access
+    // have a default value of "none" (restricted), unlike the other sensitive endpoints
+    // (default "unrestricted").
+    //Without this distinction, the rule generates false positives for these two endpoints when
+    // no explicit configuration exists (BL-11).
     private static final Set<String> RESTRICTED_BY_DEFAULT = Set.of("shutdown", "heapdump");
 
     private static final String RESTRICTED_ACCESS_VALUE = "none";
@@ -62,7 +54,7 @@ public final class ActuatorExposureRule implements Rule {
 
     @Override
     public String description() {
-        return "Actuator exposto via exposure.include=* sem restringir endpoints sensíveis";
+        return "Actuator exposed via exposure.include=* without restricting sensitive endpoints";
     }
 
     @Override
@@ -88,9 +80,9 @@ public final class ActuatorExposureRule implements Rule {
             findings.add(new Finding(
                     id(),
                     Severity.HIGH,
-                    "%s contém * e expõe todos os endpoints via HTTP, e estes seguem sem restrição de acesso: %s. "
+                    "%s contains * and exposes all endpoints via HTTP, and the following remain unrestricted: %s. "
                             .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
-                            + "Considere management.endpoint.<nome>.access=none para cada um, ou trocar '*' por uma lista explícita.",
+                            + "Consider setting management.endpoint.<name>.access=none for each one, or replacing '*' with an explicit list.",
                     config.sourceFile().toString(),
                     config.profileLabel()
             ));
@@ -101,47 +93,43 @@ public final class ActuatorExposureRule implements Rule {
 
     private boolean mayContainWildcard(String value) {
         if (value == null) {
-            return false; // null explícito (BL-09): redefinição intencional, não é risco
+            return false; // Explicit null (BL-09): intentional override, not a risk
         }
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
-        if (resolved.isEmpty()) {
-            // Placeholder dinâmico sem default: não sabemos o valor real,
-            // assumimos que PODE ser "*" — postura de segurança.
-            return true;
-        }
+        // Dynamic placeholder without a default: we do not know the actual value,
+        // so we assume it MAY be "*" — security-oriented approach.
+        return resolved.map(s -> s.contains("*")).orElse(true);
 
-        return resolved.get().contains("*");
     }
 
     /**
-     * Um endpoint é considerado restrito (não exposto na prática) quando:
-     * 1. management.endpoint.<id>.access = "none" (mecanismo atual, 3.4+), OU
-     * 2. management.endpoint.<id>.enabled = "false" (mecanismo legado), OU
-     * 3. nenhuma das duas chaves está definida, e o endpoint é um dos que o
-     *    próprio Spring Boot restringe por padrão (shutdown, heapdump).
-     *
-     * access tem precedência sobre enabled quando ambos estão presentes — é
-     * o mecanismo mais novo dos dois. Essa ordem de precedência específica
-     * (o que acontece se as duas chaves coexistirem com valores conflitantes)
-     * não foi confirmada contra um cenário real; é a leitura mais razoável
-     * da migração documentada, não um fato testado — registrar se algum dia
-     * isso importar na prática.
+     * An endpoint is considered restricted (not exposed in practice) when:
+     * (1) management.endpoint.<id>.access = "none" (current mechanism, 3.4+), OR
+     * (2) management.endpoint.<id>.enabled = "false" (legacy mechanism), OR
+     * (3) neither key is defined, and the endpoint is one of those that
+     * Spring Boot itself restricts by default (shutdown, heapdump).
+     * access takes precedence over enabled when both are present — it is
+     * the newer mechanism of the two. This specific precedence order
+     * (what happens if both keys coexist with conflicting values) has not
+     * been confirmed against a real-world scenario; it is the most reasonable
+     * interpretation of the documented migration, not a tested fact — document
+     * it if this ever becomes relevant in practice.
      */
     private boolean isRestricted(EffectiveConfig config, String endpoint) {
         String rawAccessValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".access");
         if (rawAccessValue != null) {
             Optional<String> accessValue = EnvironmentPlaceholder.resolve(rawAccessValue);
             return accessValue.filter(s -> RESTRICTED_ACCESS_VALUE.equalsIgnoreCase(s.trim())).isPresent();
-            // access está presente mas é um placeholder dinâmico sem default:
-            // não continuamos a cadeia de fallback (que poderia mascarar o
-            // risco via RESTRICTED_BY_DEFAULT) — assumimos não-restrito.
+            // access is present but is a dynamic placeholder without a default:
+            // we do not continue the fallback chain (which could mask the
+            // risk via RESTRICTED_BY_DEFAULT) — we assume unrestricted.
         }
 
         String rawEnabledValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".enabled");
         if (rawEnabledValue != null) {
             Optional<String> enabledValue = EnvironmentPlaceholder.resolve(rawEnabledValue);
-            // mesma postura: dinâmico sem default -> assume não-restrito
+            // same approach: dynamic placeholder without a default -> assume unrestricted
             return enabledValue.filter(s -> "false".equalsIgnoreCase(s.trim())).isPresent();
         }
 

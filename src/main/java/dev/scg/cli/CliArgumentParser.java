@@ -15,7 +15,7 @@ public final class CliArgumentParser {
     public CliOptions parse(String[] args) {
         if (args.length == 0) {
             throw new CliUsageException(
-                    "Uso: spring-config-guard <diretorio> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE]"
+                    "Usage: spring-config-guard <directory> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE]"
             );
         }
 
@@ -30,7 +30,7 @@ public final class CliArgumentParser {
             } else if (arg.startsWith(FAIL_ON_PREFIX)) {
                 failOnSeverity = parseFailOn(arg.substring(FAIL_ON_PREFIX.length()));
             } else {
-                throw new CliUsageException("Argumento desconhecido: " + arg);
+                throw new CliUsageException("Unknown argument: " + arg);
             }
         }
 
@@ -46,7 +46,7 @@ public final class CliArgumentParser {
             return Optional.of(Severity.valueOf(value));
         } catch (IllegalArgumentException e) {
             throw new CliUsageException(
-                    "Valor inválido para --fail-on: '%s' (esperado HIGH, MEDIUM, LOW ou NONE)".formatted(rawValue)
+                    "Invalid value for --fail-on: '%s' (expected HIGH, MEDIUM, LOW, or NONE)".formatted(rawValue)
             );
         }
     }

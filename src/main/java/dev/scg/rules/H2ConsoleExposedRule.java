@@ -5,17 +5,16 @@ import dev.scg.core.*;
 import java.util.List;
 
 /**
- * SCG002 — Detecta spring.h2.console.enabled=true fora de perfis de dev/test/local.
- *
- * O H2 Console é uma interface web que permite execução de SQL arbitrário na aplicação.
- * É extremamente útil para desenvolvimento local, mas um vetor crítico de RCE
- * (Remote Code Execution) e vazamento de dados se exposto em ambientes produtivos.
- *
- * spring.h2.console.settings.web-allow-others (default false) controla se o console
- * aceita conexões remotas, não só localhost. Quando true, o risco escala de "quem tem
- * acesso à rede interna" para "qualquer host que alcance a aplicação pela rede" — a
- * regra mantém HIGH nos dois casos (decisão deliberada: sem novo nível de severidade),
- * mas diferencia a mensagem do finding pra deixar claro o agravante.
+ * SCG002 — Detects spring.h2.console.enabled=true outside dev/test/local profiles.
+
+ * The H2 Console is a web interface that allows arbitrary SQL execution in the application.
+ * It is extremely useful for local development, but a critical vector for RCE (Remote Code Execution)
+ * and data leakage if exposed in production environments.
+ * spring.h2.console.settings.web-allow-others (default false) controls whether the console accepts
+ * remote connections, not just localhost. When true, the risk escalates from "anyone with access to
+ * the internal network" to "any host that can reach the application over the network" — the rule keeps
+ * HIGH in both cases (deliberate decision: no new severity level), but differentiates the finding message
+ * to make the aggravating factor clear.
  */
 public final class H2ConsoleExposedRule implements Rule {
 
@@ -29,24 +28,22 @@ public final class H2ConsoleExposedRule implements Rule {
 
     @Override
     public String description() {
-        return "H2 console habilitado fora de perfil de dev/test/local";
+        return "H2 console enabled outside dev/test/local profiles";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         if (SafeProfileClassifier.isSafeProfile(config.profileLabel())) {
-            return List.of(); // Perfis locais/dev são isentos da checagem
+            return List.of(); // Local/dev profiles are exempt from the check
         }
 
-        //String enabledValue = config.properties().get(H2_ENABLED_KEY);
-        String enabledValue = RelaxedProperties.get(config.properties(), H2_ENABLED_KEY);
+         String enabledValue = RelaxedProperties.get(config.properties(), H2_ENABLED_KEY);
 
         if (!RelaxedBoolean.isTruthy(enabledValue)) {
             return List.of();
         }
 
-        //boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(config.properties().get(WEB_ALLOW_OTHERS_KEY));
-        boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(RelaxedProperties.get(config.properties(), WEB_ALLOW_OTHERS_KEY));
+         boolean allowsRemoteAccess = RelaxedBoolean.isTruthy(RelaxedProperties.get(config.properties(), WEB_ALLOW_OTHERS_KEY));
 
         return List.of(new Finding(
                 id(),
@@ -59,18 +56,18 @@ public final class H2ConsoleExposedRule implements Rule {
 
     private String buildMessage(String enabledValue, EffectiveConfig config, boolean allowsRemoteAccess) {
         StringBuilder message = new StringBuilder(
-                "H2 console habilitado (%s=%s) no perfil '%s'. "
+                "H2 console enabled (%s=%s) in profile '%s'. "
                         .formatted(H2_ENABLED_KEY, enabledValue, config.profileLabel())
         );
 
         if (allowsRemoteAccess) {
-            message.append("AGRAVANTE: %s=true — o console aceita conexões remotas, não só localhost. "
+            message.append("AGGRAVATING FACTOR: %s=true — the console accepts remote connections, not just localhost. "
                             .formatted(WEB_ALLOW_OTHERS_KEY))
-                    .append("Risco crítico de execução remota de código (RCE) por qualquer host que alcance a aplicação pela rede. ")
-                    .append("Desabilite as duas propriedades fora de ambientes locais.");
+                    .append("Critical risk of remote code execution (RCE) from any host that can reach the application over the network. ")
+                    .append("Disable both properties outside local environments.");
         } else {
-            message.append("Risco elevado de execução remota de código (RCE) e exposição de dados. ")
-                    .append("Desabilite via 'spring.h2.console.enabled=false' fora de ambientes locais.");
+            message.append("High risk of remote code execution (RCE) and data exposure. ")
+                    .append("Disable it via 'spring.h2.console.enabled=false' outside local environments.");
         }
 
         return message.toString();

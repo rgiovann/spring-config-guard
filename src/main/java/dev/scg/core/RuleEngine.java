@@ -4,12 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Roda um conjunto de regras contra uma lista de arquivos de config e agrega
- * os achados. Não sabe nada sobre YAML, CLI ou Maven — só orquestra.
- *
- * Essa separação (engine burro + regras específicas) é o que vai permitir,
- * mais pra frente, reaproveitar o mesmo engine tanto no CLI quanto num plugin
- * Maven/Gradle: a lógica de "rodar regras" não muda, só muda quem chama.
+ * Runs a set of rules against a list of config files and aggregates
+ * the findings. It knows nothing about YAML, CLI, or Maven — it only orchestrates.
+ * This separation (dumb engine + specific rules) is what will allow,
+ * later on, the same engine to be reused both in the CLI and in a
+ * Maven/Gradle plugin: the logic for "running rules" does not change;
+ * only the caller changes.
  */
 public final class RuleEngine {
 

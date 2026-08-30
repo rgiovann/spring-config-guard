@@ -21,8 +21,8 @@ class H2ConsoleExposedRuleTest {
     private static final Path FAKE_PATH = Path.of("application.yml");
 
     @Test
-    @DisplayName("Deve gerar Finding de HIGH quando H2 console estiver habilitado no perfil base")
-    void deveGerarFindingQuandoH2HabilitadoNoBase() {
+    @DisplayName("Should generate a HIGH Finding when the H2 console is enabled in the base profile")
+    void shouldGenerateFindingWhenH2IsEnabledInBase() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 ProfileMerger.BASE_PROFILE_LABEL,
@@ -39,8 +39,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    @DisplayName("Deve gerar Finding quando H2 console estiver habilitado em perfil de producao")
-    void deveGerarFindingQuandoH2HabilitadoEmProd() {
+    @DisplayName("Should generate a finding when the H2 console is enabled in a production profile")
+    void shouldGenerateFindingWhenH2IsEnabledInProd() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -53,8 +53,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    @DisplayName("Deve gerar Finding para variantes truthy do Spring Boot (yes, on, 1)")
-    void deveGerarFindingParaVariantesTruthy() {
+    @DisplayName("Should generate a finding for Spring Boot truthy variants (yes, on, 1)")
+    void shouldGenerateFindingForTruthyVariants() {
         List<String> truthyValues = List.of("yes", "YES", "on", "1");
 
         for (String value : truthyValues) {
@@ -65,13 +65,13 @@ class H2ConsoleExposedRuleTest {
             );
 
             List<Finding> findings = rule.check(config);
-            assertEquals(1, findings.size(), "Deveria ter gerado Finding para o valor truthy: " + value);
+            assertEquals(1, findings.size(), "Should have generated a Finding for the truthy value: " + value);
         }
     }
 
     @Test
-    @DisplayName("NÃO deve gerar Finding quando H2 console estiver habilitado em perfil seguro (dev/test/local)")
-    void naoDeveGerarFindingEmPerfilDevOuTest() {
+    @DisplayName("Should NOT generate a Finding when the H2 console is enabled in a safe profile (dev/test/local)")
+    void shouldNotGenerateFindingInSafeProfile() {
         EffectiveConfig devConfig = new EffectiveConfig(
                 FAKE_PATH,
                 "dev",
@@ -89,8 +89,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    @DisplayName("NÃO deve gerar Finding para perfis compostos seguros (dev-local, cloud-test, local_db)")
-    void naoDeveGerarFindingParaPerfisCompostosSeguros() {
+    @DisplayName("Should NOT generate a Finding for safe composite profiles (dev-local, cloud-test, local_db)")
+    void shouldNotGenerateFindingForSafeCompositeProfiles() {
         List<String> safeCompositeProfiles = List.of("dev-local", "cloud-test", "local_db", "test.ci");
 
         for (String profile : safeCompositeProfiles) {
@@ -100,13 +100,13 @@ class H2ConsoleExposedRuleTest {
                     Map.of("spring.h2.console.enabled", "true")
             );
 
-            assertTrue(rule.check(config).isEmpty(), "Deveria ser ignorado por ser um perfil composto seguro: " + profile);
+            assertTrue(rule.check(config).isEmpty(), "Should be ignored because it is a safe composite profile: " + profile);
         }
     }
 
     @Test
-    @DisplayName("Deve gerar Finding para nomes de perfis que contêm palavras-chave como substring (delivery, devices)")
-    void deveGerarFindingParaPerfisNaoSegurosComSubstringsSemelhantes() {
+    @DisplayName("Should generate a finding for profile names containing keywords as substrings (delivery, devices)")
+    void shouldGenerateFindingForProfilesWithSafeKeywordsAsSubstrings() {
         List<String> unsafeProfiles = List.of("delivery", "devices", "contest");
 
         for (String profile : unsafeProfiles) {
@@ -117,13 +117,13 @@ class H2ConsoleExposedRuleTest {
             );
 
             List<Finding> findings = rule.check(config);
-            assertEquals(1, findings.size(), "Deveria ter gerado Finding para o perfil: " + profile);
+            assertEquals(1, findings.size(), "Should have generated a Finding for the profile: " + profile);
         }
     }
 
     @Test
-    @DisplayName("NÃO deve gerar Finding quando H2 console estiver desabilitado ou ausente")
-    void naoDeveGerarFindingQuandoDesabilitadoOuAusente() {
+    @DisplayName("Should NOT generate a Finding when the H2 console is disabled or absent")
+    void shouldNotGenerateFindingWhenDisabledOrAbsent() {
         EffectiveConfig disabledConfig = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -141,8 +141,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    @DisplayName("NÃO deve lançar exceção nem gerar Finding quando valor da propriedade for nulo")
-    void naoDeveLancarExcecaoQuandoPropriedadeForNula() {
+    @DisplayName("Should NOT throw an exception or generate a Finding when the property value is null")
+    void shouldNotThrowExceptionWhenPropertyIsNull() {
         Map<String, String> properties = new HashMap<>();
         properties.put("spring.h2.console.enabled", null);
 
@@ -152,8 +152,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    @DisplayName("Deve escalar a mensagem quando web-allow-others estiver habilitado junto com o console")
-    void deveEscalarMensagemQuandoWebAllowOthersHabilitado() {
+    @DisplayName("Should escalate the message when web-allow-others is enabled along with the console")
+    void shouldEscalateMessageWhenWebAllowOthersIsEnabled() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -167,14 +167,14 @@ class H2ConsoleExposedRuleTest {
 
         assertEquals(1, findings.size());
         Finding finding = findings.getFirst();
-        assertEquals(Severity.HIGH, finding.severity()); // severidade não muda, só a mensagem
-        assertTrue(finding.message().contains("AGRAVANTE"));
+        assertEquals(Severity.HIGH, finding.severity());
+        assertTrue(finding.message().contains("AGGRAVATING FACTOR"));
         assertTrue(finding.message().contains("spring.h2.console.settings.web-allow-others=true"));
     }
 
     @Test
-    @DisplayName("NÃO deve escalar a mensagem quando web-allow-others estiver ausente")
-    void naoDeveEscalarMensagemQuandoWebAllowOthersAusente() {
+    @DisplayName("Should NOT escalate the message when web-allow-others is absent")
+    void shouldNotEscalateMessageWhenWebAllowOthersIsAbsent() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -184,12 +184,12 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertEquals(1, findings.size());
-        assertFalse(findings.getFirst().message().contains("AGRAVANTE"));
+        assertFalse(findings.getFirst().message().contains("AGGRAVATING FACTOR"));
     }
 
     @Test
-    @DisplayName("NÃO deve escalar a mensagem quando web-allow-others estiver explicitamente false")
-    void naoDeveEscalarMensagemQuandoWebAllowOthersFalse() {
+    @DisplayName("Should NOT escalate the message when web-allow-others is explicitly false")
+    void shouldNotEscalateMessageWhenWebAllowOthersIsFalse() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -202,11 +202,12 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertEquals(1, findings.size());
-        assertFalse(findings.getFirst().message().contains("AGRAVANTE"));
+        assertFalse(findings.getFirst().message().contains("AGGRAVATING FACTOR"));
     }
 
     @Test
-    void deveGerarFindingQuandoEnabledForPlaceholderDinamicoSemDefault() {
+    @DisplayName("Should generate a finding when enabled is a dynamic placeholder without a default")
+    void shouldGenerateFindingWhenEnabledIsDynamicPlaceholderWithoutDefault() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
                 Map.of("spring.h2.console.enabled", "${H2_ENABLED}"));
 
@@ -214,7 +215,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    void naoDeveGerarFindingQuandoEnabledForPlaceholderComDefaultFalse() {
+    @DisplayName("Should NOT generate a Finding when enabled is a placeholder with a false default")
+    void shouldNotGenerateFindingWhenEnabledIsPlaceholderWithFalseDefault() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
                 Map.of("spring.h2.console.enabled", "${H2_ENABLED:false}"));
 
@@ -222,7 +224,8 @@ class H2ConsoleExposedRuleTest {
     }
 
     @Test
-    void deveEscalarMensagemQuandoWebAllowOthersForPlaceholderDinamicoSemDefault() {
+    @DisplayName("Should escalate the message when web-allow-others is a dynamic placeholder without a default")
+    void shouldEscalateMessageWhenWebAllowOthersIsDynamicPlaceholderWithoutDefault() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 "spring.h2.console.enabled", "true",
                 "spring.h2.console.settings.web-allow-others", "${ALLOW_REMOTE}"
@@ -231,7 +234,7 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("AGRAVANTE");
+        assertThat(findings.getFirst().message()).contains("AGGRAVATING FACTOR");
     }
 
 }

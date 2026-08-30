@@ -23,14 +23,16 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void naoDeveGerarFindingQuandoExposureIncludeAusente() {
+    @DisplayName("Should NOT generate a finding when exposure.include is absent")
+    void shouldNotGenerateFindingWhenExposureIncludeIsAbsent() {
         EffectiveConfig config = configWith(Map.of("server.port", "8080"));
 
         assertThat(rule.check(config)).isEmpty();
     }
 
     @Test
-    void naoDeveGerarFindingQuandoExposureIncludeNaoContemAsterisco() {
+    @DisplayName("Should NOT generate a finding when exposure.include does not contain a wildcard")
+    void shouldNotGenerateFindingWhenExposureIncludeDoesNotContainWildcard() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "health,info"
         ));
@@ -39,10 +41,12 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveGerarFindingHighComEndpointsUnrestrictedPorPadraoQuandoAsteriscoENenhumaConfigExtra() {
-        // Nenhuma config de enabled/access para nenhum endpoint — shutdown e
-        // heapdump são restritos pelo próprio default do Spring (BL-11), os
-        // outros quatro não são.
+    @DisplayName("Should generate a HIGH finding with endpoints unrestricted by default " +
+                 "when a wildcard is used without additional configuration")
+    void shouldGenerateHighFindingWithEndpointsUnrestrictedByDefaultWhenWildcardIsUsedWithoutAdditionalConfig() {
+        // No enabled/access configuration for any endpoint — shutdown and heapdump are
+        // restricted by Spring's own default (BL-11), while the other four are not.
+
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*"
         ));
@@ -50,7 +54,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.get(0);
+        Finding finding = findings.getFirst();
         assertThat(finding.ruleId()).isEqualTo("SCG001");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
 
@@ -64,7 +68,9 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void naoDeveGerarFindingQuandoAsteriscoETodosEndpointsSensiveisDesabilitadosViaEnabled() {
+    @DisplayName("Should NOT generate a Finding when a wildcard is used and all " +
+                 "sensitive endpoints are disabled via enabled")
+    void shouldNotGenerateFindingWhenWildcardIsUsedAndAllSensitiveEndpointsAreDisabledViaEnabled() {
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -79,9 +85,10 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveListarApenasEndpointsAindaHabilitadosQuandoDesabilitacaoParcial() {
-        // heapdump não aparece aqui de propósito: sem config explícita, ele
-        // já é restrito por padrão — não deveria estar em stillEnabled.
+    @DisplayName("Should list only endpoints still enabled after partial disabling")
+    void shouldListOnlyEndpointsStillEnabledAfterPartialDisabling() {
+        // heapdump is intentionally omitted here: without explicit configuration,
+        // it is already restricted by default — it should not be included in stillEnabled.
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*",
                 "management.endpoint.env.enabled", "false",
@@ -91,7 +98,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        String message = findings.get(0).message();
+        String message = findings.getFirst().message();
         assertThat(message)
                 .doesNotContain("env")
                 .doesNotContain("shutdown")
@@ -102,10 +109,11 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveGerarFindingQuandoHeapdumpDesbloqueadoExplicitamenteViaAccessUnrestricted() {
-        // Cenário real testado empiricamente: access=unrestricted é o único
-        // jeito de expor heapdump — se alguém fizer isso, a regra precisa
-        // continuar acusando, não silenciar por causa do default restrito.
+    @DisplayName("Should generate a finding when heapdump is explicitly unrestricted via access")
+    void shouldGenerateFindingWhenHeapdumpIsExplicitlyUnrestrictedViaAccess() {
+        // Cenário real testado empiricamente: access=unrestricted é o único jeito de expor
+        // heapdump — se alguém fizer isso, a regra precisa continuar acusando, não silenciar
+        // por causa do default restrito.
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -119,11 +127,12 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).message()).contains("heapdump");
+        assertThat(findings.getFirst().message()).contains("heapdump");
     }
 
     @Test
-    void deveGerarFindingQuandoShutdownDesbloqueadoExplicitamenteViaAccessUnrestricted() {
+    @DisplayName("Should generate a finding when shutdown is explicitly unrestricted via access")
+    void shouldGenerateFindingWhenShutdownIsExplicitlyUnrestrictedViaAccess() {
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -137,11 +146,12 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).message()).contains("shutdown");
+        assertThat(findings.getFirst().message()).contains("shutdown");
     }
 
     @Test
-    void deveReconhecerListaDeIndicesYamlComWildcard() {
+    @DisplayName("Should recognize a YAML indexed list with a wildcard")
+    void shouldRecognizeYamlIndexedListWithWildcard() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include[0]", "health",
                 "management.endpoints.web.exposure.include[1]", "*"
@@ -153,7 +163,8 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void naoDeveLancarExcecaoQuandoValorDeExposureENull() {
+    @DisplayName("Should NOT throw an exception when the exposure value is null")
+    void shouldNotThrowExceptionWhenExposureValueIsNull() {
         Map<String, String> properties = new java.util.HashMap<>();
         properties.put("management.endpoints.web.exposure.include", null);
 
@@ -161,11 +172,12 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void naoDeveGerarFindingQuandoEndpointNormalmenteUnrestrictedForaDesabilitadoViaAccessNone() {
-        // Confirmado empiricamente: access=none remove o endpoint do contexto,
-        // mesmo em endpoints cujo default é unrestricted (ex: env). Testado
-        // contra Spring Boot 4.0.7 real — env desaparece do discovery page com
-        // essa config, mesmo com exposure.include=health,*.
+    @DisplayName("Should NOT generate a finding when a normally unrestricted endpoint is disabled via access=none")
+    void shouldNotGenerateFindingWhenNormallyUnrestrictedEndpointIsDisabledViaAccessNone() {
+        // Empirically confirmed: access=none removes the endpoint from the context,
+        // even for endpoints whose default is unrestricted (e.g., env). Tested against
+        // a real Spring Boot 4.0.7 instance — env disappears from the discovery page
+        // with this configuration, even with exposure.include=health,*.
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "health,*"),
                 Map.entry("management.endpoint.env.access", "none"),
@@ -180,8 +192,8 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    @DisplayName("Deve disparar violação quando exposure.include usa placeholder com fallback '*'")
-    void deveDispararViolacaoQuandoActuatorExposureUsaPlaceholderComFallbackWildcard() {
+    @DisplayName("Should generate a violation when Actuator exposure uses a placeholder with a wildcard fallback")
+    void shouldGenerateViolationWhenActuatorExposureUsesPlaceholderWithWildcardFallback() {
         Map<String, String> props = Map.of("management.endpoints.web.exposure.include", "${ACTUATOR_EXPOSURE:*}");
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", props);
 
@@ -192,7 +204,8 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveFlagarQuandoExposureIncludeForPlaceholderDinamicoSemDefault() {
+    @DisplayName("Should flag when exposure.include is a dynamic placeholder without a default")
+    void shouldFlagWhenExposureIncludeIsDynamicPlaceholderWithoutDefault() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "${EXPOSURE_ENDPOINTS}"
         ));
@@ -201,7 +214,8 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void naoDeveFlagarQuandoExposureIncludeForPlaceholderComDefaultSeguro() {
+    @DisplayName("Should NOT flag when exposure.include is a placeholder with a safe default")
+    void shouldNotFlagWhenExposureIncludeIsPlaceholderWithSafeDefault() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "${EXPOSURE_ENDPOINTS:health,info}"
         ));
@@ -210,7 +224,8 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
-    void deveTratarEndpointComoNaoRestritoQuandoAccessForPlaceholderDinamicoSemDefault() {
+    @DisplayName("Should treat the endpoint as unrestricted when access is a dynamic placeholder without a default")
+    void shouldTreatEndpointAsUnrestrictedWhenAccessIsDynamicPlaceholderWithoutDefault() {
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -223,6 +238,6 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.get(0).message()).contains("heapdump");
+        assertThat(findings.getFirst().message()).contains("heapdump");
     }
 }

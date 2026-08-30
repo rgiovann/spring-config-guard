@@ -1,13 +1,16 @@
 package dev.scg.rules;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+
 class RelaxedBooleanTest {
 
     @Test
-    void deveConsiderarTruthyOsValoresReconhecidosPeloRelaxedBindingDoSpring() {
+    @DisplayName("Should consider truthy the values recognized by Spring's relaxed binding")
+    void shouldConsiderTruthyValuesRecognizedBySpringRelaxedBinding() {
         assertThat(RelaxedBoolean.isTruthy("true")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("yes")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("on")).isTrue();
@@ -15,7 +18,8 @@ class RelaxedBooleanTest {
     }
 
     @Test
-    void deveSerCaseInsensitive() {
+    @DisplayName("Should be case insensitive")
+    void shouldBeCaseInsensitive() {
         assertThat(RelaxedBoolean.isTruthy("TRUE")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("True")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("YES")).isTrue();
@@ -23,13 +27,15 @@ class RelaxedBooleanTest {
     }
 
     @Test
-    void deveIgnorarEspacosEmVolta() {
+    @DisplayName("Should ignore surrounding whitespace")
+    void shouldIgnoreSurroundingWhitespace() {
         assertThat(RelaxedBoolean.isTruthy(" true ")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("\ttrue\n")).isTrue();
     }
 
     @Test
-    void deveRetornarFalseParaValoresNaoTruthy() {
+    @DisplayName("Should return false for non-truthy values")
+    void shouldReturnFalseForNonTruthyValues() {
         assertThat(RelaxedBoolean.isTruthy("false")).isFalse();
         assertThat(RelaxedBoolean.isTruthy("no")).isFalse();
         assertThat(RelaxedBoolean.isTruthy("off")).isFalse();
@@ -37,34 +43,40 @@ class RelaxedBooleanTest {
     }
 
     @Test
-    void deveRetornarFalseParaValorInvalidoOuTypo() {
-        // "flase" — mesmo caso que já protegemos na ActuatorExposureRule:
-        // typo não deve acidentalmente contar como false (nem como true).
+    @DisplayName("Should return false for invalid values or typos")
+    void shouldReturnFalseForInvalidValuesOrTypos() {
+        // "flase" — the same case already protected in ActuatorExposureRule:
+        // a typo should not accidentally be counted as false (nor as true).
         assertThat(RelaxedBoolean.isTruthy("flase")).isFalse();
         assertThat(RelaxedBoolean.isTruthy("yep")).isFalse();
     }
 
     @Test
-    void deveRetornarFalseQuandoValorForNull() {
+    @DisplayName("Should return false when value is null")
+    void shouldReturnFalseWhenValueIsNull() {
         assertThat(RelaxedBoolean.isTruthy(null)).isFalse();
     }
 
     @Test
-    void deveRetornarFalseQuandoValorForVazio() {
+    @DisplayName("Should return false when value is empty")
+    void shouldReturnFalseWhenValueIsEmpty() {
         assertThat(RelaxedBoolean.isTruthy("")).isFalse();
         assertThat(RelaxedBoolean.isTruthy("   ")).isFalse();
     }
 
     @Test
-    void deveRetornarTrueParaPlaceholderDinamicoSemDefault() {
-        // Postura de segurança: valor não determinável estaticamente é tratado
-        // como potencial risco, não como ausência de risco.
+    @DisplayName("Should return true for dynamic placeholder without default")
+    void shouldReturnTrueForDynamicPlaceholderWithoutDefault() {
+        // Security posture: a statically indeterminable value is treated
+        // as a potential risk, not as an absence of risk.
         assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR}")).isTrue();
     }
 
     @Test
-    void deveResolverPlaceholderComDefaultNormalmente() {
+    @DisplayName("Should resolve placeholder with default normally")
+    void shouldResolvePlaceholderWithDefaultNormally() {
         assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR:true}")).isTrue();
         assertThat(RelaxedBoolean.isTruthy("${SOME_ENV_VAR:false}")).isFalse();
     }
 }
+

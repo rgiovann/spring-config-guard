@@ -2,12 +2,14 @@ package dev.scg.cli;
 
 import dev.scg.core.Finding;
 import dev.scg.core.Severity;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 
 class ExitCodeResolverTest {
 
@@ -18,14 +20,16 @@ class ExitCodeResolverTest {
     }
 
     @Test
-    void deveRetornarSuccessQuandoListaDeFindingsVazia() {
+    @DisplayName("Should return SUCCESS when the findings list is empty")
+    void shouldReturnSuccessWhenFindingsListIsEmpty() {
         int exitCode = resolver.resolve(List.of(), Optional.of(Severity.HIGH));
 
         assertThat(exitCode).isEqualTo(ExitCodeResolver.SUCCESS);
     }
 
     @Test
-    void deveRetornarSuccessQuandoFailOnSeverityForOptionalEmpty() {
+    @DisplayName("Should return SUCCESS when fail-on severity is Optional.empty")
+    void shouldReturnSuccessWhenFailOnSeverityIsOptionalEmpty() {
         List<Finding> findings = List.of(findingWith(Severity.HIGH), findingWith(Severity.LOW));
 
         int exitCode = resolver.resolve(findings, Optional.empty());
@@ -34,7 +38,8 @@ class ExitCodeResolverTest {
     }
 
     @Test
-    void deveRetornarThresholdExceededQuandoExisteFindingNoThresholdExato() {
+    @DisplayName("Should return THRESHOLD_EXCEEDED when a finding exists at the exact threshold")
+    void shouldReturnThresholdExceededWhenFindingExistsAtExactThreshold() {
         List<Finding> findings = List.of(findingWith(Severity.HIGH));
 
         int exitCode = resolver.resolve(findings, Optional.of(Severity.HIGH));
@@ -43,7 +48,8 @@ class ExitCodeResolverTest {
     }
 
     @Test
-    void deveRetornarSuccessQuandoFindingsSaoMaisBrandosQueOThreshold() {
+    @DisplayName("Should return SUCCESS when findings are less severe than the threshold")
+    void shouldReturnSuccessWhenFindingsAreLessSevereThanThreshold() {
         List<Finding> findings = List.of(findingWith(Severity.LOW));
 
         int exitCode = resolver.resolve(findings, Optional.of(Severity.HIGH));
@@ -52,13 +58,15 @@ class ExitCodeResolverTest {
     }
 
     @Test
-    void deveRetornarThresholdExceededQuandoThresholdLowEExisteQualquerFinding() {
+    @DisplayName("Should return THRESHOLD_EXCEEDED when the threshold is LOW and any finding exists")
+    void shouldReturnThresholdExceededWhenThresholdIsLowAndAnyFindingExists() {
         for (Severity severity : Severity.values()) {
             List<Finding> findings = List.of(findingWith(severity));
 
             assertThat(resolver.resolve(findings, Optional.of(Severity.LOW)))
-                    .as("severidade testada: %s", severity)
+                    .as("tested severity: %s", severity)
                     .isEqualTo(ExitCodeResolver.THRESHOLD_EXCEEDED);
         }
     }
 }
+

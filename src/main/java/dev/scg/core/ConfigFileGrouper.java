@@ -5,27 +5,27 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Agrupa ConfigFile carregados individualmente por ConfigLoader.loadDirectory()
- * em unidades lógicas de configuração Spring Boot: application.{ext} (base) +
- * application-{profile}.{ext} (overlay), no mesmo diretório.
- *
- * Motivação (BL-15): ConfigLoader trata cada arquivo físico como um ConfigFile
- * independente, então ProfileMerger nunca funde application.yml com
- * application-prod.yml — cada um vira uma "config efetiva" isolada, cega para
- * o conteúdo do outro. Essa classe corrige isso numa camada separada, sem
- * reabrir o contrato já validado de ConfigLoader/ProfileMerger.
- *
- * Regra de profile para arquivo específico (application-{profile}.ext): o
- * nome do arquivo é a ÚNICA fonte de verdade. Confirmado que um Spring Boot
- * real rejeita (InvalidConfigDataPropertyException) qualquer
- * spring.config.activate.on-profile dentro desse tipo de arquivo — os dois
- * mecanismos (nome de arquivo vs. on-profile) são mutuamente exclusivos por
- * design do próprio framework, não uma questão de precedência a resolver.
- *
- * Escopo: agrupamento por convenção simples (mesmo diretório; prefixo
- * "application" já garantido por ConfigLoader.isSpringConfigFile). Nome-base
- * customizado (spring.config.name) e múltiplos diretórios com precedência
- * ficam fora de escopo — ver BL-17.
+ * Groups ConfigFiles loaded individually by ConfigLoader.loadDirectory()
+ * into logical Spring Boot configuration units: application.{ext} (base) +
+ * application-{profile}.{ext} (overlay), in the same directory.
+ * <p>
+ * Motivation (BL-15): ConfigLoader treats each physical file as an independent
+ * ConfigFile, so ProfileMerger never merges application.yml with
+ * application-prod.yml — each one becomes an isolated "effective config",
+ * unaware of the other's contents. This class fixes that in a separate layer,
+ * without reopening the already-validated ConfigLoader/ProfileMerger contract.
+ * <p>
+ * Profile rule for a profile-specific file (application-{profile}.ext): the
+ * filename is the ONLY source of truth. Confirmed that a real Spring Boot
+ * rejects (InvalidConfigDataPropertyException) any
+ * spring.config.activate.on-profile inside this type of file — the two
+ * mechanisms (filename vs. on-profile) are mutually exclusive by design
+ * of the framework itself, not a precedence issue to resolve.
+ * <p>
+ * Scope: grouping by simple convention (same directory; "application"
+ * prefix already guaranteed by ConfigLoader.isSpringConfigFile). Custom base
+ * name (spring.config.name) and multiple directories with precedence are
+ * out of scope — see BL-17.
  */
 public final class ConfigFileGrouper {
 
@@ -50,11 +50,12 @@ public final class ConfigFileGrouper {
         List<ConfigDocument> combinedDocuments = new ArrayList<>();
         Map<String, Path> sourceByProfileLabel = new LinkedHashMap<>();
 
-        // Primeira passada: arquivos específicos de profile. Path desses
-        // arquivos tem prioridade na rastreabilidade — se uma propriedade
-        // aparece tanto no arquivo específico quanto num documento multi-doc
-        // do base para o mesmo profile (caso raro), preferimos apontar para
-        // o arquivo específico, mais provável de ser "onde consertar".
+        // First pass: profile-specific files. The path of these
+        // files takes priority for traceability — if a property
+        // appears both in the profile-specific file and in a multi-document
+        // base file for the same profile (rare case), we prefer pointing to
+        // the profile-specific file, which is more likely to be "where to fix it".
+
         for (ConfigFile file : filesInDirectory) {
             Optional<String> filenameProfile = extractProfileFromFilename(file.path());
             if (filenameProfile.isEmpty()) {
@@ -66,12 +67,12 @@ public final class ConfigFileGrouper {
             }
         }
 
-        // Segunda passada: arquivo(s) base. Comportamento de multi-documento
-        // via on-profile já resolvido corretamente por ConfigLoader — não
-        // reprocessamos o profile aqui, só registramos a origem física.
+        // Second pass: base file(s). Multi-document behavior
+        // via on-profile has already been correctly resolved by ConfigLoader — we do not
+        // reprocess the profile here; we only record the physical source.
         for (ConfigFile file : filesInDirectory) {
             if (extractProfileFromFilename(file.path()).isPresent()) {
-                continue; // já tratado na primeira passada
+                continue; // already handled in the first pass
             }
             for (ConfigDocument document : file.documents()) {
                 combinedDocuments.add(document);
@@ -88,10 +89,10 @@ public final class ConfigFileGrouper {
     }
 
     /**
-     * Extrai o profile do nome do arquivo, convenção application-{profile}.{ext}.
-     * Optional.empty() para o arquivo base (application.{ext}, sem sufixo) ou
-     * para um sufixo vazio malformado (application-.yml — edge case não testado,
-     * tratado defensivamente como "sem profile" em vez de lançar exceção).
+     * Extracts the profile from the filename, following the application-{profile}.{ext} convention.
+     * Optional.empty() for the base file (application.{ext}, with no suffix) or
+     * for a malformed empty suffix (application-.yml — untested edge case,
+     * defensively treated as "no profile" instead of throwing an exception).
      */
     private Optional<String> extractProfileFromFilename(Path path) {
         String filename = path.getFileName().toString();

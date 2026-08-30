@@ -5,21 +5,21 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Um único documento YAML dentro de um arquivo (delimitado por "---").
- * Para arquivos .properties, ou arquivos .yml sem "---", sempre existe
- * exatamente um ConfigDocument por arquivo, com profile vazio.
- *
- * Este é o "cru" — ainda não fundido com nada. ProfileMerger consome
- * uma lista de ConfigDocument (todos do mesmo arquivo) e produz
- * EffectiveConfig (o resultado já mesclado, pronto pras regras).
+ * A single YAML document within a file (delimited by "---").
+ * For .properties files, or .yml files without "---", there is always
+ * exactly one ConfigDocument per file, with an empty profile.
+ * <p>
+ * This is the "raw" document — not yet merged with anything. ProfileMerger
+ * consumes a list of ConfigDocument objects (all from the same file) and
+ * produces an EffectiveConfig (the already-merged result, ready for the rules).
  */
 public record ConfigDocument(
         Optional<String> profile,
         Map<String, String> properties
 ) {
     public ConfigDocument {
-        Objects.requireNonNull(profile, "profile não pode ser null (use Optional.empty())");
-        Objects.requireNonNull(properties, "properties não pode ser null");
+        Objects.requireNonNull(profile, "profile cannot be null (use Optional.empty())");
+        Objects.requireNonNull(properties, "properties cannot be null");
         properties = Map.copyOf(properties);
     }
 }

@@ -25,11 +25,9 @@ class ProfileMergerTest {
 
     private final ProfileMerger merger = new ProfileMerger();
 
-
-
     @Test
-    @DisplayName("Arquivo com apenas documento base (sem profile nomeado) deve gerar exatamente 1 EffectiveConfig")
-    void arquivoComApenasBaseDeveGerarUmaUnicaEffectiveConfig() {
+    @DisplayName("File with only the base document (without a named profile) should generate exactly 1 EffectiveConfig")
+    void fileWithOnlyBaseShouldGenerateSingleEffectiveConfig() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("server.port", "8080"))
         ));
@@ -42,8 +40,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Deve fundir base com profile nomeado sem contaminação cruzada, herdando o que o profile não sobrescreveu")
-    void deveFundirBaseComProfileNomeadoSemContaminacaoCruzada() {
+    @DisplayName("Should merge base with named profile without cross-contamination, inheriting what the profile does not override")
+    void shouldMergeBaseWithNamedProfileWithoutCrossContamination() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of(
                         "server.port", "8080",
@@ -60,19 +58,19 @@ class ProfileMergerTest {
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // base não deve ter sido contaminado pelo profile dev
+        // base should not have been contaminated by the dev profile
         assertFalse(base.properties().containsKey("management.endpoints.web.exposure.include"));
         assertEquals("8080", base.properties().get("server.port"));
 
-        // dev deve ter TANTO o que é dele quanto o que herdou do base
+        // dev should have BOTH what belongs to it and what it inherited from base
         assertEquals("*", dev.properties().get("management.endpoints.web.exposure.include"));
         assertEquals("8080", dev.properties().get("server.port"));
         assertEquals("false", dev.properties().get("management.endpoint.env.enabled"));
     }
 
     @Test
-    @DisplayName("Profile deve sobrescrever chave escalar que também existe no base")
-    void profileDeveSobrescreverChaveEscalarQueTambemExisteNoBase() {
+    @DisplayName("Profile should override a scalar key that also exists in the base")
+    void profileShouldOverrideScalarKeyThatAlsoExistsInBase() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("logging.level.root", "INFO"))),
                 new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
@@ -85,15 +83,15 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Lista deve ser SUBSTITUÍDA inteira pelo profile, não mesclada índice a índice")
-    void listaDeveSerSubstituidaInteiraPeloProfileNaoMescladaIndiceAIndice() {
+    @DisplayName("List should be replaced entirely by the profile, not merged index by index")
+    void listShouldBeReplacedEntirelyByProfileNotMergedIndexByIndex() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
         baseProps.put("cors.allowed-origins[1]", "b.com");
         baseProps.put("cors.allowed-origins[2]", "c.com");
 
         Map<String, String> devProps = new LinkedHashMap<>();
-        devProps.put("cors.allowed-origins[0]", "x.com"); // profile só redefine o índice 0
+        devProps.put("cors.allowed-origins[0]", "x.com"); // profile only redefines index 0
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
@@ -105,19 +103,19 @@ class ProfileMergerTest {
 
         assertEquals("x.com", dev.properties().get("cors.allowed-origins[0]"));
         assertFalse(dev.properties().containsKey("cors.allowed-origins[1]"),
-                "índice [1] do base não deveria sobrar quando o profile redefine a lista");
+                "Base index [1] should not remain when the profile redefines the list");
         assertFalse(dev.properties().containsKey("cors.allowed-origins[2]"),
-                "índice [2] do base não deveria sobrar quando o profile redefine a lista");
+                "Base index [2] should not remain when the profile redefines the list");
 
-        // base não deve ter sido afetado pelo merge feito para "dev"
+        // base should not have been affected by the merge performed for "dev"
         assertEquals(3, findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().size());
     }
 
     @Test
-    @DisplayName("Lista de mapas (Nível B) também deve ser substituída inteira, não mesclada por sub-chave")
-    void listaDeMapasTambemDeveSerSubstituidaInteira() {
+    @DisplayName("Map lists (Level B) should also be replaced entirely, not merged by sub-key")
+    void mapListsShouldAlsoBeReplacedEntirely() {
         Map<String, String> baseProps = new LinkedHashMap<>();
-        baseProps.put("cors.origins[0].name", "producao");
+        baseProps.put("cors.origins[0].name", "production");
         baseProps.put("cors.origins[0].url", "https://a.com");
         baseProps.put("cors.origins[1].name", "staging");
         baseProps.put("cors.origins[1].url", "https://b.com");
@@ -140,8 +138,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Arquivo onde TODO bloco declara profile (nenhum base explícito) deve gerar base com mapa vazio")
-    void arquivoSemBaseExplicitoDeveGerarBaseComMapaVazio() {
+    @DisplayName("File where EVERY block declares a profile (no explicit base) should generate a base with an empty map")
+    void fileWithoutExplicitBaseShouldGenerateBaseWithEmptyMap() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("server.port", "9090"))),
                 new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
@@ -149,7 +147,7 @@ class ProfileMergerTest {
 
         List<EffectiveConfig> result = merger.merge(file);
 
-        assertEquals(3, result.size()); // base(vazio) + dev + prod
+        assertEquals(3, result.size()); // empty base + dev + prod
         assertTrue(findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().isEmpty());
 
         EffectiveConfig dev = findByLabel(result, "dev");
@@ -158,8 +156,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Merges de profiles diferentes não devem compartilhar estado nem mutar o mapa original do base")
-    void mergesDeProfilesDiferentesNaoDevemCompartilharEstado() {
+    @DisplayName("Merges of different profiles should not share state or mutate the original base map")
+    void mergesOfDifferentProfilesShouldNotShareState() {
         Map<String, String> baseProps = new LinkedHashMap<>(Map.of("a", "1"));
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
@@ -172,14 +170,14 @@ class ProfileMergerTest {
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig prod = findByLabel(result, "prod");
 
-        assertFalse(dev.properties().containsKey("c"), "dev não deveria enxergar chave exclusiva de prod");
-        assertFalse(prod.properties().containsKey("b"), "prod não deveria enxergar chave exclusiva de dev");
-        assertEquals(1, baseProps.size(), "o mapa original do documento base não deveria ser mutado pelo merge");
+        assertFalse(dev.properties().containsKey("c"), "dev should not see prod's exclusive key");
+        assertFalse(prod.properties().containsKey("b"), "prod should not see dev's exclusive key");
+        assertEquals(1, baseProps.size(), "the original base document map should not be mutated by the merge");
     }
 
     @Test
-    @DisplayName("Base + dois profiles nomeados no mesmo arquivo devem gerar 3 EffectiveConfig completas e independentes")
-    void baseComDoisProfilesNomeadosDeveGerarTresEffectiveConfigsIndependentes() {
+    @DisplayName("Base + two named profiles in the same file should generate 3 complete and independent EffectiveConfigs")
+    void baseWithTwoNamedProfilesShouldGenerateThreeIndependentEffectiveConfigs() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of(
                         "server.port", "8080",
@@ -200,25 +198,25 @@ class ProfileMergerTest {
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig prod = findByLabel(result, "prod");
 
-        // base: só o que é dele, intacto
+        // base: only what belongs to it, intact
         assertEquals("8080", base.properties().get("server.port"));
         assertEquals("INFO", base.properties().get("logging.level.root"));
         assertFalse(base.properties().containsKey("management.endpoints.web.exposure.include"));
 
-        // dev: herda porta e logging do base, ganha sua própria exposure
+        // dev: inherits port and logging from base, gains its own exposure
         assertEquals("8080", dev.properties().get("server.port"));
         assertEquals("INFO", dev.properties().get("logging.level.root"));
         assertEquals("*", dev.properties().get("management.endpoints.web.exposure.include"));
 
-        // prod: herda porta do base, mas SOBRESCREVE logging.level.root, e não tem exposure nenhuma
+        // prod: inherits port from base, but OVERRIDES logging.level.root, and has no exposure
         assertEquals("8080", prod.properties().get("server.port"));
         assertEquals("WARN", prod.properties().get("logging.level.root"));
         assertFalse(prod.properties().containsKey("management.endpoints.web.exposure.include"));
     }
 
     @Test
-    @DisplayName("Profile deve poder adicionar uma lista nova mesmo que base não a tenha")
-    void profileAdicionaListaNovaQueNaoExisteNoBase() {
+    @DisplayName("Profile should be able to add a new list even if the base does not have it")
+    void profileAddsNewListThatDoesNotExistInBase() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("server.port", "8080")),
                 new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of(
@@ -234,8 +232,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Profile deve poder expandir uma lista com mais índices do que o base tinha")
-    void profileDeveExpandirListaComMaisIndicesQueOBase() {
+    @DisplayName("Profile should be able to expand a list with more indices than the base had")
+    void profileShouldExpandListWithMoreIndicesThanBase() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("app.tags[0]", "v1");
 
@@ -253,20 +251,20 @@ class ProfileMergerTest {
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
-        // dev deve ter os 3 elementos NOVOS do profile, não uma mistura com o base
+        // dev should have the 3 NEW elements from the profile, not a mixture with the base
         assertEquals(3, dev.properties().size());
         assertEquals("v2", dev.properties().get("app.tags[0]"));
         assertEquals("v3", dev.properties().get("app.tags[1]"));
         assertEquals("v4", dev.properties().get("app.tags[2]"));
 
-        // base não deve ter sido afetado pelo merge feito para "dev"
+        // base should not have been affected by the merge performed for "dev"
         assertEquals(1, base.properties().size());
         assertEquals("v1", base.properties().get("app.tags[0]"));
     }
 
     @Test
-    @DisplayName("Profile deve conseguir sobrescrever duas listas distintas simultaneamente, sem interferência cruzada")
-    void profileSobrescreveMultiplasListasDistintasSimultaneamente() {
+    @DisplayName("Profile should be able to override two distinct lists simultaneously, without cross-interference")
+    void profileOverridesMultipleDistinctListsSimultaneously() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.origins[0]", "a.com");
         baseProps.put("cors.origins[1]", "b.com");
@@ -287,19 +285,19 @@ class ProfileMergerTest {
         assertEquals(2, dev.properties().size());
         assertEquals("x.com", dev.properties().get("cors.origins[0]"));
         assertFalse(dev.properties().containsKey("cors.origins[1]"),
-                "cors.origins[1] do base deveria ter sido removido junto com a purga de cors.origins[0]");
+                "cors.origins[1] from the base should have been removed along with the purge of cors.origins[0]");
         assertEquals("bar", dev.properties().get("logging.ignored[0]"));
     }
 
     @Test
-    @DisplayName("BL-03(b): chave escalar (relaxed-binding) redefinindo lista do base deve purgar índices órfãos")
-    void chaveEscalarRedefinindoListaDoBaseDevePurgarIndicesOrfaos() {
+    @DisplayName("BL-03(b): scalar key (relaxed-binding) redefining the base list should purge orphaned indices")
+    void scalarKeyRedefiningBaseListShouldPurgeOrphanedIndices() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
         baseProps.put("cors.allowed-origins[1]", "b.com");
 
         Map<String, String> devProps = new LinkedHashMap<>();
-        devProps.put("cors.allowed-origins", "explicit-value"); // relaxed-binding do Spring
+        devProps.put("cors.allowed-origins", "explicit-value"); // Spring relaxed-binding
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
@@ -311,14 +309,14 @@ class ProfileMergerTest {
 
         assertEquals("explicit-value", dev.properties().get("cors.allowed-origins"));
         assertFalse(dev.properties().containsKey("cors.allowed-origins[0]"),
-                "índice órfão do base não deveria sobreviver quando o profile redefine via escalar");
+                "The orphaned base index should not survive when the profile redefines it via a scalar");
         assertFalse(dev.properties().containsKey("cors.allowed-origins[1]"));
         assertEquals(1, dev.properties().size());
     }
 
     @Test
-    @DisplayName("BL-03(b): redefinição escalar de uma lista não deve afetar outra lista não relacionada")
-    void redefinicaoEscalarNaoDeveAfetarListaNaoRelacionada() {
+    @DisplayName("BL-03(b): scalar redefinition of a list should not affect another unrelated list")
+    void scalarRedefinitionShouldNotAffectUnrelatedList() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.origins[0]", "a.com");
         baseProps.put("cors.origins[1]", "b.com");
@@ -337,15 +335,18 @@ class ProfileMergerTest {
 
         assertEquals("escalar-novo", dev.properties().get("cors.origins"));
         assertFalse(dev.properties().containsKey("cors.origins[0]"));
-        assertEquals("foo", dev.properties().get("logging.ignored[0]"), "lista não relacionada deveria continuar herdada intacta");
+        assertEquals("foo", dev.properties().get("logging.ignored[0]"), "Unrelated list " +
+                "should remain inherited intact");
     }
 
+
     @Test
-    @DisplayName("LIMITAÇÃO CONHECIDA: se existirem 2 documentos base (violando invariante do ConfigLoader), apenas o primeiro é usado e o segundo é silenciosamente perdido")
-    void doisDocumentosBaseApenasPrimeiroEUsadoSegundoEPerdido() {
+    @DisplayName("KNOWN LIMITATION: if there are 2 base documents (violating the ConfigLoader invariant)," +
+            "only the first is used and the second is silently lost")
+    void twoBaseDocumentsOnlyFirstIsUsedSecondIsLost() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("a", "1"))),
-                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("b", "2"))), // ignorado
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("b", "2"))), // ignored
                 new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("c", "3")))
         ));
 
@@ -353,23 +354,23 @@ class ProfileMergerTest {
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // TODO(backlog): esta é uma violação da invariante que o ConfigLoader
-        // garante na prática (nunca entrega 2 documentos com profile vazio no
-        // mesmo ConfigFile). Este teste documenta o comportamento ATUAL do
-        // ProfileMerger sob essa violação — não é o comportamento desejado.
-        // Ver item de backlog "findBaseProperties perde dado silenciosamente
-        // se invariante de documento único-base for violada".
+        // TODO(backlog): this violates the invariant that ConfigLoader
+        // guarantees in practice (it never provides 2 documents with an empty
+        // profile in the same ConfigFile). This test documents the CURRENT
+        // behavior of ProfileMerger under this violation — it is not the desired behavior.
+        // See backlog item "findBaseProperties silently loses data
+        // if the single-base-document invariant is violated".
         assertEquals("1", base.properties().get("a"));
-        assertNull(base.properties().get("b"), "'b' do segundo documento base é perdido — comportamento conhecido, não corrigido");
+        assertNull(base.properties().get("b"), "'b' from the second base document is lost — known, unfixed behavior");
 
         assertEquals("1", dev.properties().get("a"));
-        assertNull(dev.properties().get("b"), "'b' nunca chega no profile dev, pois nem chegou no base");
+        assertNull(dev.properties().get("b"), "'b' never reaches the dev profile because it never reached the base");
         assertEquals("3", dev.properties().get("c"));
     }
 
     @Test
-    @DisplayName("Documento base posicionado após profiles nomeados ainda deve ser encontrado e usado como base, independente de ordem")
-    void baseAposProfilesDeveSerEncontradoIndependenteDeOrdem() {
+    @DisplayName("Base document positioned after named profiles should still be found and used as the base, regardless of order")
+    void baseAfterProfilesShouldBeFoundRegardlessOfOrder() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("x", "1"))),
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("base-only", "true")))
@@ -380,13 +381,13 @@ class ProfileMergerTest {
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("true", base.properties().get("base-only"));
-        assertEquals("true", dev.properties().get("base-only"), "dev deveria herdar base-only mesmo o base estando depois na lista");
+        assertEquals("true", dev.properties().get("base-only"), "dev should inherit base-only even though the base comes later in the list");
         assertEquals("1", dev.properties().get("x"));
     }
 
     @Test
-    @DisplayName("Merge não deve mutar o mapa original do documento de profile")
-    void mergeNaoDeveMutarMapaDoProfile() {
+    @DisplayName("Merge should not mutate the original profile document map")
+    void mergeShouldNotMutateProfileMap() {
         Map<String, String> profileProps = new LinkedHashMap<>(Map.of("x", "1"));
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
@@ -399,8 +400,8 @@ class ProfileMergerTest {
         assertEquals("1", profileProps.get("x"));
     }
     @Test
-    @DisplayName("EffectiveConfig.properties() deve ser protegido contra mutação externa (BL-01 corrigido)")
-    void effectiveConfigDeveSerProtegidoContraMutacaoExterna() {
+    @DisplayName("EffectiveConfig.properties() should be protected against external mutation (BL-01 fixed)")
+    void effectiveConfigShouldBeProtectedAgainstExternalMutation() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
                 new ConfigDocument(Optional.of("dev"), Map.of("x", "1"))
@@ -412,16 +413,16 @@ class ProfileMergerTest {
 
         assertThrows(UnsupportedOperationException.class,
                 () -> base.properties().put("chave-maliciosa", "valor-injetado"),
-                "EffectiveConfig do base deveria bloquear mutação externa");
+                "EffectiveConfig for the base should block external mutation");
 
         assertThrows(UnsupportedOperationException.class,
                 () -> dev.properties().put("chave-maliciosa", "valor-injetado"),
-                "EffectiveConfig do profile deveria bloquear mutação externa");
+                "EffectiveConfig for the profile should block external mutation");
     }
 
     @Test
-    @DisplayName("BL-03(a): profile com lista vazia explícita deve limpar a lista perigosa herdada do base")
-    void profileComListaVaziaExplicitaDeveLimparListaDoBase() {
+    @DisplayName("BL-03(a): profile with an explicit empty list should clear the dangerous list inherited from the base")
+    void profileWithExplicitEmptyListShouldClearBaseList() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "*");
 
@@ -439,14 +440,14 @@ class ProfileMergerTest {
 
         assertFalse(prod.properties().containsKey("cors.allowed-origins[0]"));
         assertFalse(prod.properties().containsKey("cors.allowed-origins.__empty_list__"),
-                "a sentinela nunca deveria sobrar no resultado final exposto a uma Rule");
+                "the sentinel should never remain in the final result exposed to a Rule");
         assertEquals("*", base.properties().get("cors.allowed-origins[0]"),
-                "base não deveria ser afetado pelo merge feito para prod");
+                "base should not be affected by the merge performed for prod");
     }
 
     @Test
-    @DisplayName("BL-03(a): profile pode redefinir lista vazia como não-vazia, substituindo por completo")
-    void profileRedefineListaVaziaComoNaoVazia() {
+    @DisplayName("BL-03(a): profile can redefine an empty list as non-empty, replacing it completely")
+    void profileRedefinesEmptyListAsNonEmpty() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
 
@@ -465,8 +466,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): base com lista vazia explícita, profile que não menciona a chave, deve herdar vazio sem vazar sentinela")
-    void baseComListaVaziaHerdaVazioSemVazarSentinela() {
+    @DisplayName("BL-03(a): base with an explicit empty list, profile that does not mention the key, should inherit empty without leaking the sentinel")
+    void baseWithEmptyListInheritsEmptyWithoutLeakingSentinel() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins.__empty_list__", "true");
 
@@ -489,8 +490,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): lista de objetos vazia (não só lista de escalares) também deve purgar corretamente via sentinela")
-    void listaDeObjetosVaziaTambemDevePurgarCorretamente() {
+    @DisplayName("BL-03(a): empty object list (not just a scalar list) should also be correctly purged via the sentinel")
+    void emptyObjectListShouldAlsoBeCorrectlyPurged() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("users[0].name", "admin");
         baseProps.put("users[0].role", "SUPERUSER");
@@ -509,13 +510,13 @@ class ProfileMergerTest {
         EffectiveConfig prod = findByLabel(result, "prod");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
-        assertTrue(prod.properties().isEmpty(), "lista de objetos inteira deveria ter sido purgada");
-        assertEquals(4, base.properties().size(), "base não deveria ser afetado pelo merge feito para prod");
+        assertTrue(prod.properties().isEmpty(), "the entire object list should have been purged");
+        assertEquals(4, base.properties().size(), "base should not be affected by the merge performed for prod");
     }
 
     @Test
-    @DisplayName("BL-02 resolvido: profile explicitamente chamado 'base' não colide mais com o rótulo sintético")
-    void profileExplicitamenteChamadoBaseNaoColideMaisComRotuloSintetico() {
+    @DisplayName("BL-02 resolved: profile explicitly named 'base' no longer collides with the synthetic label")
+    void profileExplicitlyNamedBaseNoLongerCollidesWithSyntheticLabel() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
                 new ConfigDocument(Optional.of("base"), Map.of("b", "2"))
@@ -528,20 +529,20 @@ class ProfileMergerTest {
         EffectiveConfig sintetico = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig doUsuario = findByLabel(result, "base");
 
-        assertFalse(sintetico.properties().containsKey("b"), "o rótulo sintético não deveria ter herdado nada do profile 'base' real");
+        assertFalse(sintetico.properties().containsKey("b"), "the synthetic label should not have inherited anything from the real 'base' profile");
         assertEquals("1", doUsuario.properties().get("a"));
         assertEquals("2", doUsuario.properties().get("b"));
     }
 
     @Test
-    @DisplayName("BL-08: Map vazio no profile NÃO deve purgar chaves do base (diferente de lista)")
-    void mapVazioNoProfileNaoDevePurgarChavesDoBase() {
+    @DisplayName("BL-08: Empty map in profile should NOT purge base keys (unlike a list)")
+    void emptyMapInProfileShouldNotPurgeBaseKeys() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("headers.x-app-name", "minha-app");
         baseProps.put("headers.x-region", "brasil");
 
         Map<String, String> prodProps = new LinkedHashMap<>();
-        prodProps.put("headers.__empty_map__", "true"); // "headers: {}" no profile
+        prodProps.put("headers.__empty_map__", "true"); // "headers: {}" in the profile
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
@@ -552,15 +553,15 @@ class ProfileMergerTest {
         EffectiveConfig prod = findByLabel(result, "prod");
 
         assertEquals("minha-app", prod.properties().get("headers.x-app-name"),
-                "Map funde por chave — diferente de List, headers:{} não apaga o que o base definiu");
+                "Map merges by key — unlike List, headers:{} does not erase what the base defined");
         assertEquals("brasil", prod.properties().get("headers.x-region"));
         assertFalse(prod.properties().containsKey("headers.__empty_map__"),
-                "a sentinela nunca deveria sobrar no resultado exposto a uma Rule");
+                "the sentinel should never remain in the result exposed to a Rule");
     }
 
     @Test
-    @DisplayName("BL-09: Profile com escalar null explícito deve redefinir chave do base para null")
-    void profileComNullExplicitoDeveRedefinirChaveParaNull() {
+    @DisplayName("BL-09: Profile with explicit scalar null should redefine the base key to null")
+    void profileWithExplicitNullShouldRedefineKeyToNull() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("app.feature-x.enabled", "true");
 
@@ -575,13 +576,13 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merger.merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        assertTrue(dev.properties().containsKey("app.feature-x.enabled"), "A chave deve existir no mapa");
-        assertNull(dev.properties().get("app.feature-x.enabled"), "O valor da chave deve ser null");
+        assertTrue(dev.properties().containsKey("app.feature-x.enabled"), "The key should exist in the map");
+        assertNull(dev.properties().get("app.feature-x.enabled"), "The key value should be null");
     }
 
     @Test
-    @DisplayName("BL-09: Profile com escalar null em nó que era objeto no base deve purgar sub-chaves e resultar em null")
-    void profileComNullEmNoObjetoDevePurgarSubChaves() {
+    @DisplayName("BL-09: Profile with scalar null at a node that was an object in the base should purge sub-keys and result in null")
+    void profileWithNullAtObjectNodeShouldPurgeSubKeys() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("db.connection.timeout", "30");
         baseProps.put("db.connection.host", "localhost");
@@ -604,8 +605,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Purga de Lista: Profile com lista menor deve expurgar totalmente índices sobressalentes do base")
-    void profileComListaMenorDeveExpurgarIndicesSobressalentesDoBase() {
+    @DisplayName("List Purge: Profile with a smaller list should completely remove extra indices from the base")
+    void profileWithSmallerListShouldPurgeExtraIndicesFromBase() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("management.endpoints.web.exposure.include[0]", "health");
         baseProps.put("management.endpoints.web.exposure.include[1]", "info");
@@ -628,8 +629,8 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Purga de Lista Canônica: Redefinição de lista em camelCase no dev deve purgar lista em kebab-case do base")
-    void redefinicaoDeListaEmCamelCaseDevePurgarKebabCaseDoBase() {
+    @DisplayName("Canonical List Purge: camelCase list redefinition in dev should purge kebab-case list from the base")
+    void camelCaseListRedefinitionShouldPurgeKebabCaseListFromBase() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("my-custom-list[0]", "item1");
         baseProps.put("my-custom-list[1]", "item2");
@@ -650,11 +651,37 @@ class ProfileMergerTest {
         assertFalse(dev.properties().containsKey("my-custom-list[1]"));
     }
 
+    @Test
+    @DisplayName("Overlay should override a scalar from the base even with different casing, without leaving both keys coexisting")
+    void overlayShouldOverrideBaseScalarWithDifferentCasingWithoutDuplicatingKey() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("spring.h2.console.enabled", "true");
+
+        Map<String, String> prodProps = new LinkedHashMap<>();
+        prodProps.put("spring.h2.console.ENABLED", "false"); // same property, different casing
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("prod"), prodProps)
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+        EffectiveConfig prod = findByLabel(result, "prod");
+
+        // The two keys should not coexist — only the resolution via
+        // RelaxedProperties would matter, but the goal here is to ensure that
+        // the merge already resolves this at the source, without relying on
+        // RelaxedProperties.get() to "choose correctly" between two remaining conflicting keys.
+        assertEquals(1, prod.properties().size(),
+                "Base and overlay represent the SAME Spring property — only one key should survive");
+        assertEquals("false", RelaxedProperties.get(prod.properties(), "spring.h2.console.enabled"),
+                "the profile value should take precedence over the inherited base value");
+    }
+
     private EffectiveConfig findByLabel(List<EffectiveConfig> configs, String label) {
         return configs.stream()
                 .filter(e -> e.profileLabel().equals(label))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("Nenhuma EffectiveConfig encontrada com label: " + label));
-    }
+                .orElseThrow(() -> new AssertionError("No EffectiveConfig found with label: " + label));    }
 
 }

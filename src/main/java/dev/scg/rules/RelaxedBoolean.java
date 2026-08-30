@@ -12,15 +12,17 @@ public final class RelaxedBoolean {
 
     public static boolean isTruthy(String value) {
         if (value == null) {
-            return false; // chave ausente — comportamento inalterado
+            return false; // missing key — unchanged behavior
         }
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
         if (resolved.isEmpty()) {
-            // Placeholder dinâmico sem default: valor real só existe em
-            // runtime, não é determinável em análise estática. Postura de
-            // segurança do projeto: assumir o pior caso (verdadeiro) em vez
-            // de silenciar um risco potencial.
+
+        // Dynamic placeholder without a default: the actual value only exists at
+        // runtime and cannot be determined through static analysis. Project security
+        // posture: assume the worst case (true) instead of suppressing a potential risk.
+
+
             return true;
         }
 

@@ -3,31 +3,32 @@ package dev.scg.core;
 import java.util.*;
 
 /**
- * Funde o documento base (sem profile) de um ConfigFile com cada documento
- * de profile nomeado, produzindo uma EffectiveConfig por profile encontrado
- * + sempre uma EffectiveConfig para o base sozinho ("nenhum profile ativo").
- *
- * ConfigLoader já garante que existe no máximo 1 ConfigDocument por rótulo
- * de profile (documentos duplicados do mesmo rótulo já foram fundidos entre
- * si lá). ProfileMerger não precisa lidar com esse caso — só combina base
- * com profile, um de cada vez.
- *
- * Regra de merge: chave escalar do profile sobrescreve a do base; uma lista
- * inteira (identificada pelo prefixo antes do primeiro '[') é SUBSTITUÍDA,
- * nunca mesclada índice a índice — reflete o comportamento real do Spring
- * em runtime, onde redefinir uma lista descarta a lista anterior por completo.
+ * Merges the base document (without a profile) from a ConfigFile with each
+ * named profile document, producing one EffectiveConfig per profile found
+ * + always one EffectiveConfig for the base alone ("no active profile").
+ * ConfigLoader already guarantees that there is at most 1 ConfigDocument per
+ * profile label (duplicate documents with the same label have already been
+ * merged there). ProfileMerger does not need to handle this case — it only
+ * combines the base with one profile at a time.
+ * <p>
+ * Merge rule: a scalar key from the profile overrides the one from the base;
+ * an entire list (identified by the prefix before the first '[') is REPLACED,
+ * never merged index by index — this reflects the actual Spring runtime
+ * behavior, where redefining a list discards the previous list completely.
  */
 public final class ProfileMerger {
 
-     /**
-     * Rótulo sintético usado para "nenhum profile ativo". Deliberadamente
-     * um nome improvável de colidir com um profile Spring real (BL-02):
-     * antes era a string simples "base", que colidia se algum profile real
-     * fosse nomeado literalmente "base" (sintaticamente válido no Spring,
-     * embora raro na prática). Pacote-visível de propósito, para que
-     * ProfileMergerTest referencie esta constante em vez de duplicar a
-     * string literal — evita o mesmo tipo de fragilidade se o valor mudar
-     * de novo no futuro.
+    /**
+     * Synthetic label used for "no active profile". Deliberately
+     * an unlikely name to collide with a real Spring profile (BL-02):
+     * previously it was the simple string "base", which could collide if a
+     * real profile were literally named "base" (syntactically valid in Spring,
+     * although rare in practice).
+     * <p>
+     * Package-visible by design, so that
+     * ProfileMergerTest references this constant instead of duplicating the
+     * string literal — avoiding the same kind of fragility if the value changes
+     * again in the future.
      */
     public static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
 
@@ -63,11 +64,11 @@ public final class ProfileMerger {
     }
 
     /**
-     * Funde base + overlay (documento de profile). Chaves escalares do
-     * overlay sobrescrevem as do base. Chaves de lista (formato "raiz[n]"
-     * ou "raiz[n].subchave") no overlay fazem a lista inteira daquela raiz
-     * ser REMOVIDA do base antes da sobreposição — não fica índice órfão
-     * do base misturado com índice novo do overlay.
+     * Merges base + overlay (profile document). Scalar keys from the
+     * overlay override those from the base. List keys (format "root[n]"
+     * or "root[n].subkey") in the overlay cause the entire list for that root
+     * to be REMOVED from the base before the overlay is applied — no orphaned
+     * base index is left mixed with the new overlay index.
      */
     private Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
         Map<String, String> merged = new LinkedHashMap<>(base);
@@ -92,14 +93,14 @@ public final class ProfileMerger {
                 } else if (key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)) {
                     String root = key.substring(0, key.length() - ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX.length());
                     canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(root));
-                } else if (isScalarRedefiningListInBase(key, base)) {
+                } else if (overlayKeyMatchesAnyBaseKeyCanonically(key, base)) {
                     canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(key));
                 }
             }
         }
 
-        // Purga canônica: remove chaves indexadas de listas ou sub-propriedades (ponto)
-        // herdadas do base que foram redefinidas no overlay
+        // Canonical purge: removes inherited indexed list keys or dot-separated sub-properties
+        // from the base that were redefined in the overlay
         merged.keySet().removeIf(baseKey -> {
             String canonicalBaseKey = RelaxedProperties.canonicalize(baseKey);
             String canonicalBaseRoot = extractCanonicalRoot(baseKey);
@@ -133,13 +134,29 @@ public final class ProfileMerger {
     }
 
     /**
-     * Detecta o cenário (b) do BL-03: overlayKey é uma chave escalar (sem
-     * '[') cujo nome coincide exatamente com uma raiz de lista já indexada
-     * no base (ex: overlayKey="cors.allowed-origins", e base tem
-     * "cors.allowed-origins[0]"). Isso sinaliza relaxed-binding redefinindo
-     * a lista inteira via string única.
+     * Checks whether the overlay key canonically matches ANY key
+     * already present in the base — not just keys that represented a list there.
+     * Deliberately covers two distinct scenarios:
+     * 1. BL-03(b): the overlay redefines as a scalar something that was a LIST
+     *    in the base (e.g., base has "cors.origins[0]"/"[1]", overlay defines
+     *    "cors.origins" as a single string — Spring's relaxed binding for List<String>).
+     * 2. The overlay redefines a pure scalar that is also a pure scalar in the base,
+     *    but with different casing (e.g., base "spring.h2.console.enabled",
+     *    overlay "spring.h2.console.ENABLED"). Without this check, merged.putAll(overlay)
+     *    would treat the two as DIFFERENT keys (String.equals is case-sensitive),
+     *    and the base key would survive alongside the overlay — RelaxedProperties.get()
+     *    could then return the wrong value (the base one) depending on the iteration
+     *    order of the LinkedHashMap. Empirically verified before this fix: without
+     *    this check covering the second case, the bug would actually manifest.
+     *    <p>
+     * The old name of this method (isScalarRedefiningListInBase) described only
+     * scenario 1 — but the implementation has always covered both, because
+     * extractCanonicalRoot() only removes brackets IF PRESENT; for a base key that
+     * is already scalar, the "canonical root" is the key itself. Renamed to
+     * reflect what the method actually does, preventing someone from "fixing" the
+     * implementation to match the old name and reintroducing the scenario 2 bug.
      */
-    private boolean isScalarRedefiningListInBase(String overlayKey, Map<String, String> base) {
+    private boolean overlayKeyMatchesAnyBaseKeyCanonically(String overlayKey, Map<String, String> base) {
         String canonicalOverlayKey = RelaxedProperties.canonicalize(overlayKey);
         return base.keySet().stream().anyMatch(baseKey -> {
             String canonicalBaseRoot = extractCanonicalRoot(baseKey);

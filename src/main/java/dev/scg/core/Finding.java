@@ -3,13 +3,14 @@ package dev.scg.core;
 import java.util.Comparator;
 
 /**
- * Representa um problema encontrado por uma regra.
- *
- * profileLabel identifica em qual configuração efetiva o achado ocorreu
- * ("base", "dev", "prod", etc) — nunca nulo ou vazio, mesma convenção
- * de EffectiveConfig.profileLabel(). Isso permite que a mesma regra,
- * rodando contra o mesmo arquivo, aponte problemas diferentes em
- * profiles diferentes sem ambiguidade na mensagem final.
+ * Represents an issue found by a rule.
+ * <p>
+ * profileLabel identifies which effective configuration the finding occurred in
+ * ("base", "dev", "prod", etc.) — never null or empty, following the same
+ * convention as EffectiveConfig.profileLabel(). This allows the same rule,
+ * when run against the same file, to report different issues in different
+ * profiles
+ * without ambiguity in the final message.
  */
 public record Finding(
         String ruleId,

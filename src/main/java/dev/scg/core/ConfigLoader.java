@@ -6,65 +6,69 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.error.YAMLException;
+
 import java.nio.charset.StandardCharsets;
 
 /**
- * Encontra e carrega arquivos de configuração do Spring Boot
- * (application*.properties / application*.yml / .yaml) dentro de um diretório,
- * achatando cada um em um (ou mais) Map<String,String> de chave dotted -> valor.
- *
- * Um arquivo YAML pode conter múltiplos documentos separados por "---", cada
- * um opcionalmente associado a um profile via spring.config.activate.on-profile.
- * loadYaml devolve um ConfigDocument por rótulo de profile ENCONTRADO no arquivo
- * (documentos sem profile — incluindo múltiplos deles — são todos fundidos no
- * mesmo "base"; documentos com o mesmo profile nomeado também se fundem entre si).
- *
- * Importante: este método NÃO funde base com profile — isso é responsabilidade
- * do ProfileMerger, que consome a List<ConfigDocument> produzida aqui.
+ * Finds and loads Spring Boot configuration files
+ * (application*.properties / application*.yml / .yaml) within a directory,
+ * flattening each one into one (or more) Map<String,String> of dotted key -> value.
+ * <p>
+ * A YAML file can contain multiple documents separated by "---", each
+ * optionally associated with a profile via spring.config.activate.on-profile.
+ * loadYaml returns one ConfigDocument per profile label FOUND in the file
+ * (documents without a profile — including multiple such documents — are all
+ * merged into the same "base"; documents with the same named profile are also
+ * merged together).
+ * <p>
+ * Important: this method does NOT merge base with profile — that is the
+ * responsibility of ProfileMerger, which consumes the List<ConfigDocument>
+ * produced here.
  */
 public final class ConfigLoader {
 
-    /** Chave de metadado do Spring que indica a qual profile um documento pertence. */
+    /** Spring metadata key indicating which profile a document belongs to. */
     private static final String ON_PROFILE_KEY = "spring.config.activate.on-profile";
 
-    /** Rótulo interno usado na estrutura de agrupamento para representar "sem profile" (base). */
+    /** Internal label used in the grouping structure to represent "no profile" (base). */
     private static final String BASE_LABEL = "";
 
     /**
-     * Sufixo de chave-sentinela emitido quando o YAML define uma lista
-     * EXPLICITAMENTE vazia (ex: "allowed-origins: []"). Sem isso, uma lista
-     * vazia produz zero chaves achatadas — indistinguível de "a chave nunca
-     * foi mencionada" — e o ProfileMerger não teria como saber que o profile
-     * queria limpar a lista herdada do base (BL-03, cenário a).
-     *
-     * Pacote-visível de propósito: ProfileMerger precisa reconhecer e depois
-     * remover essa chave antes de expor o resultado a qualquer Rule — ela é
-     * um sinal interno de infraestrutura, não dado de configuração real.
+     * Sentinel key suffix emitted when YAML explicitly defines an
+     * EMPTY list (e.g., "allowed-origins: []"). Without this, an empty
+     * list produces zero flattened keys — indistinguishable from "the key was
+     * never mentioned" — and ProfileMerger would have no way to know that the
+     * profile intended to clear the list inherited from the base (BL-03, scenario a).
+     * <p>
+     * Package-visible by design: ProfileMerger needs to recognize and then
+     * remove this key before exposing the result to any Rule — it is an
+     * internal infrastructure signal, not actual configuration data.
      */
     static final String EMPTY_LIST_SENTINEL_SUFFIX = ".__empty_list__";
 
     /**
-     * BL-08: sufixo de chave-sentinela para Map/objeto YAML explicitamente
-     * vazio (ex: "headers: {}"). Emitida no flatten() pelo mesmo motivo da
-     * sentinela de lista — um Map vazio não deixa rastro no mapa achatado
-     * sem isso.
-     *
-     * DIFERENÇA CRUCIAL em relação a EMPTY_LIST_SENTINEL_SUFFIX: esta
-     * sentinela é SÓ INFORMATIVA. Ela NUNCA aciona purga no ProfileMerger,
-     * porque Map e List se comportam DIFERENTE entre profiles no Spring
-     * real:
-     *   - List: o profile de maior prioridade SUBSTITUI a lista inteira
-     *     (documentado oficialmente) — por isso a sentinela de lista aciona
-     *     purga dos índices órfãos do base.
-     *   - Map: as chaves são compostas de MÚLTIPLAS fontes — cada chave
-     *     sobrevive ou é sobrescrita individualmente, nunca o objeto inteiro
-     *     de uma vez (também documentado oficialmente). "headers: {}" num
-     *     profile NÃO apaga as sub-chaves que o base já definiu.
-     *
-     * Se um dia alguém for "completar a analogia" com a lista e adicionar
-     * purga aqui, isso introduziria um bug: o merge passaria a divergir do
-     * comportamento real do Spring, potencialmente escondendo (falso
-     * negativo) configuração perigosa que o Spring de verdade manteria.
+     * BL-08: sentinel key suffix for an explicitly empty YAML Map/object
+     * (e.g., "headers: {}"). Emitted by flatten() for the same reason as the
+     * list sentinel — an empty Map leaves no trace in the flattened map
+     * without it.
+     * <p>
+     * CRUCIAL DIFFERENCE from EMPTY_LIST_SENTINEL_SUFFIX: this sentinel is
+     * INFORMATIONAL ONLY. It NEVER triggers purging in ProfileMerger,
+     * because Map and List behave DIFFERENTLY across profiles in actual Spring
+     * behavior:
+     *   - List: the higher-priority profile REPLACES the entire list
+     *     (officially documented) — therefore the list sentinel triggers
+     *     purging of orphaned base indices.
+     *   - Map: keys are composed from MULTIPLE sources — each key survives
+     *     or is overridden individually, never the entire object at once
+     *     (also officially documented). "headers: {}" in a profile does NOT
+     *     remove sub-keys already defined by the base.
+     * <p>
+     * If someone ever tries to "complete the analogy" with the list and adds
+     * purging here, it would introduce a bug: the merge would then diverge from
+     * actual Spring behavior, potentially hiding (false negative) dangerous
+     * configuration that Spring itself would actually retain.
      */
     static final String  EMPTY_MAP_SENTINEL_SUFFIX = ".__empty_map__";
 
@@ -100,22 +104,22 @@ public final class ConfigLoader {
     private List<ConfigDocument> loadProperties(Path p) throws IOException {
         List<String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
 
-        // Estrutura intermediária para agrupar documentos pelo profile
+        // Intermediate structure for grouping documents by profile
         Map<String, List<Map<String, String>>> groupedByLabel = new LinkedHashMap<>();
 
         StringBuilder currentDocBuilder = new StringBuilder();
 
         for (String line : lines) {
-            // O Spring Boot exige que o separador seja exatamente '#---' ou "!---"
-            // (ignorando espaços nas pontas) (docs do Spring Boot)
+            // Spring Boot requires the separator to be exactly '#---' or "!---"
+            // (ignoring surrounding whitespace) (Spring Boot docs)
             if (line.trim().equals("#---") || line.trim().equals("!---"))  {
                 processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
-                currentDocBuilder.setLength(0); // Limpa o buffer para o próximo documento
+                currentDocBuilder.setLength(0); // Clear the buffer for the next document
             } else {
                 currentDocBuilder.append(line).append("\n");
             }
         }
-        // Processa o último (ou único) bloco do arquivo
+        // Process the last (or only) block of the file
         processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
 
         return buildConfigDocuments(groupedByLabel);
@@ -141,16 +145,16 @@ public final class ConfigLoader {
             flatDocument.put(name, props.getProperty(name));
         }
 
-         // Extrai o profile usando relaxed binding — spring.config.activate.on-profile,
-        // onProfile, ON_PROFILE etc. são a mesma chave para o Spring real.
+        // Extracts the profile using relaxed binding — spring.config.activate.on-profile,
+        // onProfile, ON_PROFILE, etc. are the same key for the actual Spring implementation.
         Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
         String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
         String label = (profileValue == null || profileValue.isBlank())
                 ? BASE_LABEL
                 : profileValue.strip();
 
-        // Remove a chave de infraestrutura REAL (pode não ser o literal ON_PROFILE_KEY)
-        // para não poluir as regras de linting
+        // Remove the actual infrastructure key (it may not be the literal ON_PROFILE_KEY)
+        // to avoid polluting the linting rules
         onProfileActualKey.ifPresent(flatDocument::remove);
 
         groupedByLabel
@@ -169,7 +173,7 @@ public final class ConfigLoader {
 
             Map<String, String> merged = new LinkedHashMap<>();
             for (Map<String, String> flatDocument : mapsForLabel) {
-                merged.putAll(flatDocument); // Último valor ganha em caso de chaves duplicadas no mesmo perfil
+                merged.putAll(flatDocument); // Last value wins in case of duplicate keys within the same profile
             }
 
             Optional<String> profile = label.equals(BASE_LABEL)
@@ -179,7 +183,7 @@ public final class ConfigLoader {
             result.add(new ConfigDocument(profile, merged));
         }
 
-        // Mantém o invariante: todo ConfigFile possui ao menos 1 ConfigDocument
+        // Maintains the invariant: every ConfigFile has at least 1 ConfigDocument
         if (result.isEmpty()) {
             result.add(new ConfigDocument(Optional.empty(), new LinkedHashMap<>()));
         }
@@ -188,30 +192,31 @@ public final class ConfigLoader {
     }
 
     /**
-     * Carrega um arquivo YAML que pode conter múltiplos documentos ("---"),
-     * devolvendo um ConfigDocument por rótulo de profile distinto encontrado.
-     *
-     * Passo A/B/C (por documento bruto): achata, extrai spring.config.activate.on-profile
-     * (tratando ausente/vazio como base, ponto de risco 5 — TODO warning fica pra quando
-     * mexermos em Finding), remove a chave de metadado do mapa achatado (ponto de risco 4).
-     *
-     * Passo D (agrupamento): documentos com o MESMO rótulo (incluindo múltiplos "base")
-     * são fundidos entre si, na ordem em que aparecem no arquivo — último valor de
-     * chave duplicada vence, mesma regra que já usamos pra chave duplicada dentro
-     * de um único documento.
+     * Loads a YAML file that may contain multiple documents ("---"),
+     * returning one ConfigDocument per distinct profile label found.
+     * <p>
+     * Step A/B/C (per raw document): flattens, extracts
+     * spring.config.activate.on-profile (treating missing/empty as base,
+     * risk point 5 — TODO warning for when we work on Finding), removes
+     * the metadata key from the flattened map (risk point 4).
+     * <p>
+     * Step D (grouping): documents with the SAME label (including multiple "base"
+     * documents) are merged together, in the order they appear in the file —
+     * the last value for a duplicate key wins, the same rule already used
+     * for duplicate keys within a single document.
      */
     private List<ConfigDocument> loadYaml(Path p) throws IOException {
         try (var in = Files.newInputStream(p)) {
             Yaml yaml = new Yaml();
             Iterable<Object> rawDocuments = yaml.loadAll(in);
 
-            // LinkedHashMap preserva a ordem de PRIMEIRA aparição de cada rótulo no arquivo.
+            // LinkedHashMap preserves the order of FIRST appearance of each label in the file.
             Map<String, List<Map<String, String>>> groupedByLabel = new LinkedHashMap<>();
 
             for (Object rawDocument : rawDocuments) {
                 if (rawDocument == null) {
-                    // Ponto de risco 1: documento vazio (ex: "---" sozinho no fim do arquivo).
-                    // Não gera ConfigDocument nenhum — simplesmente ignoramos.
+                    // Risk point 1: empty document (e.g., "---" alone at the end of the file).
+                    // It does not generate any ConfigDocument — we simply ignore it.
                     continue;
                 }
 
@@ -224,12 +229,13 @@ public final class ConfigLoader {
                         ? BASE_LABEL
                         : profileValue.strip();
 
-                // Ponto de risco 4: remove o metadado do mapa de dados — quem consome
-                // o ConfigDocument não deveria enxergar essa chave como se fosse uma
-                // propriedade de negócio comum. Remove a chave REAL encontrada (pode ser
-                // on-profile, onProfile, ON_PROFILE etc.), não a constante literal —
-                // relaxed binding aplicado também na detecção do próprio metadado de
-                // ativação de profile.
+                // Risk point 4: removes the metadata from the data map — consumers of
+                // ConfigDocument should not see this key as if it were a regular business
+                // property. Removes the ACTUAL key found (it may be on-profile, onProfile,
+                // ON_PROFILE, etc.), not the literal constant —
+                // relaxed binding is also applied when detecting the profile activation
+                // metadata itself.
+
                 onProfileActualKey.ifPresent(flatDocument::remove);
 
                 groupedByLabel
@@ -239,7 +245,19 @@ public final class ConfigLoader {
 
             return buildConfigDocuments(groupedByLabel);
 
-        }
+        }  catch (YAMLException e) {
+
+        // SnakeYAML parsing is lazy (it happens during iteration of the for loop
+        // above, not in loadAll() itself), so YAMLException — which is a
+        // RuntimeException, not IOException — may be thrown here and
+        // would propagate unhandled to Main.main() without this catch. Translated
+        // to IOException here, at the source, so Main can continue relying solely
+        // on the IOException contract it already knows how to handle (USAGE_ERROR,
+        // readable message) — without having to catch generic RuntimeException there,
+        // which would hide real bugs behind the same usage-error message.
+
+        throw new IOException("YAML inválido em '%s': %s".formatted(p, e.getMessage()), e);
+    }
     }
 
     private void flatten(Object yamlNode,
@@ -272,10 +290,10 @@ public final class ConfigLoader {
         } else if (yamlNode instanceof List<?> list) {
 
             if (list.isEmpty()) {
-                // BL-03 (cenário a): lista explicitamente vazia não deixa
-                // rastro nenhum se simplesmente não iterarmos nada. Emitimos
-                // uma sentinela pra ProfileMerger conseguir distinguir
-                // "profile redefiniu como vazia" de "profile nem mencionou".
+            // BL-03 (scenario a): an explicitly empty list leaves
+            // no trace if we simply iterate over nothing. Emit
+            // a sentinel so ProfileMerger can distinguish
+            // "profile redefined as empty" from "profile did not mention it at all".
                 flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
             } else {
                 for (int i = 0; i < list.size(); i++) {

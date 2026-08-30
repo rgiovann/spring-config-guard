@@ -8,8 +8,6 @@ import dev.scg.core.*;
 import dev.scg.report.ConsoleReporter;
 import dev.scg.report.JsonReporter;
 import dev.scg.report.Reporter;
-import dev.scg.rules.ActuatorExposureRule;
-import dev.scg.rules.H2ConsoleExposedRule;
 
 import java.io.IOException;
 import java.nio.file.Files;

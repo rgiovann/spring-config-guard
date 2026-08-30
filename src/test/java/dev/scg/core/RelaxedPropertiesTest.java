@@ -1,5 +1,6 @@
 package dev.scg.core;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -8,22 +9,26 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+
 class RelaxedPropertiesTest {
 
     @Test
-    void canonicalizeDeveRemoverHifenESublinhadoEConverterParaMinusculas() {
+    @DisplayName("Canonicalize should remove hyphens and underscores and convert to lowercase")
+    void canonicalizeShouldRemoveHyphensAndUnderscoresAndConvertToLowercase() {
         assertThat(RelaxedProperties.canonicalize("spring.jpa.database-platform"))
                 .isEqualTo(RelaxedProperties.canonicalize("spring.jpa.databasePlatform"))
                 .isEqualTo(RelaxedProperties.canonicalize("spring.JPA.database_platform"));
     }
 
     @Test
-    void canonicalizeDevePreservarPontosComoSeparadorEstrutural() {
+    @DisplayName("Canonicalize should preserve dots as structural separators")
+    void canonicalizeShouldPreserveDotsAsStructuralSeparators() {
         assertThat(RelaxedProperties.canonicalize("a.b.c")).isEqualTo("a.b.c");
     }
 
     @Test
-    void getDeveEncontrarValorIndependenteDoEstiloDeEscrita() {
+    @DisplayName("Get should find the value regardless of writing style")
+    void getShouldFindValueRegardlessOfWritingStyle() {
         Map<String, String> properties = Map.of("spring.h2.console.settings.webAllowOthers", "true");
 
         assertThat(RelaxedProperties.get(properties, "spring.h2.console.settings.web-allow-others"))
@@ -31,13 +36,15 @@ class RelaxedPropertiesTest {
     }
 
     @Test
-    void getDeveRetornarNullQuandoChaveNaoExiste() {
+    @DisplayName("Get should return null when the key does not exist")
+    void getShouldReturnNullWhenKeyDoesNotExist() {
         assertThat(RelaxedProperties.get(Map.of("outra.chave", "x"), "spring.h2.console.enabled"))
                 .isNull();
     }
 
     @Test
-    void valuesForKeyOrListChildrenDeveIncluirFormaEscalarEIndexada() {
+    @DisplayName("ValuesForKeyOrListChildren should include scalar and indexed forms")
+    void valuesForKeyOrListChildrenShouldIncludeScalarAndIndexedForms() {
         Map<String, String> properties = new LinkedHashMap<>();
         properties.put("management.endpoints.web.exposure.include[0]", "health");
         properties.put("management.endpoints.web.exposure.include[1]", "*");
@@ -48,7 +55,8 @@ class RelaxedPropertiesTest {
     }
 
     @Test
-    void findActualKeyDeveRetornarAChaveRealNaoALiteralBuscada() {
+    @DisplayName("FindActualKey should return the actual key, not the searched literal")
+    void findActualKeyShouldReturnActualKeyNotSearchedLiteral() {
         Map<String, String> properties = Map.of("spring.config.activate.onProfile", "prod");
 
         Optional<String> actualKey = RelaxedProperties.findActualKey(properties,
@@ -58,7 +66,9 @@ class RelaxedPropertiesTest {
     }
 
     @Test
-    void findActualKeyDeveRetornarVazioQuandoNaoExiste() {
+    @DisplayName("FindActualKey should return empty when the key does not exist")
+    void findActualKeyShouldReturnEmptyWhenKeyDoesNotExist() {
         assertThat(RelaxedProperties.findActualKey(Map.of(), "qualquer.chave")).isEmpty();
     }
 }
+

@@ -30,8 +30,8 @@ public final class EnvironmentPlaceholder {
 
             int end = findMatchingBrace(text, start + PREFIX.length());
             if (end < 0) {
-                // "${" sem fechamento correspondente: trata o restante como
-                // literal, não é sintaxe de placeholder válida.
+                // "${" without a corresponding closing delimiter: treat the remainder as
+                // literal; it is not valid placeholder syntax.
                 result.append(text, start, text.length());
                 return Optional.of(result.toString());
             }
@@ -39,7 +39,7 @@ public final class EnvironmentPlaceholder {
             String body = text.substring(start + PREFIX.length(), end);
             Optional<String> resolvedPlaceholder = resolvePlaceholderBody(body);
             if (resolvedPlaceholder.isEmpty()) {
-                return Optional.empty(); // qualquer placeholder sem default -> valor indeterminado
+                return Optional.empty(); // any placeholder without a default -> indeterminate value
             }
             result.append(resolvedPlaceholder.get());
             i = end + 1;
@@ -50,13 +50,13 @@ public final class EnvironmentPlaceholder {
     private static Optional<String> resolvePlaceholderBody(String body) {
         int separatorIndex = findTopLevelSeparator(body);
         if (separatorIndex < 0) {
-            return Optional.empty(); // sem default -> não determinável estaticamente
+            return Optional.empty(); // no default -> cannot be determined statically
         }
         String defaultExpression = body.substring(separatorIndex + 1);
-        return resolveSegment(defaultExpression); // default pode conter placeholder aninhado
+        return resolveSegment(defaultExpression); // default may contain a nested placeholder
     }
 
-    /** Profundidade de chaves: só conta '{' como abertura de novo placeholder se vier logo após '$'. */
+    /** Key depth: only count '{' as opening a new placeholder if it immediately follows '$'. */
     private static int findMatchingBrace(String text, int fromIndex) {
         int depth = 1;
         for (int i = fromIndex; i < text.length(); i++) {

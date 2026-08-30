@@ -3,14 +3,14 @@ package dev.scg.core;
 import java.util.List;
 
 /**
- * Contrato que toda regra de verificação implementa.
- *
- * Recebe o EffectiveConfig inteiro (não parâmetros soltos) por dois
- * motivos: (1) evita Long Parameter List conforme o contexto cresce
- * (hoje já são 3 informações: arquivo, profile, propriedades); (2)
- * Open/Closed — adicionar um campo novo em EffectiveConfig no futuro
- * não exige alterar a assinatura deste método, nem recompilar/tocar
- * em regras que não usam o campo novo.
+ * Contract that every validation rule implements.
+ * <p>
+ * Receives the entire EffectiveConfig (rather than separate parameters) for two
+ * reasons: (1) it avoids a Long Parameter List as the context grows
+ * (there are already 3 pieces of information today: file, profile, properties);
+ * (2) Open/Closed — adding a new field to EffectiveConfig in the future
+ * does not require changing this method's signature, nor recompiling or touching
+ * rules that do not use the new field.
  */
 public interface Rule {
 

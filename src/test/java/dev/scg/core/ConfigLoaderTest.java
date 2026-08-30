@@ -13,17 +13,17 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Testes do parser YAML manual em ConfigLoader.loadYaml.
- * Cada teste isola um comportamento específico da lógica de indentação
- * (pilha), separação de comentários, ou tratamento de valores — para que,
- * se algum deles quebrar no futuro (ex: ao refatorar pra usar snakeyaml),
- * fique óbvio exatamente qual comportamento regrediu.
+ * Tests for the manual YAML parser in ConfigLoader.loadYaml.
+ * Each test isolates a specific behavior of the indentation logic
+ * (stack), comment separation, or value handling — so that,
+ * if any of them breaks in the future (e.g., when refactoring to use snakeyaml),
+ * it is obvious exactly which behavior regressed.
  */
 class ConfigLoaderTest {
 
     @Test
-    @DisplayName("Deve achatar o YAML mesmo com níveis de indentação complexos")
-    void deveAchatarYamlComNiveisDeIndentacaoComplexos(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should flatten YAML even with complex indentation levels")
+    void shouldFlattenYamlWithComplexIndentationLevels(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 server:
                   port: 8080
@@ -36,8 +36,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve achatar múltiplos níveis de aninhamento no YAML")
-    void deveAchatarMultiplosNiveisDeAninhamento(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should flatten multiple levels of nesting in YAML")
+    void shouldFlattenMultipleLevelsOfNesting(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
                   database:
@@ -49,77 +49,77 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve desempilhar múltiplos níveis de aninhamento ao retornar para a raiz no YAML")
-    void deveDesempilharMultiplosNiveisDeUmaVezAoVoltarParaRaiz(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should pop multiple nesting levels when returning to the YAML root")
+    void shouldPopMultipleNestingLevelsAtOnceWhenReturningToRoot(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 a:
                   b:
                     c:
-                      d: valor
-                e: outro
+                      d: value
+                e: another
                 """);
 
-        assertEquals("valor", values.get("a.b.c.d"));
-        assertEquals("outro", values.get("e"));
+        assertEquals("value", values.get("a.b.c.d"));
+        assertEquals("another", values.get("e"));
     }
 
     @Test
-    @DisplayName("Deve ignorar linhas em branco e comentários ao processar o arquivo")
-    void deveIgnorarComentariosELinhasEmBranco(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should ignore blank lines and comments when processing the file")
+    void shouldIgnoreCommentsAndBlankLines(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
-                # Comentario de topo
-                servidor:
-                  # Comentario de bloco
-                  porta: 8080 # porta principal
+                # Top comment
+                server:
+                  # Block comment
+                  port: 8080 # main port
 
                   host: localhost
                 """);
 
-        assertEquals("8080", values.get("servidor.porta"));
-        assertEquals("localhost", values.get("servidor.host"));
+        assertEquals("8080", values.get("server.port"));
+        assertEquals("localhost", values.get("server.host"));
     }
 
     @Test
-    @DisplayName("Deve remover aspas e espaços extras das extremidades dos valores")
-    void deveLimparAspasEEspacosExtrasDosValores(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should remove quotes and extra spaces from the ends of values")
+    void shouldTrimQuotesAndExtraSpacesFromValues(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
-                  nome:   "Meu Sistema"
-                  versao: '1.0.0'
+                  name:   "My System"
+                  version: '1.0.0'
                 """);
 
-        assertEquals("Meu Sistema", values.get("app.nome"));
-        assertEquals("1.0.0", values.get("app.versao"));
+        assertEquals("My System", values.get("app.name"));
+        assertEquals("1.0.0", values.get("app.version"));
     }
 
     @Test
-    @DisplayName("Deve manter os dois-pontos (:) como parte do valor quando estiverem dentro de uma String no YAML")
-    void deveTratarDoisPontosDentroDoValorComoParteDoValor(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should keep colons (:) as part of the value when they are inside a String in YAML")
+    void shouldTreatColonsInsideTheValueAsPartOfTheValue(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
-                servidor:
-                  url: https://api.exemplo.com:443/v1
-                  horario: "10:30"
+                server:
+                  url: https://api.example.com:443/v1
+                  time: "10:30"
                 """);
 
-        assertEquals("https://api.exemplo.com:443/v1", values.get("servidor.url"));
-        assertEquals("10:30", values.get("servidor.horario"));
+        assertEquals("https://api.example.com:443/v1", values.get("server.url"));
+        assertEquals("10:30", values.get("server.time"));
     }
 
     @Test
-    @DisplayName("Deve retornar um mapa vazio ao processar um arquivo contendo apenas comentários")
-    void deveRetornarMapaVazioParaArquivoSoComComentarios(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should return an empty map when processing a file containing only comments")
+    void shouldReturnEmptyMapForFileContainingOnlyComments(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
-                # Apenas comentarios
+                # Only comments
 
-                # Outro comentario
+                # Another comment
                 """);
 
         assertTrue(values.isEmpty());
     }
 
     @Test
-    @DisplayName("Não deve gerar entrada no mapa para uma chave pai que não possui filhos no YAML")
-    void chavePaiSemFilhosNaoDeveGerarEntradaNoMapa(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should not create a map entry for a parent key that has no children in YAML")
+    void parentKeyWithoutChildrenShouldNotCreateMapEntry(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 banco:
                   host: localhost
@@ -127,14 +127,14 @@ class ConfigLoaderTest {
                 """);
 
         assertEquals("localhost", values.get("banco.host"));
-        assertFalse(values.containsKey("config"), "chave pai sem filhos não deveria virar entrada com valor vazio");
+        assertFalse(values.containsKey("config"), "parent key without children should not become an entry with an empty value");
     }
 
     @Test
-    @DisplayName("Deve concatenar corretamente uma chave já pontilhada ao prefixo do nó pai no YAML")
-    void deveConcatenarChaveJaPontilhadaComPrefixoDeAninhamento(@TempDir Path tempDir) throws IOException {
-        // Padrão comum em config Spring real: misturar "server.port: 8080" (chave já
-        // dotted, uma linha só) com blocos aninhados de verdade no mesmo arquivo.
+    @DisplayName("Should correctly concatenate an already dotted key with the parent node prefix in YAML")
+    void shouldConcatenateAlreadyDottedKeyWithNestingPrefix(@TempDir Path tempDir) throws IOException {
+        // Common pattern in real Spring config: mixing "server.port: 8080" (already
+        // dotted, single-line key) with actual nested blocks in the same file.
         Map<String, String> values = parse(tempDir, """
                 server.port: 8080
                 management:
@@ -147,10 +147,10 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve resetar o caminho das chaves ao alternar entre blocos irmãos no YAML")
-    void deveResetarCaminhoDeChaveEntreBlocosIrmaos(@TempDir Path tempDir) throws IOException {
-        // Diferente do caso de dedent linear: aqui dois blocos filhos do MESMO pai
-        // aparecem em sequência. Garante que o keyStack não "vaza" moduleA para moduleB.
+    @DisplayName("Should reset the key path when switching between sibling blocks in YAML")
+    void shouldResetKeyPathBetweenSiblingBlocks(@TempDir Path tempDir) throws IOException {
+        // Unlike the linear dedent case: here two child blocks of the SAME parent
+        // appear in sequence. Ensures that keyStack does not "leak" moduleA into moduleB.
         Map<String, String> values = parse(tempDir, """
                 app:
                   moduleA:
@@ -164,22 +164,22 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve sobrescrever o valor mantendo a última ocorrência quando houver chave duplicada no mesmo nível")
-    void chaveDuplicadaNoMesmoNivelDeveUsarUltimoValor(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should overwrite the value, keeping the last occurrence when there is a duplicate key at the same level")
+    void duplicateKeyAtSameLevelShouldUseLastValue(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
-                  name: Primeiro
-                  name: Segundo
+                  name: First
+                  name: Second
                 """);
 
-        assertEquals("Segundo", values.get("app.name"));
+        assertEquals("Second", values.get("app.name"));
     }
 
     @Test
-    @DisplayName("Deve diferenciar uma String vazia explícita com aspas de um nó pai sem valor no YAML")
-    void stringVaziaExplicitaComAspasDeveDiferenciarDeNoPaiSemValor(@TempDir Path tempDir) throws IOException {
-        // "" (com aspas) é um VALOR válido (string vazia). É diferente de uma chave
-        // pai sem filhos (como no teste chavePaiSemFilhosNaoDeveGerarEntradaNoMapa).
+    @DisplayName("Should distinguish an explicit quoted empty String from a parent node without a value in YAML")
+    void explicitQuotedEmptyStringShouldDifferFromParentNodeWithoutValue(@TempDir Path tempDir) throws IOException {
+        // "" (with quotes) is a valid VALUE (empty string). It differs from a parent key
+        // pai sem filhos (como no teste parentKeyWithoutChildrenShouldNotCreateMapEntry).
         Map<String, String> values = parse(tempDir, """
                 app:
                   description: ""
@@ -193,10 +193,10 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve processar corretamente arquivos YAML com níveis de indentação não padronizados")
-    void deveFuncionarComLargurasDeIndentacaoNaoPadronizadas(@TempDir Path tempDir) throws IOException {
-        // YAML não exige indentação de largura fixa — só exige que filhos tenham
-        // indentação MAIOR que o pai. A pilha compara indent relativo, não múltiplos de 2.
+    @DisplayName("Should correctly process YAML files with non-standard indentation levels")
+    void shouldWorkWithNonStandardIndentationWidths(@TempDir Path tempDir) throws IOException {
+        // YAML does not require fixed-width indentation — it only requires that children have
+        // indentation GREATER than the parent. The stack compares relative indentation, not multiples of 2.
         Map<String, String> values = parse(tempDir, """
                 app:
                       database:
@@ -207,8 +207,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve converter uma lista de valores simples em chaves indexadas [0], [1] no YAML")
-    void deveSuportarListaDeValoresSimplesComoChavesIndexadas(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should convert a list of simple values into indexed keys [0], [1] in YAML")
+    void shouldSupportListOfSimpleValuesAsIndexedKeys(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             app:
               tags:
@@ -223,48 +223,48 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve resetar os índices [0], [1] para cada nova lista encontrada no YAML")
-    void duasListasSeguidasDevemResetarIndiceEntreElas(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should reset indices [0], [1] for each new list found in YAML")
+    void twoConsecutiveListsShouldResetIndexBetweenThem(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             app:
-              primeira:
+              first:
                 - a
                 - b
-              segunda:
+              second:
                 - x
                 - y
                 - z
             """);
 
-        assertEquals("a", values.get("app.primeira[0]"));
-        assertEquals("b", values.get("app.primeira[1]"));
-        assertEquals("x", values.get("app.segunda[0]"));
-        assertEquals("z", values.get("app.segunda[2]"));
+        assertEquals("a", values.get("app.first[0]"));
+        assertEquals("b", values.get("app.first[1]"));
+        assertEquals("x", values.get("app.second[0]"));
+        assertEquals("z", values.get("app.second[2]"));
     }
 
     @Test
-    @DisplayName("Deve manter o caractere hash (#) no valor quando estiver entre aspas no YAML")
-    void hashDentroDeAspasDeveSerPreservado(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should preserve the hash character (#) in the value when it is inside quotes in YAML")
+    void hashInsideQuotesShouldBePreserved(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
                 app:
                   password: "secr3t#123"
                 """);
 
-        // Comportamento ATUAL (incorreto): o valor fica truncado e com aspa sobrando.
+        // CURRENT behavior (incorrect): the value is truncated and has a leftover quote.
         assertEquals("secr3t#123", values.get("app.password"),
-                "Deveria ter preservado hash dentro de aspas.");
+                "Should have preserved the hash inside quotes.");
     }
 
     @Test
-    @DisplayName("Deve carregar e processar corretamente um arquivo .properties válido")
+    @DisplayName("Should correctly load and process a valid .properties file")
     void shouldLoadPropertiesFileCorrectly(@TempDir Path tempDir) throws IOException {
-        // 1. Arrange: Cria o arquivo application.properties temporário
+        // 1. Arrange: Creates the temporary application.properties file
         Path propertiesFile = tempDir.resolve("application.properties");
         String content = """
-            # Comentário que deve ser ignorado
+            # Comment that should be ignored
             server.port=8080
             spring.datasource.url: jdbc:postgresql://localhost:5432/db
-            app.description = Aplicação de Teste
+            app.description = Test Application
             """;
         Files.writeString(propertiesFile, content);
 
@@ -273,8 +273,8 @@ class ConfigLoaderTest {
         // 2. Act
         List<ConfigFile> configFiles = configLoader.loadDirectory(tempDir);
 
-        // 3. Assert (usando org.junit.jupiter.api.Assertions.*)
-        assertEquals(1, configFiles.size(), "Deveria ter encontrado exatamente 1 arquivo");
+        // 3. Assert (using org.junit.jupiter.api.Assertions.*)
+        assertEquals(1, configFiles.size(), "Should have found exactly 1 file");
 
         ConfigFile configFile = configFiles.getFirst();
         assertEquals(propertiesFile, configFile.path());
@@ -284,11 +284,11 @@ class ConfigLoaderTest {
         assertNotNull(properties);
         assertEquals("8080", properties.get("server.port"));
         assertEquals("jdbc:postgresql://localhost:5432/db", properties.get("spring.datasource.url"));
-        assertEquals("Aplicação de Teste", properties.get("app.description"));
+        assertEquals("Test Application", properties.get("app.description"));
     }
 
     @Test
-    @DisplayName("Deve carregar arquivos .properties e .yml do mesmo diretório")
+    @DisplayName("Should load .properties and .yml files from the same directory")
     void shouldLoadBothYamlAndPropertiesFilesFromDirectory(@TempDir Path tempDir) throws IOException {
         // Arrange
         Path propFile = tempDir.resolve("application.properties");
@@ -303,11 +303,11 @@ class ConfigLoaderTest {
         List<ConfigFile> configFiles = configLoader.loadDirectory(tempDir);
 
         // Assert
-        assertEquals(2, configFiles.size(), "Deveria ter carregado 2 arquivos de configuração");
+        assertEquals(2, configFiles.size(), "Should have loaded 2 configuration files");
     }
 
     @Test
-    @DisplayName("Deve carregar e achatar listas no YAML com notação de índice [0], [1]")
+    @DisplayName("Should load and flatten YAML lists with index notation [0], [1]")
     void shouldFlattenYamlListsWithIndexNotation(@TempDir Path tempDir) throws IOException {
         String content = """
             spring:
@@ -333,21 +333,21 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve processar arquivo YAML vazio sem lançar exceções")
+    @DisplayName("Should process an empty YAML file without throwing exceptions")
     void shouldHandleEmptyYamlFileWithoutExceptions(@TempDir Path tempDir) throws IOException {
         Map<String, String> props = parse(tempDir, "");
 
-        assertTrue(props.isEmpty(), "O mapa de propriedades para YAML vazio deve ser vazio");
+        assertTrue(props.isEmpty(), "The property map for empty YAML should be empty");
     }
 
     @Test
-    @DisplayName("Deve carregar arquivo .properties preservando caracteres e acentuação em UTF-8")
+    @DisplayName("Should load a .properties file preserving characters and accents in UTF-8")
     void shouldLoadPropertiesFileWithUtf8Encoding(@TempDir Path tempDir) throws IOException {
         Path propFile = tempDir.resolve("application.properties");
         String content = """
-            # Configurações com acentos
+            # Configuration with accents
             server.port=8080
-            app.description=Aplicação de Teste com Acentuação
+            app.description=Test Application com Acentuação
             app.empty-value=
             """;
         Files.writeString(propFile, content);
@@ -358,25 +358,25 @@ class ConfigLoaderTest {
         Map<String, String> props = result.getFirst().documents().getFirst().properties();
 
         assertEquals("8080", props.get("server.port"));
-        assertEquals("Aplicação de Teste com Acentuação", props.get("app.description"));
+        assertEquals("Test Application com Acentuação", props.get("app.description"));
         assertEquals("", props.get("app.empty-value"));
     }
 
     @Test
-    @DisplayName("Deve ignorar arquivos que não seguem a convenção application*.properties/yml/yaml")
+    @DisplayName("Should ignore files that do not follow the application*.properties/yml/yaml convention")
     void shouldIgnoreNonSpringConfigFiles(@TempDir Path tempDir) throws IOException {
-        Files.writeString(tempDir.resolve("readme.txt"), "instrucoes=true");
+        Files.writeString(tempDir.resolve("readme.txt"), "instructions=true");
         Files.writeString(tempDir.resolve("config.yml"), "server:\n  port: 8080");
         Files.writeString(tempDir.resolve("application.json"), "{}");
 
         List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
 
-        assertTrue(result.isEmpty(), "Nenhum arquivo fora da convenção do Spring deveria ser carregado");
+        assertTrue(result.isEmpty(), "No file outside the Spring convention should be loaded");
     }
 
     @Test
-    @DisplayName("Deve achatar lista de mapas (Nível B) automaticamente via snakeyaml")
-    void deveSuportarListaDeMapasComSnakeyaml(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should automatically flatten a list of maps (Level B) via snakeyaml")
+    void shouldSupportListOfMapsWithSnakeyaml(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             cors:
               origins:
@@ -393,20 +393,20 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Documento YAML vazio ou ausente após separador '---' não deve quebrar o parsing")
-    void documentoVazioAposUltimoSeparadorNaoDeveQuebrar(@TempDir Path tempDir) throws IOException {
-        // Sub-caso A: "---" sozinho no fim do arquivo (documento fantasma no final)
+    @DisplayName("Empty or missing YAML document after separator '---' should not break parsing")
+    void emptyDocumentAfterLastSeparatorShouldNotBreakParsing(@TempDir Path tempDir) throws IOException {
+        // Sub-case A: "---" alone at the end of the file (ghost document at the end)
         List<ConfigDocument> docsA = parseYaml(tempDir, "caseA", """
             server:
               port: 8080
             ---
             """);
 
-        assertEquals(1, docsA.size(), "o '---' final sozinho não deveria gerar documento fantasma");
+        assertEquals(1, docsA.size(), "the final '---' alone should not generate a ghost document");
         assertTrue(docsA.getFirst().profile().isEmpty());
         assertEquals("8080", docsA.getFirst().properties().get("server.port"));
 
-        // Sub-caso B: dois "---" seguidos (documento vazio no meio do arquivo)
+        // Sub-case B: two consecutive "---" (empty document in the middle of the file)
         List<ConfigDocument> docsB = parseYaml(tempDir, "caseB", """
             server:
               port: 8080
@@ -423,7 +423,7 @@ class ConfigLoaderTest {
                     include: "*"
             """);
 
-        assertEquals(2, docsB.size(), "o bloco vazio entre os dois '---' deveria ser ignorado, não virar documento");
+        assertEquals(2, docsB.size(), "the empty block between the two '---' should be ignored, not become a document");
         assertTrue(docsB.get(0).profile().isEmpty());
         assertEquals("8080", docsB.get(0).properties().get("server.port"));
         assertEquals(Optional.of("dev"), docsB.get(1).profile());
@@ -434,8 +434,8 @@ class ConfigLoaderTest {
     //===============================================================================================//
 
     @Test
-    @DisplayName("Deve separar um .properties em 2 documentos usando '#---' como separador")
-    void devePropertiesComHashTresTracosSepararDoisDocumentos(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should split a .properties file into 2 documents using '#---' as separator")
+    void shouldSplitPropertiesWithHashThreeDashesIntoTwoDocuments(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
             server.port=8080
             #---
@@ -452,14 +452,14 @@ class ConfigLoaderTest {
     }
 
     /**
-     * Este é o teste de regressão do bug que encontramos: o Spring Boot aceita
-     * tanto "#---" quanto "!---" como separador de documento em .properties.
-     * Antes da correção, "!---" era tratado como uma linha de comentário comum
-     * (ignorada), e os dois blocos ficavam indevidamente fundidos num só.
+     * This is the regression test for the bug we found: Spring Boot accepts
+     * both "#---" and "!---" as document separators in .properties.
+     * Before the fix, "!---" was treated as a regular comment line
+     * (ignored), and the two blocks were incorrectly merged into one.
      */
     @Test
-    @DisplayName("Deve separar um .properties em 2 documentos usando '!---' como separador (mesmo comportamento de '#---')")
-    void devePropertiesComExclamacaoTresTracosSepararDoisDocumentos(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should split a .properties file into 2 documents using '!---' as separator (same behavior as '#---')")
+    void shouldSplitPropertiesWithExclamationThreeDashesIntoTwoDocuments(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
             server.port=8080
             !---
@@ -472,14 +472,14 @@ class ConfigLoaderTest {
         assertEquals(Optional.of("dev"), docs.get(1).profile());
         assertEquals("*", docs.get(1).properties().get("management.endpoints.web.exposure.include"));
 
-        // Ponto crítico do bug original: sem o profile "dev", exposure.include=*
-        // não deveria "vazar" para o documento base.
+        // Critical point of the original bug: without the "dev" profile, exposure.include=*
+        // should not "leak" into the base document.
         assertFalse(docs.get(0).properties().containsKey("management.endpoints.web.exposure.include"));
     }
 
     @Test
-    @DisplayName("Deve fundir dois blocos .properties que compartilham o mesmo profile nomeado")
-    void duasBlocosPropertiesComMesmoProfileDevemSerFundidos(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should merge two .properties blocks that share the same named profile")
+    void twoPropertiesBlocksWithSameProfileShouldBeMerged(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
             #---
             spring.config.activate.on-profile=dev
@@ -496,11 +496,11 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve gerar 1 documento base vazio para .properties vazio ou só com comentários")
-    void propertiesVazioOuSoComentarioDeveGerarUmDocumentoBaseVazio(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should generate 1 empty base document for an empty .properties file or one containing only comments")
+    void emptyPropertiesOrCommentsOnlyShouldGenerateOneEmptyBaseDocument(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
-            # apenas um comentario
-            # outro comentario
+            # just one comment
+            # another comment
             """);
 
         assertEquals(1, docs.size());
@@ -509,8 +509,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve gerar apenas 1 documento base quando o .properties não tem nenhum separador (não-regressão)")
-    void propertiesSemSeparadorDeveGerarApenasUmDocumentoBase(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should generate only 1 base document when the .properties file has no separator (non-regression)")
+    void propertiesWithoutSeparatorShouldGenerateOnlyOneBaseDocument(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
             server.port=8080
             app.name=MeuApp
@@ -523,8 +523,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("A chave spring.config.activate.on-profile deve ser removida do mapa final em .properties")
-    void onProfileDeveSerRemovidoDoMapaFinalEmProperties(@TempDir Path tempDir) throws IOException {
+    @DisplayName("The spring.config.activate.on-profile key should be removed from the final map in .properties")
+    void onProfileShouldBeRemovedFromFinalMapInProperties(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> docs = parseProperties(tempDir, """
             #---
             spring.config.activate.on-profile=dev
@@ -533,12 +533,12 @@ class ConfigLoaderTest {
 
         assertEquals(1, docs.size());
         assertFalse(docs.getFirst().properties().containsKey("spring.config.activate.on-profile"),
-                "a chave de metadado não deveria sobrar no mapa de propriedades de negócio");
+                "the metadata key should not remain in the business property map");
     }
 
     @Test
-    @DisplayName("Lista YAML explicitamente vazia deve gerar chave-sentinela, sem índices")
-    void deveEmitirSentinelaParaListaYamlVaziaExplicita(@TempDir Path tempDir) throws IOException {
+    @DisplayName("An explicitly empty YAML list should generate a sentinel key, without indices")
+    void shouldEmitSentinelForExplicitlyEmptyYamlList(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             cors:
               allowed-origins: []
@@ -549,8 +549,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Map/objeto YAML explicitamente vazio deve gerar chave-sentinela")
-    void deveEmitirSentinelaParaMapYamlVazioExplicito(@TempDir Path tempDir) throws IOException {
+    @DisplayName("An explicitly empty YAML map/object should generate a sentinel key")
+    void shouldEmitSentinelForExplicitlyEmptyYamlMap(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
             headers: {}
             """);
@@ -560,8 +560,8 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Escalar null explícito no YAML deve emitir chave-sentinela de nulo")
-    void deveEmitirSentinelaParaEscalarNullExplicito(@TempDir Path tempDir) throws IOException {
+    @DisplayName("An explicitly null scalar in YAML should emit a null sentinel key")
+    void shouldEmitSentinelForExplicitNullScalar(@TempDir Path tempDir) throws IOException {
         Map<String, String> values = parse(tempDir, """
         app:
           enabled: null
@@ -573,11 +573,11 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Deve reconhecer onProfile em camelCase como ativação de profile")
-    void deveReconhecerOnProfileEmCamelCaseComoAtivacaoDeProfile(@TempDir Path tempDir) throws IOException {
-        // Regressão: antes do fix, "onProfile" (camelCase) não era reconhecido
-        // como spring.config.activate.on-profile, e o documento virava base
-        // silenciosamente em vez de ser tratado como overlay de profile.
+    @DisplayName("Should recognize onProfile in camelCase as profile activation")
+    void shouldRecognizeOnProfileInCamelCaseAsProfileActivation(@TempDir Path tempDir) throws IOException {
+        // Regression: before the fix, "onProfile" (camelCase) was not recognized
+        // as spring.config.activate.on-profile, and the document silently became the base
+        // instead of being treated as a profile overlay.
         List<ConfigDocument> documents = parseYaml(tempDir, "camel-case-test", """
             key: base-value
             ---
@@ -591,14 +591,14 @@ class ConfigLoaderTest {
         ConfigDocument prodDocument = documents.stream()
                 .filter(doc -> doc.profile().equals(Optional.of("prod")))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("Documento com profile 'prod' não foi reconhecido"));
+                .orElseThrow(() -> new AssertionError("Document with profile 'prod' was not recognized"));
 
-        assertEquals("prod-value", prodDocument.properties().get("key"), "Deveria conter a chave 'key' com o valor 'prod-value'");
+        assertEquals("prod-value", prodDocument.properties().get("key"), "Should contain the 'key' key with the 'prod-value' value");
     }
 
     @Test
-    @DisplayName("Não deve vazar chave onProfile camelCase como propriedade de negócio")
-    void naoDeveVazarChaveOnProfileCamelCaseComoPropriedadeDeNegocio(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should not leak the camelCase onProfile key as a business property")
+    void shouldNotLeakCamelCaseOnProfileKeyAsBusinessProperty(@TempDir Path tempDir) throws IOException {
         List<ConfigDocument> documents = parseYaml(tempDir, "leak-test", """
             spring:
               config:
@@ -613,7 +613,21 @@ class ConfigLoaderTest {
                 .anyMatch(key -> RelaxedProperties.canonicalize(key)
                         .equals(RelaxedProperties.canonicalize("spring.config.activate.on-profile")));
 
-        assertFalse(hasOnProfileKey, "A chave 'onProfile' não deveria estar presente no mapa de propriedades de negócio");
+        assertFalse(hasOnProfileKey, "The 'onProfile' key should not be present in the business property map");
+    }
+
+    @Test
+    @DisplayName("Converts invalid YAML into YAMLException instead of crashing with a raw stack trace")
+    void shouldConvertInvalidYamlToIOExceptionInsteadOfLeakingRuntimeException(@TempDir Path dir) throws IOException {
+        // YAML alias referencing a non-existent anchor — snakeyaml throws
+        // YAMLException (RuntimeException) when attempting to resolve it, not IOException.
+        // Without the catch in loadYaml(), this would leak raw to Main.main(), breaking
+        // the process with a stack trace instead of a controlled usage error.
+        Files.writeString(dir.resolve("application.yml"), "key: *nonExistentAnchor\n");
+
+        ConfigLoader loader = new ConfigLoader();
+
+        assertThrows(IOException.class, () -> loader.loadDirectory(dir));
     }
 
 
@@ -625,11 +639,11 @@ class ConfigLoaderTest {
         return configFiles.getFirst().documents().getFirst().properties();
     }
     /**
-     * Análogo ao parse(), mas para .properties e devolvendo a List<ConfigDocument>
-     * completa (não o mapa achatado de 1 documento só) — necessário porque aqui
-     * queremos verificar quantos documentos foram produzidos e como cada um
-     * ficou, não só o resultado final de um documento único.
-     */
+     * Analogous to parse(), but for .properties and returning the complete
+     * List<ConfigDocument> (not the flattened map of a single document) — necessary
+     * because here we want to verify how many documents were produced and what each
+     * one looks like, not just the final result of a single document.
+    */
     private List<ConfigDocument> parseProperties(Path tempDir, String content) throws IOException {
         Path file = tempDir.resolve("application.properties");
         Files.writeString(file, content);

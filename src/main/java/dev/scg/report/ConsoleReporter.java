@@ -14,7 +14,7 @@ public final class ConsoleReporter implements Reporter {
     @Override
     public void report(List<Finding> findings, PrintStream out) {
         if (findings.isEmpty()) {
-            out.println("spring-config-guard: nenhuma violação encontrada.");
+            out.println("spring-config-guard: no violations found.");
             return;
         }
 
@@ -26,11 +26,11 @@ public final class ConsoleReporter implements Reporter {
                 .collect(Collectors.groupingBy(Finding::severity, Collectors.counting()));
 
         out.println();
-        out.println("Resumo: %d violação(ões) — HIGH: %d, MEDIUM: %d, LOW: %d".formatted(
-                findings.size(),
+        out.printf(
+                "Summary: %d violation(s) — HIGH: %d, MEDIUM: %d, LOW: %d%n", findings.size(),
                 counts.getOrDefault(Severity.HIGH, 0L),
                 counts.getOrDefault(Severity.MEDIUM, 0L),
                 counts.getOrDefault(Severity.LOW, 0L)
-        ));
+        );
     }
 }

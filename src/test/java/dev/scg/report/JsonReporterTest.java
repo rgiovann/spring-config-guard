@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.scg.core.Finding;
 import dev.scg.core.Severity;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 
 class JsonReporterTest {
 
@@ -26,10 +28,11 @@ class JsonReporterTest {
     }
 
     @Test
-    void deveSerializarEDesserializarPreservandoTodosOsCampos() throws Exception {
+    @DisplayName("Should serialize and deserialize while preserving all fields")
+    void shouldSerializeAndDeserializePreservingAllFields() throws Exception {
         List<Finding> original = List.of(
-                new Finding("SCG001", Severity.HIGH, "mensagem de teste", "application-prod.yml", "prod"),
-                new Finding("SCG002", Severity.LOW, "outra mensagem", "application.yml", "__spring_config_guard_base__")
+                new Finding("SCG001", Severity.HIGH, "test message", "application-prod.yml", "prod"),
+                new Finding("SCG002", Severity.LOW, "another message", "application.yml", "__spring_config_guard_base__")
         );
 
         String json = captureReport(original);
@@ -39,7 +42,8 @@ class JsonReporterTest {
     }
 
     @Test
-    void deveProduzirListaJsonVaziaQuandoNaoHaFindings() throws Exception {
+    @DisplayName("Should produce an empty JSON list when there are no Findings")
+    void shouldProduceEmptyJsonListWhenThereAreNoFindings() throws Exception {
         String json = captureReport(List.of());
         List<Finding> deserialized = mapper.readValue(json, new TypeReference<List<Finding>>() {});
 
@@ -47,17 +51,19 @@ class JsonReporterTest {
     }
 
     @Test
-    void deveSerializarSempreNaMesmaOrdemIndependenteDaOrdemDeEntrada() throws Exception {
+    @DisplayName("Should always serialize in the same order regardless of input order")
+    void shouldAlwaysSerializeInSameOrderRegardlessOfInputOrder() throws Exception {
         Finding low = new Finding("SCG010", Severity.LOW, "msg", "b.yml", "dev");
         Finding high = new Finding("SCG001", Severity.HIGH, "msg", "a.yml", "prod");
         Finding medium = new Finding("SCG005", Severity.MEDIUM, "msg", "a.yml", "dev");
 
-        // Passados fora de ordem de propósito, igual já fazíamos no ConsoleReporterTest —
-        // regressão específica para a instabilidade de ordem entre execuções que
-        // ConfigFileGrouper/Files.walk podia introduzir no output JSON.
+        // Intentionally passed out of order, just as we already did in ConsoleReporterTest —
+        // specific regression for execution-order instability that
+        // ConfigFileGrouper/Files.walk could introduce in the JSON output.
         String json = captureReport(List.of(low, medium, high));
         List<Finding> deserialized = mapper.readValue(json, new TypeReference<List<Finding>>() {});
 
         assertThat(deserialized).containsExactly(high, medium, low);
     }
 }
+
