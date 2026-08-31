@@ -17,8 +17,11 @@ class RuleRegistryTest {
                 .map(Rule::id)
                 .toList();
 
-        assertThat(ids).contains("SCG001", "SCG002","SCG003");
-    }
+        assertThat(ids).containsExactly("SCG001",
+                "SCG002",
+                "SCG003",
+                "SCG004",
+                "SCG005");    }
 
     @Test
     @DisplayName("Should sort rules deterministically by ID")

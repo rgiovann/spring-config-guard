@@ -18,6 +18,7 @@ public final class ExitCodeResolver {
         }
         Severity threshold = failOnSeverity.get();
         boolean exceedsThreshold = findings.stream()
+                .filter(finding -> finding.severity() != Severity.INFO) // INFO is ignored on exit code decision
                 .anyMatch(finding -> finding.severity().ordinal() <= threshold.ordinal());
         return exceedsThreshold ? THRESHOLD_EXCEEDED : SUCCESS;
     }

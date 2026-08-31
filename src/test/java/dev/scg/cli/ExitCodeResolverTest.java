@@ -58,15 +58,26 @@ class ExitCodeResolverTest {
     }
 
     @Test
-    @DisplayName("Should return THRESHOLD_EXCEEDED when the threshold is LOW and any finding exists")
-    void shouldReturnThresholdExceededWhenThresholdIsLowAndAnyFindingExists() {
-        for (Severity severity : Severity.values()) {
+    @DisplayName("Should return THRESHOLD_EXCEEDED when the threshold is LOW and any actionable finding exists")
+    void shouldReturnThresholdExceededWhenThresholdIsLowAndAnyActionableFindingExists() {
+        List<Severity> actionableSeverities = List.of(Severity.HIGH, Severity.MEDIUM, Severity.LOW);
+
+        for (Severity severity : actionableSeverities) {
             List<Finding> findings = List.of(findingWith(severity));
 
             assertThat(resolver.resolve(findings, Optional.of(Severity.LOW)))
                     .as("tested severity: %s", severity)
                     .isEqualTo(ExitCodeResolver.THRESHOLD_EXCEEDED);
         }
+    }
+
+    @Test
+    @DisplayName("Should return SUCCESS when finding severity is INFO regardless of the fail-on threshold")
+    void shouldReturnSuccessWhenFindingIsInfo() {
+        List<Finding> findings = List.of(findingWith(Severity.INFO));
+
+        assertThat(resolver.resolve(findings, Optional.of(Severity.LOW)))
+                .isEqualTo(ExitCodeResolver.SUCCESS);
     }
 }
 

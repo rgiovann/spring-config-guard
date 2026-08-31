@@ -1,3 +1,5 @@
 dev.scg.rules.ActuatorExposureRule
 dev.scg.rules.H2ConsoleExposedRule
 dev.scg.rules.CorsWildcardWithCredentialsRule
+dev.scg.rules.CorsInsecureProtocolsRule
+dev.scg.rules.CorsPermissiveMethodsAndHeadersRule

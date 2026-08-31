@@ -27,10 +27,11 @@ public final class ConsoleReporter implements Reporter {
 
         out.println();
         out.printf(
-                "Summary: %d violation(s) — HIGH: %d, MEDIUM: %d, LOW: %d%n", findings.size(),
+                "Summary: %d violation(s) — HIGH: %d, MEDIUM: %d, LOW: %d%n, INFO: %d%n", findings.size(),
                 counts.getOrDefault(Severity.HIGH, 0L),
                 counts.getOrDefault(Severity.MEDIUM, 0L),
-                counts.getOrDefault(Severity.LOW, 0L)
+                counts.getOrDefault(Severity.LOW, 0L),
+                counts.getOrDefault(Severity.INFO, 0L)
         );
     }
 }

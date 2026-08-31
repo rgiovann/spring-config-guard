@@ -2,26 +2,14 @@ package dev.scg.rules;
 
 import dev.scg.core.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
 
-    private static final Set<String> METHODS_KEYS = Set.of(
-            "spring.mvc.cors.allowed-methods",
-            "management.endpoints.web.cors.allowed-methods"
-    );
+    private static final String ALLOWED_METHODS_KEY = "management.endpoints.web.cors.allowed-methods";
+    private static final String EXPOSED_HEADERS_KEY = "management.endpoints.web.cors.exposed-headers";
 
-    private static final Set<String> EXPOSED_HEADERS_KEYS = Set.of(
-            "spring.mvc.cors.exposed-headers",
-            "management.endpoints.web.cors.exposed-headers"
-    );
-
-    private static final Set<String> SENSITIVE_HEADERS = Set.of(
-            "authorization", "set-cookie", "cookie", "x-auth-token"
-    );
+    private static final Set<String> SENSITIVE_HEADERS = Set.of("authorization", "set-cookie");
 
     @Override
     public String id() {
@@ -30,7 +18,7 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
 
     @Override
     public String description() {
-        return "Permissive HTTP method configuration or exposure of sensitive headers in CORS";
+        return "Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers";
     }
 
     @Override
@@ -44,22 +32,22 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
     }
 
     private void checkAllowedMethods(EffectiveConfig config, List<Finding> findings) {
-        for (String key : METHODS_KEYS) {
-            List<String> values = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key);
+        List<String> rawValues = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), ALLOWED_METHODS_KEY);
 
-            boolean hasWildcard = values.stream().anyMatch(val -> {
-                Optional<String> res = EnvironmentPlaceholder.resolve(val);
-                return res.map(s -> s.trim().equals("*") || s.contains("*")).orElse(true);
-            });
+        for (String rawValue : rawValues) {
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+            if (resolved.isEmpty()) {
+                findings.add(createUnresolvedPlaceholderFinding(ALLOWED_METHODS_KEY, rawValue, config));
+                continue;
+            }
 
-            if (hasWildcard) {
+            if (containsWildcard(resolved.get())) {
                 findings.add(new Finding(
                         id(),
                         Severity.MEDIUM,
-                        ("Key '%s' allows all HTTP methods via wildcard (*). " +
-                                "This exposes the application to cross-origin requests using unintended methods. " +
-                                "Specify only the required methods (e.g., GET, POST, PUT).")
-                                .formatted(key),
+                        ("Permissive CORS allowed-methods detected in key '%s': wildcard '*' allows all HTTP verbs. " +
+                                "Explicitly list only the required HTTP methods (e.g., GET, POST).")
+                                .formatted(ALLOWED_METHODS_KEY),
                         config.sourceFile().toString(),
                         config.profileLabel()
                 ));
@@ -68,54 +56,80 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
     }
 
     private void checkExposedHeaders(EffectiveConfig config, List<Finding> findings) {
-        for (String key : EXPOSED_HEADERS_KEYS) {
-            List<String> values = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key);
+        List<String> rawValues = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSED_HEADERS_KEY);
 
-            for (String rawValue : values) {
-                if (rawValue == null) continue;
+        for (String rawValue : rawValues) {
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+            if (resolved.isEmpty()) {
+                findings.add(createUnresolvedPlaceholderFinding(EXPOSED_HEADERS_KEY, rawValue, config));
+                continue;
+            }
 
-                Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
-                if (resolved.isEmpty()) continue;
+            String value = resolved.get();
 
-                String value = resolved.get();
-                List<String> sensitiveFound = findSensitiveHeaders(value);
+            // Check 1: Wildcard exposed headers (MEDIUM)
+            if (containsWildcard(value)) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.MEDIUM,
+                        ("Permissive CORS exposed-headers detected in key '%s': wildcard '*' attempts to expose all response headers. " +
+                                "Explicitly list only safe operational headers (e.g., Content-Disposition).")
+                                .formatted(EXPOSED_HEADERS_KEY),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            }
 
-                if (!sensitiveFound.isEmpty()) {
-                    findings.add(new Finding(
-                            id(),
-                            Severity.MEDIUM,
-                            ("Key '%s' exposes authentication/session headers to cross-origin reads: %s. " +
-                                    "This increases the risk of credential leakage through third-party scripts in the browser.")
-                                    .formatted(key, String.join(", ", sensitiveFound)),
-                            config.sourceFile().toString(),
-                            config.profileLabel()
-                    ));
-                } else if (value.trim().equals("*")) {
-                    findings.add(new Finding(
-                            id(),
-                            Severity.LOW,
-                            ("Key '%s' exposes all response headers via wildcard (*). " +
-                                    "Avoid exposing headers globally and restrict them to only the necessary operational headers.")
-                                    .formatted(key),
-                            config.sourceFile().toString(),
-                            config.profileLabel()
-                    ));
-                }
+            // Check 2: Explicit sensitive headers exposed (MEDIUM)
+            List<String> foundSensitive = findSensitiveHeaders(value);
+            if (!foundSensitive.isEmpty()) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.MEDIUM,
+                        ("Sensitive response headers exposed via CORS in key '%s': [%s]. " +
+                                "Exposing authentication or session tokens (Authorization/Set-Cookie) to client-side scripts increases XSS impact.")
+                                .formatted(EXPOSED_HEADERS_KEY, String.join(", ", foundSensitive)),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
             }
         }
     }
 
-    private List<String> findSensitiveHeaders(String headerValue) {
-        String[] tokens = headerValue.split(",");
-        List<String> found = new ArrayList<>();
+    private Finding createUnresolvedPlaceholderFinding(String key, String rawValue, EffectiveConfig config) {
+        return new Finding(
+                id(),
+                Severity.INFO,
+                ("CORS configuration key '%s' relies on an unresolved environment placeholder '%s'. " +
+                        "Static analysis cannot determine the runtime CORS policy; " +
+                        "verify this value in your deployment pipeline or secret manager.")
+                        .formatted(key, rawValue),
+                config.sourceFile().toString(),
+                config.profileLabel()
+        );
+    }
+
+    private boolean containsWildcard(String value) {
+        String[] tokens = value.split(",");
+        for (String token : tokens) {
+            if ("*".equals(token.strip())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> findSensitiveHeaders(String value) {
+        String[] tokens = value.split(",");
+        List<String> detected = new ArrayList<>();
 
         for (String token : tokens) {
-            String header = token.strip().toLowerCase();
+            String header = token.strip().toLowerCase(Locale.ROOT);
             if (SENSITIVE_HEADERS.contains(header)) {
-                found.add(token.strip());
+                detected.add(token.strip());
             }
         }
 
-        return found;
+        return detected;
     }
 }

@@ -7,5 +7,6 @@ package dev.scg.core;
 public enum Severity {
     HIGH,
     MEDIUM,
-    LOW
+    LOW,
+    INFO // Represents operational warnings, analytical uncertainties, or recommendations without confirmed risk.
 }
