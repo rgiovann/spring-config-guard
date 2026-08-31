@@ -28,14 +28,29 @@ public final class CorsInsecureProtocolsRule implements Rule {
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
-
         List<Finding> findings = new ArrayList<>();
 
         for (String originKey : ORIGIN_KEYS) {
             List<String> rawValues = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), originKey);
 
             for (String rawValue : rawValues) {
-                List<String> insecureOrigins = findInsecureOrigins(rawValue);
+                Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+
+                if (resolved.isEmpty()) {
+                    findings.add(new Finding(
+                            id(),
+                            Severity.INFO,
+                            ("CORS origin key '%s' relies on an unresolved environment placeholder '%s'. " +
+                                    "Static analysis cannot verify if the runtime origin uses an insecure protocol (http://); " +
+                                    "ensure production origins strictly enforce https:// in your environment settings.")
+                                    .formatted(originKey, rawValue),
+                            config.sourceFile().toString(),
+                            config.profileLabel()
+                    ));
+                    continue;
+                }
+
+                List<String> insecureOrigins = findInsecureOrigins(resolved.get());
 
                 if (!insecureOrigins.isEmpty()) {
                     findings.add(new Finding(
@@ -43,7 +58,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
                             Severity.MEDIUM,
                             ("Insecure CORS origin detected in key '%s': %s. " +
                                     "Using 'http://' in non-development environments exposes the application to Man-in-the-Middle (MitM) attacks. " +
-                                    "Use HTTPS for remote origins or restrict HTTP origins strictly to loopback addresses..")
+                                    "Use HTTPS for remote origins or restrict HTTP origins strictly to loopback addresses.")
                                     .formatted(originKey, String.join(", ", insecureOrigins)),
                             config.sourceFile().toString(),
                             config.profileLabel()
@@ -104,12 +119,16 @@ public final class CorsInsecureProtocolsRule implements Rule {
             }
 
             // 2. Loopback IPv6 (::1, [::1], 0:0:0:0:0:0:0:1)
-            if (host.equals("::1") || host.equals("[::1]") || host.equals("0:0:0:0:0:0:0:1")) {
+            if (host.equals("::1") || host.equals("0:0:0:0:0:0:0:1")) {
                 return true;
             }
 
-            // 3. TLDs and hostnames reserved for local scope (RFC 6761)
-            return host.equals("localhost") || host.endsWith(".localhost") || host.endsWith(".local");
+            // TLD reserved for local scope per RFC 6761. ".local" was intentionally
+            // excluded: RFC 6762 reserves it for mDNS/multicast resolution on the
+            // LOCAL NETWORK SEGMENT, not necessarily the same machine — a "*.local"
+            // origin can resolve to a different host on the LAN, which is still
+            // susceptible to the MitM risk this rule exists to catch.
+            return host.equals("localhost") || host.endsWith(".localhost");
 
         } catch (IllegalArgumentException e) {
             // Specific catch: origins with invalid URI syntax (e.g., forbidden characters like '_')

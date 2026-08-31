@@ -239,14 +239,18 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(findings).isEmpty();
     }
 
-    @Test
-    @DisplayName("Should generate MEDIUM finding for domain-scoped wildcard patterns like 'https://**'")
-    void shouldGenerateMediumFindingForNonGlobalWildcardPattern() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://*.vercel.app",
+            "https://tenant-*.minhaempresa.com"
+    })
+    @DisplayName("Should generate MEDIUM finding for realistic domain-scoped wildcard patterns")
+    void shouldGenerateMediumFindingForNonGlobalWildcardPattern(String scopedOrigin) {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://**",
+                        "management.endpoints.web.cors.allowed-origin-patterns", scopedOrigin,
                         "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
@@ -259,6 +263,7 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("domain-scoped wildcard");
     }
+
 
     @Test
     @DisplayName("Should differentiate global '*' (HIGH) from domain-restricted wildcard patterns (MEDIUM)")

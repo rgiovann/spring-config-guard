@@ -112,15 +112,33 @@ class CorsInsecureProtocolsRuleTest {
     }
 
     @Test
-    @DisplayName("Should recognize IPv6 loopback and 127.x.x.x range as local and NOT generate finding")
+    @DisplayName("Should recognize IPv6 loopback, 127.x.x.x range, and .localhost as local and NOT generate finding")
     void shouldRecognizeLoopbackVariationsAsLocal() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("management.endpoints.web.cors.allowed-origins", "http://127.0.1.1:8080, http://[::1]:3000, http://app.local")
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://127.0.1.1:8080, http://[::1]:3000, http://app.localhost")
         );
 
         assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should generate finding for .local mDNS domains over http:// to prevent LAN MitM")
+    void shouldGenerateFindingForMdnsLocalDomains() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://app.local:8080")
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        Finding finding = findings.getFirst();
+        assertThat(finding.ruleId()).isEqualTo("SCG004");
+        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(finding.message()).contains("http://app.local:8080");
     }
 
     @Test
@@ -135,6 +153,24 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Should generate an INFO finding when allowed-origins relies on an unresolved environment placeholder")
+    void shouldGenerateInfoFindingForUnresolvedPlaceholders() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of("management.endpoints.web.cors.allowed-origins", "${CORS_ALLOWED_ORIGINS}")
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        Finding finding = findings.getFirst();
+        assertThat(finding.ruleId()).isEqualTo("SCG004");
+        assertThat(finding.severity()).isEqualTo(Severity.INFO);
+        assertThat(finding.message()).contains("unresolved environment placeholder", "${CORS_ALLOWED_ORIGINS}");
     }
 
 }
