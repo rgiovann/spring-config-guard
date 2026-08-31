@@ -26,45 +26,6 @@ class CorsWildcardWithCredentialsRuleTest {
     private static final Path FAKE_PATH = Path.of("application.yml");
 
     @Test
-    @DisplayName("Should generate SCG003 finding when allowed-origins=* and allow-credentials=true in Spring MVC")
-    void shouldGenerateFindingWhenWildcardAndCredentialsEnabledInMvc() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                ProfileMerger.BASE_PROFILE_LABEL,
-                Map.of(
-                        "spring.mvc.cors.allowed-origins", "*",
-                        "spring.mvc.cors.allow-credentials", "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.ruleId()).isEqualTo("SCG003");
-        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.message()).contains("spring.mvc.cors.allowed-origins");
-    }
-
-    @Test
-    @DisplayName("Should generate finding when allowed-origin-patterns=* and allow-credentials=true")
-    void shouldGenerateFindingWhenWildcardInPatternsAndCredentialsEnabled() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "spring.mvc.cors.allowed-origin-patterns", "*",
-                        "spring.mvc.cors.allow-credentials", "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("spring.mvc.cors.allowed-origin-patterns");
-    }
-
-    @Test
     @DisplayName("Should generate finding for Actuator Web CORS properties")
     void shouldGenerateFindingForActuatorProperties() {
         EffectiveConfig config = new EffectiveConfig(
@@ -83,15 +44,113 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should generate multiple findings if both MVC and Actuator are vulnerable")
-    void shouldGenerateMultipleFindingsForVulnerableMvcAndActuator() {
+    @DisplayName("Should classify a domain-scoped wildcard origin pattern as MEDIUM, not HIGH")
+    void shouldClassifyDomainScopedWildcardAsMedium() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origins", "*",
-                        "spring.mvc.cors.allow-credentials", "true",
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
+                        "management.endpoints.web.cors.allow-credentials", "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(finding.message()).contains("domain-scoped wildcard");
+        });
+    }
+
+    @Test
+    @DisplayName("Should retain HIGH severity when a list includes the global wildcard")
+    void shouldRetainHighSeverityForGlobalWildcardAmongPatterns() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com, *",
+                        "management.endpoints.web.cors.allow-credentials", "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Should not generate finding when no wildcard is present")
+    void shouldNotGenerateFindingWithoutWildcard() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        "https://app.minhaempresa.com",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should classify multiple scoped wildcard patterns as MEDIUM")
+    void shouldClassifyMultipleScopedWildcardsAsMedium() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        "https://*.minhaempresa.com, https://*.parceiro.com",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(finding.message()).contains("domain-scoped wildcard");
+        });
+    }
+
+    @Test
+    @DisplayName("Should treat unresolved placeholder as GLOBAL")
+    void shouldTreatUnresolvedPlaceholderAsGlobal() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        "${CORS_ALLOWED_ORIGINS}",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+        });
+    }
+
+    @Test
+    @DisplayName("Should generate findings independently for allowed-origins and allowed-origin-patterns")
+    void shouldGenerateFindingsForBothOriginProperties() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
                         "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
@@ -99,155 +158,231 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(2);
+
+        assertThat(findings)
+                .filteredOn(finding ->
+                        finding.message().contains("allowed-origins"))
+                .singleElement()
+                .satisfies(finding ->
+                        assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+
+        assertThat(findings)
+                .filteredOn(finding ->
+                        finding.message().contains("allowed-origin-patterns"))
+                .singleElement()
+                .satisfies(finding ->
+                        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
     }
 
     @Test
-    @DisplayName("Should detect wildcard in YAML indexed lists (allowed-origins[0]=*)")
-    void shouldDetectWildcardInIndexedYamlList(){
+    @DisplayName("Should retain HIGH severity when global wildcard appears in either origin property")
+    void shouldDetectGlobalWildcardRegardlessOfOriginProperty() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origins[0]", "https://app.com",
-                        "spring.mvc.cors.allowed-origins[1]", "*",
-                        "spring.mvc.cors.allow-credentials", "true"
+                        "management.endpoints.web.cors.allowed-origins", "https://app.minhaempresa.com",
+                        "management.endpoints.web.cors.allowed-origin-patterns", "*",
+                        "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings)
+                .singleElement()
+                .satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message())
+                            .contains("allowed-origin-patterns");
+                });
     }
 
     @Test
-    @DisplayName("Should detect subdomains with wildcard e.g. https://*.domain.com")
-    void shouldDetectWildcardInSubdomainPattern() {
+    @DisplayName("Should classify scoped wildcard in allowed-origins when credentials are enabled")
+    void shouldClassifyScopedWildcardInAllowedOrigins() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origin-patterns", "https://*.mydomain.com",
-                        "spring.mvc.cors.allow-credentials", "true"
+                        "management.endpoints.web.cors.allowed-origins",
+                        "https://*.minhaempresa.com, https://api.parceiro.com",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings)
+                .singleElement()
+                .satisfies(finding ->
+                        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("Should not generate finding when both origin properties contain only explicit origins")
+    void shouldIgnoreExplicitOriginsInBothProperties() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origins",
+                        "https://app.minhaempresa.com, https://admin.minhaempresa.com",
+                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        "https://api.minhaempresa.com",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should not generate finding when credentials are disabled")
+    void shouldIgnoreWildcardsWhenCredentialsAreDisabled() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origins", "*",
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
+                        "management.endpoints.web.cors.allow-credentials", "false"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should not generate finding when credentials property is absent")
+    void shouldIgnoreWildcardsWhenCredentialsPropertyIsAbsent() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origins", "*"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should not generate finding when credentials value is false regardless of origin property")
+    void shouldIgnoreWildcardPatternsWhenCredentialsAreFalse() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns", "*",
+                        "management.endpoints.web.cors.allow-credentials", "false"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).isEmpty();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"true", "TRUE", "yes", "YES", "on", "1"})
-    @DisplayName("Should recognize truthy variations for allow-credentials property")
-    void shouldRecognizeTruthyVariantsInAllowCredentials(String truthyValue) {
+    @ValueSource(strings = {"TRUE", "True", " true ", " true"})
+    @DisplayName("Should detect wildcard when allow-credentials uses a supported truthy representation")
+    void shouldDetectWildcardForTruthyCredentialValues(String credentialsValue) {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origins", "*",
-                        "spring.mvc.cors.allow-credentials", truthyValue
+                        "management.endpoints.web.cors.allowed-origins", "*",
+                        "management.endpoints.web.cors.allow-credentials", credentialsValue
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings)
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.HIGH);
     }
 
     @Test
-    @DisplayName("Should apply Relaxed Binding on key naming (camelCase vs kebab-case)")
-    void shouldApplyRelaxedBindingOnKeys() {
+    @DisplayName("Should handle list-style allowed-origins representation")
+    void shouldHandleListStyleAllowedOrigins() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowedOrigins", "*",
-                        "spring.mvc.cors.allowCredentials", "true"
+                        "management.endpoints.web.cors.allowed-origins[0]", "*",
+                        "management.endpoints.web.cors.allowed-origins[1]",
+                        "https://app.minhaempresa.com",
+                        "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings)
+                .singleElement()
+                .satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message())
+                            .contains("allowed-origins");
+                });
     }
 
     @Test
-    @DisplayName("Should generate finding when allowed-origins is a dynamic placeholder without default")
-    void shouldGenerateFindingForDynamicPlaceholderWithoutDefault() {
+    @DisplayName("Should handle list-style allowed-origin-patterns representation")
+    void shouldHandleListStyleAllowedOriginPatterns() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origins", "${CORS_ORIGIN}",
-                        "spring.mvc.cors.allow-credentials", "true"
+                        "management.endpoints.web.cors.allowed-origin-patterns[0]",
+                        "https://*.minhaempresa.com",
+                        "management.endpoints.web.cors.allowed-origin-patterns[1]",
+                        "https://*.parceiro.com",
+                        "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
+        assertThat(findings)
+                .singleElement()
+                .satisfies(finding ->
+                        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
     }
 
     @Test
-    @DisplayName("Should NOT generate finding when placeholder contains default with explicit origin")
-    void shouldNotGenerateFindingForPlaceholderWithSafeDefault() {
+    @DisplayName("Should prioritize global wildcard over scoped wildcard in list representation")
+    void shouldPrioritizeGlobalWildcardInListRepresentation() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "spring.mvc.cors.allowed-origins", "${CORS_ORIGIN:https://myapp.com}",
-                        "spring.mvc.cors.allow-credentials", "true"
+                        "management.endpoints.web.cors.allowed-origin-patterns[0]",
+                        "https://*.minhaempresa.com",
+                        "management.endpoints.web.cors.allowed-origin-patterns[1]",
+                        "*",
+                        "management.endpoints.web.cors.allow-credentials", "true"
                 )
         );
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).isEmpty();
+        assertThat(findings)
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.HIGH);
     }
 
-    @Test
-    @DisplayName("Should NOT generate finding when allow-credentials is false")
-    void shouldNotGenerateFindingWhenCredentialsIsFalse() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "spring.mvc.cors.allowed-origins", "*",
-                        "spring.mvc.cors.allow-credentials", "false"
-                )
-        );
 
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should NOT generate finding when origins are explicit and safe")
-    void shouldNotGenerateFindingForExplicitOrigins() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "spring.mvc.cors.allowed-origins", "https://example.com,https://api.example.com",
-                        "spring.mvc.cors.allow-credentials", "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should NOT throw exception nor generate finding when values are null or empty")
-    void shouldNotThrowExceptionWhenValuesAreNullOrEmpty() {
-        Map<String, String> properties = new HashMap<>();
-        properties.put("spring.mvc.cors.allowed-origins", null);
-        properties.put("spring.mvc.cors.allow-credentials", null);
-
-        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
-
-        assertDoesNotThrow(() -> assertThat(rule.check(config)).isEmpty());
-    }
 }

@@ -354,7 +354,7 @@ class ProfileMergerTest {
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // TODO(backlog): this violates the invariant that ConfigLoader
+        // WONT FIX: this violates the invariant that ConfigLoader
         // guarantees in practice (it never provides 2 documents with an empty
         // profile in the same ConfigFile). This test documents the CURRENT
         // behavior of ProfileMerger under this violation — it is not the desired behavior.

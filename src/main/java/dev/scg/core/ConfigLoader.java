@@ -196,8 +196,11 @@ public final class ConfigLoader {
      * returning one ConfigDocument per distinct profile label found.
      * <p>
      * Step A/B/C (per raw document): flattens, extracts
-     * spring.config.activate.on-profile (treating missing/empty as base,
-     * risk point 5 — TODO warning for when we work on Finding), removes
+     * spring.config.activate.on-profile — missing key and present-but-blank
+     * value are both treated as base, without distinguishing the two. This is
+     * a syntax/config-quality nuance, not a security risk, and is deliberately
+     * out of this project's scope (same boundary as profile boolean
+     * expressions and multi-profile activation — see BL-05/BL-06). Removes
      * the metadata key from the flattened map (risk point 4).
      * <p>
      * Step D (grouping): documents with the SAME label (including multiple "base"
@@ -264,47 +267,44 @@ public final class ConfigLoader {
                          String prefix,
                          Map<String, String> flat) {
 
-        if (yamlNode == null) {
-            if (!prefix.isEmpty()) {
-                flat.put(prefix + NULL_SCALAR_SENTINEL_SUFFIX, "true");
-            }
-            return;
-        }
-
-        if (yamlNode instanceof Map<?, ?> map) {
-
-            if (map.isEmpty()) {
-                flat.put(prefix + EMPTY_MAP_SENTINEL_SUFFIX, "true");
-                return;
-            }
-
-            for (var entry : map.entrySet()) {
-
-                String child = prefix.isEmpty()
-                        ? entry.getKey().toString()
-                        : prefix + "." + entry.getKey();
-
-                flatten(entry.getValue(), child, flat);
-            }
-
-        } else if (yamlNode instanceof List<?> list) {
-
-            if (list.isEmpty()) {
-            // BL-03 (scenario a): an explicitly empty list leaves
-            // no trace if we simply iterate over nothing. Emit
-            // a sentinel so ProfileMerger can distinguish
-            // "profile redefined as empty" from "profile did not mention it at all".
-                flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
-            } else {
-                for (int i = 0; i < list.size(); i++) {
-                    flatten(list.get(i), prefix + "[" + i + "]", flat);
+        switch (yamlNode) {
+            case null -> {
+                if (!prefix.isEmpty()) {
+                    flat.put(prefix + NULL_SCALAR_SENTINEL_SUFFIX, "true");
                 }
             }
+            case Map<?, ?> map -> {
 
-        } else {
+                if (map.isEmpty()) {
+                    flat.put(prefix + EMPTY_MAP_SENTINEL_SUFFIX, "true");
+                    return;
+                }
 
-            flat.put(prefix, String.valueOf(yamlNode));
+                for (var entry : map.entrySet()) {
 
+                    String child = prefix.isEmpty()
+                            ? entry.getKey().toString()
+                            : prefix + "." + entry.getKey();
+
+                    flatten(entry.getValue(), child, flat);
+                }
+            }
+            case List<?> list -> {
+
+                if (list.isEmpty()) {
+                    // BL-03 (scenario a): an explicitly empty list leaves
+                    // no trace if we simply iterate over nothing. Emit
+                    // a sentinel so ProfileMerger can distinguish
+                    // "profile redefined as empty" from "profile did not mention it at all".
+                    flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
+                } else {
+                    for (int i = 0; i < list.size(); i++) {
+                        flatten(list.get(i), prefix + "[" + i + "]", flat);
+                    }
+                }
+            }
+            default -> flat.put(prefix, String.valueOf(yamlNode));
         }
+
     }
 }
