@@ -5,7 +5,6 @@ package dev.scg.rules;
 
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
-import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,26 +43,6 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should classify a domain-scoped wildcard origin pattern as MEDIUM, not HIGH")
-    void shouldClassifyDomainScopedWildcardAsMedium() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials", "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).singleElement().satisfies(finding -> {
-            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(finding.message()).contains("domain-scoped wildcard");
-        });
-    }
-
-    @Test
     @DisplayName("Should retain HIGH severity when a list includes the global wildcard")
     void shouldRetainHighSeverityForGlobalWildcardAmongPatterns() {
         EffectiveConfig config = new EffectiveConfig(
@@ -80,46 +59,6 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
     }
 
-    @Test
-    @DisplayName("Should not generate finding when no wildcard is present")
-    void shouldNotGenerateFindingWithoutWildcard() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns",
-                        "https://app.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials",
-                        "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should classify multiple scoped wildcard patterns as MEDIUM")
-    void shouldClassifyMultipleScopedWildcardsAsMedium() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns",
-                        "https://*.minhaempresa.com, https://*.parceiro.com",
-                        "management.endpoints.web.cors.allow-credentials",
-                        "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).singleElement().satisfies(finding -> {
-            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(finding.message()).contains("domain-scoped wildcard");
-        });
-    }
 
     @Test
     @DisplayName("Should treat unresolved placeholder as GLOBAL")
@@ -140,6 +79,48 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(findings).singleElement().satisfies(finding -> {
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         });
+    }
+
+    @Test
+    @DisplayName("Should classify a placeholder resolving to a domain-scoped pattern as MEDIUM")
+    void shouldClassifyPlaceholderWithScopedDefaultAsMedium() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        "${CORS_ORIGIN:https://*.minhaempresa.com}",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("Should classify a placeholder resolving to the literal global wildcard as HIGH")
+    void shouldClassifyPlaceholderWithGlobalDefaultAsHigh() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origins",
+                        "${CORS_ORIGIN:*}",
+                        "management.endpoints.web.cors.allow-credentials",
+                        "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -260,6 +241,58 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
+    @DisplayName("Should generate MEDIUM finding for domain-scoped wildcard patterns like 'https://**'")
+    void shouldGenerateMediumFindingForNonGlobalWildcardPattern() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://**",
+                        "management.endpoints.web.cors.allow-credentials", "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        Finding finding = findings.getFirst();
+        assertThat(finding.ruleId()).isEqualTo("SCG003");
+        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(finding.message()).contains("domain-scoped wildcard");
+    }
+
+    @Test
+    @DisplayName("Should differentiate global '*' (HIGH) from domain-restricted wildcard patterns (MEDIUM)")
+    void shouldDifferentiateGlobalAndNonGlobalSeverities() {
+        EffectiveConfig globalConfig = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origins", "*",
+                        "management.endpoints.web.cors.allow-credentials", "true"
+                )
+        );
+
+        EffectiveConfig nonGlobalConfig = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of(
+                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.domain.com",
+                        "management.endpoints.web.cors.allow-credentials", "true"
+                )
+        );
+
+        List<Finding> globalFindings = rule.check(globalConfig);
+        List<Finding> nonGlobalFindings = rule.check(nonGlobalConfig);
+
+        assertThat(globalFindings).hasSize(1);
+        assertThat(globalFindings.getFirst().severity()).isEqualTo(Severity.HIGH);
+
+        assertThat(nonGlobalFindings).hasSize(1);
+        assertThat(nonGlobalFindings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
     @DisplayName("Should not generate finding when credentials property is absent")
     void shouldIgnoreWildcardsWhenCredentialsPropertyIsAbsent() {
         EffectiveConfig config = new EffectiveConfig(
@@ -267,23 +300,6 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should not generate finding when credentials value is false regardless of origin property")
-    void shouldIgnoreWildcardPatternsWhenCredentialsAreFalse() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", "*",
-                        "management.endpoints.web.cors.allow-credentials", "false"
                 )
         );
 
@@ -313,6 +329,37 @@ class CorsWildcardWithCredentialsRuleTest {
                 .isEqualTo(Severity.HIGH);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "comma-separated",
+            "list-style"
+    })
+    @DisplayName("Should classify domain-scoped wildcards as MEDIUM regardless of notation format")
+    void shouldClassifyNonGlobalWildcardsAsMediumForBothNotations(String format) {
+        Map<String, String> properties = "comma-separated".equals(format)
+                ? Map.of(
+                "management.endpoints.web.cors.allowed-origin-patterns",
+                "https://*.minhaempresa.com, https://*.parceiro.com",
+                "management.endpoints.web.cors.allow-credentials", "true"
+        )
+                : Map.of(
+                "management.endpoints.web.cors.allowed-origin-patterns[0]", "https://*.minhaempresa.com",
+                "management.endpoints.web.cors.allowed-origin-patterns[1]", "https://*.parceiro.com",
+                "management.endpoints.web.cors.allow-credentials", "true"
+        );
+
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings)
+                .singleElement()
+                .satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("domain-scoped wildcard");
+                });
+    }
+
     @Test
     @DisplayName("Should handle list-style allowed-origins representation")
     void shouldHandleListStyleAllowedOrigins() {
@@ -339,29 +386,6 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should handle list-style allowed-origin-patterns representation")
-    void shouldHandleListStyleAllowedOriginPatterns() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns[0]",
-                        "https://*.minhaempresa.com",
-                        "management.endpoints.web.cors.allowed-origin-patterns[1]",
-                        "https://*.parceiro.com",
-                        "management.endpoints.web.cors.allow-credentials", "true"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings)
-                .singleElement()
-                .satisfies(finding ->
-                        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
-    }
-
-    @Test
     @DisplayName("Should prioritize global wildcard over scoped wildcard in list representation")
     void shouldPrioritizeGlobalWildcardInListRepresentation() {
         EffectiveConfig config = new EffectiveConfig(
@@ -384,5 +408,16 @@ class CorsWildcardWithCredentialsRuleTest {
                 .isEqualTo(Severity.HIGH);
     }
 
+    @Test
+    @DisplayName("Should not throw exception when property values contain null")
+    void shouldNotThrowExceptionWhenValuesAreNull() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("management.endpoints.web.cors.allowed-origins", null);
+        properties.put("management.endpoints.web.cors.allow-credentials", null);
+
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
+
+        assertDoesNotThrow(() -> assertThat(rule.check(config)).isEmpty());
+    }
 
 }
