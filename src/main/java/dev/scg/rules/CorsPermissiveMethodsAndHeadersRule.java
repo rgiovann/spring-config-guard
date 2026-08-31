@@ -131,8 +131,8 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
                 findings.add(new Finding(
                         id(),
                         Severity.INFO,
-                        ("Header '%s' in key '%s' is a request header, not a response header. " +
-                                "Including it in exposed-headers has no effect on CORS behavior.")
+                        ("Header '%s' in key '%s' is typically a request header, not a response header. " +
+                                "Including it in exposed-headers is unusual and likely ineffective as an exposed response header.")
                                 .formatted(rawHeader, EXPOSED_HEADERS_KEY),
                         config.sourceFile().toString(),
                         config.profileLabel()
