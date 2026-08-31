@@ -9,7 +9,22 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
     private static final String ALLOWED_METHODS_KEY = "management.endpoints.web.cors.allowed-methods";
     private static final String EXPOSED_HEADERS_KEY = "management.endpoints.web.cors.exposed-headers";
 
-    private static final Set<String> SENSITIVE_HEADERS = Set.of("authorization", "set-cookie");
+    // 1. Effective exposure -> MEDIUM
+    private static final Set<String> EFFECTIVE_SENSITIVE_HEADERS = Set.of(
+            "authorization",
+            "x-auth-token"
+    );
+
+    // 2. Ineffective browser blocks -> LOW
+    private static final Set<String> FORBIDDEN_RESPONSE_HEADERS = Set.of(
+            "set-cookie",
+            "set-cookie2"
+    );
+
+    // 3. Direction anomaly (Request Header in Expose-Headers) -> INFO
+    private static final Set<String> REQUEST_HEADERS_MISPLACED = Set.of(
+            "cookie"
+    );
 
     @Override
     public String id() {
@@ -80,15 +95,45 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
                 ));
             }
 
-            // Check 2: Explicit sensitive headers exposed (MEDIUM)
-            List<String> foundSensitive = findSensitiveHeaders(value);
-            if (!foundSensitive.isEmpty()) {
+            // Check 2: Categorized sensitive/misconfigured header analysis
+            checkExposedHeaderCategories(value, config, findings);
+        }
+    }
+
+    private void checkExposedHeaderCategories(String value, EffectiveConfig config, List<Finding> findings) {
+        String[] tokens = value.split(",");
+
+        for (String token : tokens) {
+            String rawHeader = token.strip();
+            String header = rawHeader.toLowerCase(Locale.ROOT);
+
+            if (EFFECTIVE_SENSITIVE_HEADERS.contains(header)) {
                 findings.add(new Finding(
                         id(),
                         Severity.MEDIUM,
-                        ("Sensitive response headers exposed via CORS in key '%s': [%s]. " +
-                                "Exposing authentication or session tokens (Authorization/Set-Cookie) to client-side scripts increases XSS impact.")
-                                .formatted(EXPOSED_HEADERS_KEY, String.join(", ", foundSensitive)),
+                        ("Exposing sensitive response header '%s' via CORS in key '%s' allows client-side scripts " +
+                                "from permitted origins to read authentication tokens.")
+                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            } else if (FORBIDDEN_RESPONSE_HEADERS.contains(header)) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.LOW,
+                        ("Header '%s' in key '%s' is ineffective. Modern browsers treat Set-Cookie/Set-Cookie2 as " +
+                                "forbidden response headers and strictly block client-side JavaScript access regardless of CORS rules.")
+                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            } else if (REQUEST_HEADERS_MISPLACED.contains(header)) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.INFO,
+                        ("Header '%s' in key '%s' is a request header, not a response header. " +
+                                "Including it in exposed-headers has no effect on CORS behavior.")
+                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
                         config.sourceFile().toString(),
                         config.profileLabel()
                 ));
@@ -117,19 +162,5 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
             }
         }
         return false;
-    }
-
-    private List<String> findSensitiveHeaders(String value) {
-        String[] tokens = value.split(",");
-        List<String> detected = new ArrayList<>();
-
-        for (String token : tokens) {
-            String header = token.strip().toLowerCase(Locale.ROOT);
-            if (SENSITIVE_HEADERS.contains(header)) {
-                detected.add(token.strip());
-            }
-        }
-
-        return detected;
     }
 }
