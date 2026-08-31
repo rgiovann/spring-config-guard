@@ -2,10 +2,7 @@ package dev.scg.rules;
 
 import dev.scg.core.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 /**
  * SCG003 — detects the combination of wildcard CORS origin (allowed-origins/
@@ -46,7 +43,7 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
 
     @Override
     public String description() {
-        return "CORS with wildcard (*) in allowed-origins/patterns combined with allow-credentials=true.";
+        return "CORS with global or pattern-based wildcard in allowed-origins/patterns combined with allow-credentials=true.";
     }
 
     @Override
@@ -73,10 +70,10 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
                 findings.add(new Finding(
                         id(),
                         Severity.HIGH,
-                        ("Insecure CORS combination detected: the key '%s' allows a wildcard (*), " +
-                                "while credential sending (allow-credentials) is enabled as 'true'. " +
-                                "This combination is invalid/dangerous and exposes the application to Cross-Site Request Forgery (CSRF) attacks and session data leakage. " +
-                                "Replace '*' with explicit origins or disable allow-credentials.")
+                        ("Insecure CORS combination detected in key '%s': a global wildcard pattern allows credentialed " +
+                                "requests from any host (*, https://*, etc.). This combination exposes the application " +
+                                "to severe Cross-Site Request Forgery (CSRF) and session data leakage. " +
+                                "Replace global wildcards with explicit origins or restricted domain patterns.")
                                 .formatted(originKey),
                         config.sourceFile().toString(),
                         config.profileLabel()
@@ -85,10 +82,9 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
                 findings.add(new Finding(
                         id(),
                         Severity.MEDIUM,
-                        ("CORS origin pattern in key '%s' contains a domain-scoped wildcard while " +
-                                "credential sending (allow-credentials) is enabled. This is narrower than allowing " +
-                                "every origin, but grants credentialed access to every matching subdomain. " +
-                                "Review the ownership and takeover risk of those subdomains, or use explicit origins.")
+                        ("CORS origin pattern in key '%s' contains a domain-scoped wildcard while credential " +
+                                "sending (allow-credentials) is enabled. This grants credentialed access to every " +
+                                "matching subdomain. Review subdomain ownership and takeover risks, or use explicit origins.")
                                 .formatted(originKey),
                         config.sourceFile().toString(),
                         config.profileLabel()
@@ -99,12 +95,6 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
         return findings;
     }
 
-    /**
-     * A literal "*" grants access to any origin and is therefore HIGH risk.
-     * Patterns such as "https://*.example.com" are intentionally classified
-     * separately: Spring matches only origins in that domain, so treating them
-     * as equivalent to the global wildcard would overstate the risk.
-     */
     private WildcardScope classifyWildcard(String value) {
         if (value == null) {
             return WildcardScope.NONE;
@@ -112,21 +102,54 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
         if (resolved.isEmpty()) {
-            // The runtime value cannot be verified and may be the global wildcard.
             return WildcardScope.GLOBAL;
         }
 
         WildcardScope result = WildcardScope.NONE;
         for (String rawOrigin : resolved.get().split(",")) {
-            String origin = rawOrigin.trim();
-            if (origin.equals("*")) {
+            String origin = rawOrigin.trim().toLowerCase(Locale.ROOT);
+            WildcardScope scope = evaluateOriginScope(origin);
+
+            if (scope == WildcardScope.GLOBAL) {
                 return WildcardScope.GLOBAL;
             }
-            if (origin.contains("*")) {
+            if (scope == WildcardScope.NON_GLOBAL) {
                 result = WildcardScope.NON_GLOBAL;
             }
         }
         return result;
+    }
+
+    private WildcardScope evaluateOriginScope(String origin) {
+        if (!origin.contains("*")) {
+            return WildcardScope.NONE;
+        }
+
+        // 1. Literal '*' puro
+        if ("*".equals(origin)) {
+            return WildcardScope.GLOBAL;
+        }
+
+        // Extrair apenas o host (removendo esquema HTTP/HTTPS/Wildcard-Scheme se presente)
+        String host = origin;
+        int schemeIdx = host.indexOf("://");
+        if (schemeIdx != -1) {
+            host = host.substring(schemeIdx + 3);
+        }
+
+        // Remover porta se presente
+        int portIdx = host.indexOf(":");
+        if (portIdx != -1) {
+            host = host.substring(0, portIdx);
+        }
+
+        // 2. Sem host literal presente (ex: https://*, http://*, *://*) -> GLOBAL
+        if ("*".equals(host)) {
+            return WildcardScope.GLOBAL;
+        }
+
+        // 3. Qualquer outro padrão que contenha '*' com host literal -> NON_GLOBAL (MEDIUM)
+        return WildcardScope.NON_GLOBAL;
     }
 
     private enum WildcardScope {

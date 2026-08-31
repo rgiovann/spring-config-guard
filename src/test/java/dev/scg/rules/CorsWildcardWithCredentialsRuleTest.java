@@ -5,6 +5,7 @@ package dev.scg.rules;
 
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
+import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class CorsWildcardWithCredentialsRuleTest {
 
+    public static final String ALLOWED_ORIGIN_PATTERNS_KEY = "management.endpoints.web.cors.allowed-origin-patterns";
+    public static final String ALLOW_CREDENTIALS_KEY = "management.endpoints.web.cors.allow-credentials";
     private final CorsWildcardWithCredentialsRule rule = new CorsWildcardWithCredentialsRule();
     private static final Path FAKE_PATH = Path.of("application.yml");
 
@@ -32,7 +35,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -49,8 +52,8 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com, *",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "https://*.minhaempresa.com, *",
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -67,9 +70,9 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        ALLOWED_ORIGIN_PATTERNS_KEY,
                         "${CORS_ALLOWED_ORIGINS}",
-                        "management.endpoints.web.cors.allow-credentials",
+                        ALLOW_CREDENTIALS_KEY,
                         "true"
                 )
         );
@@ -87,9 +90,9 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        ALLOWED_ORIGIN_PATTERNS_KEY,
                         "${CORS_ORIGIN:https://*.minhaempresa.com}",
-                        "management.endpoints.web.cors.allow-credentials",
+                        ALLOW_CREDENTIALS_KEY,
                         "true"
                 )
         );
@@ -110,7 +113,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins",
                         "${CORS_ORIGIN:*}",
-                        "management.endpoints.web.cors.allow-credentials",
+                        ALLOW_CREDENTIALS_KEY,
                         "true"
                 )
         );
@@ -130,8 +133,8 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "https://*.minhaempresa.com",
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -162,8 +165,8 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "https://app.minhaempresa.com",
-                        "management.endpoints.web.cors.allowed-origin-patterns", "*",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "*",
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -187,7 +190,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins",
                         "https://*.minhaempresa.com, https://api.parceiro.com",
-                        "management.endpoints.web.cors.allow-credentials",
+                        ALLOW_CREDENTIALS_KEY,
                         "true"
                 )
         );
@@ -209,9 +212,9 @@ class CorsWildcardWithCredentialsRuleTest {
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins",
                         "https://app.minhaempresa.com, https://admin.minhaempresa.com",
-                        "management.endpoints.web.cors.allowed-origin-patterns",
+                        ALLOWED_ORIGIN_PATTERNS_KEY,
                         "https://api.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials",
+                        ALLOW_CREDENTIALS_KEY,
                         "true"
                 )
         );
@@ -229,8 +232,8 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials", "false"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "https://*.minhaempresa.com",
+                        ALLOW_CREDENTIALS_KEY, "false"
                 )
         );
 
@@ -250,8 +253,8 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", scopedOrigin,
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, scopedOrigin,
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -273,7 +276,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -281,10 +284,11 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origin-patterns", "https://*.domain.com",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "https://*.domain.com",
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
+        
 
         List<Finding> globalFindings = rule.check(globalConfig);
         List<Finding> nonGlobalFindings = rule.check(nonGlobalConfig);
@@ -321,7 +325,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 "prod",
                 Map.of(
                         "management.endpoints.web.cors.allowed-origins", "*",
-                        "management.endpoints.web.cors.allow-credentials", credentialsValue
+                        ALLOW_CREDENTIALS_KEY, credentialsValue
                 )
         );
 
@@ -342,14 +346,14 @@ class CorsWildcardWithCredentialsRuleTest {
     void shouldClassifyNonGlobalWildcardsAsMediumForBothNotations(String format) {
         Map<String, String> properties = "comma-separated".equals(format)
                 ? Map.of(
-                "management.endpoints.web.cors.allowed-origin-patterns",
+                ALLOWED_ORIGIN_PATTERNS_KEY,
                 "https://*.minhaempresa.com, https://*.parceiro.com",
-                "management.endpoints.web.cors.allow-credentials", "true"
+                ALLOW_CREDENTIALS_KEY, "true"
         )
                 : Map.of(
                 "management.endpoints.web.cors.allowed-origin-patterns[0]", "https://*.minhaempresa.com",
                 "management.endpoints.web.cors.allowed-origin-patterns[1]", "https://*.parceiro.com",
-                "management.endpoints.web.cors.allow-credentials", "true"
+                ALLOW_CREDENTIALS_KEY, "true"
         );
 
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
@@ -374,7 +378,7 @@ class CorsWildcardWithCredentialsRuleTest {
                         "management.endpoints.web.cors.allowed-origins[0]", "*",
                         "management.endpoints.web.cors.allowed-origins[1]",
                         "https://app.minhaempresa.com",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -400,7 +404,7 @@ class CorsWildcardWithCredentialsRuleTest {
                         "https://*.minhaempresa.com",
                         "management.endpoints.web.cors.allowed-origin-patterns[1]",
                         "*",
-                        "management.endpoints.web.cors.allow-credentials", "true"
+                        ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
 
@@ -417,11 +421,74 @@ class CorsWildcardWithCredentialsRuleTest {
     void shouldNotThrowExceptionWhenValuesAreNull() {
         Map<String, String> properties = new HashMap<>();
         properties.put("management.endpoints.web.cors.allowed-origins", null);
-        properties.put("management.endpoints.web.cors.allow-credentials", null);
+        properties.put(ALLOW_CREDENTIALS_KEY, null);
 
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
 
         assertDoesNotThrow(() -> assertThat(rule.check(config)).isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "*",
+            "https://*",
+            "http://*",
+            "*://*"
+    })
+    @DisplayName("Should generate HIGH Finding for global wildcard patterns without literal hosts")
+    void shouldGenerateHighFindingForGlobalWildcards(String pattern) {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                ProfileMerger.BASE_PROFILE_LABEL,
+                Map.of(
+                        ALLOWED_ORIGIN_PATTERNS_KEY, pattern,
+                        ALLOW_CREDENTIALS_KEY, "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://*.empresa.com",
+            "https://*.com",
+            "https://*.sub.empresa.com.br",
+            "http://*.internal.net"
+    })
+    @DisplayName("Should generate MEDIUM Finding for wildcard patterns with literal host parts")
+    void shouldGenerateMediumFindingForDomainScopedWildcards(String pattern) {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                ProfileMerger.BASE_PROFILE_LABEL,
+                Map.of(
+                        ALLOWED_ORIGIN_PATTERNS_KEY, pattern,
+                        ALLOW_CREDENTIALS_KEY, "true"
+                )
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("Should NOT generate Finding when allow-credentials=false")
+    void shouldNotGenerateFindingWhenCredentialsDisabled() {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                ProfileMerger.BASE_PROFILE_LABEL,
+                Map.of(
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "https://*",
+                        ALLOW_CREDENTIALS_KEY, "false"
+                )
+        );
+
+        assertThat(rule.check(config)).isEmpty();
     }
 
 }
