@@ -173,4 +173,27 @@ class CorsInsecureProtocolsRuleTest {
         assertThat(finding.message()).contains("unresolved environment placeholder", "${CORS_ALLOWED_ORIGINS}");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "http://127.attacker.com",
+            "http://127.0.0.1.evil.org",
+            "http://127.1.2.256",
+            "http://127.0.0.1.com",
+            "http://0127.0.0.1",
+            "http://127.0.0.01"
+    })
+    @DisplayName("Should generate MEDIUM Finding for malicious domains disguised as 127.x.x.x loopback")
+    void shouldDetectBypassAttemptsDisguisedAsLoopback(String origin) {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                "prod",
+                Map.of("management.endpoints.web.cors.allowed-origins", origin)
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+    }
+
 }

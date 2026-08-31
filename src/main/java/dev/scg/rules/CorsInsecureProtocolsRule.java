@@ -103,7 +103,6 @@ public final class CorsInsecureProtocolsRule implements Rule {
             String host = uri.getHost();
 
             if (host == null) {
-                // URIs without an explicit host (e.g., "http:", "relative/path") are not considered valid local origins
                 return false;
             }
 
@@ -113,26 +112,55 @@ public final class CorsInsecureProtocolsRule implements Rule {
 
             host = host.toLowerCase(Locale.ROOT);
 
-            // 1. Loopback IPv4 exact or range 127.0.0.0/8 (RFC 1122)
-            if (host.startsWith("127.")) {
+            // 1. Loopback IPv4 estrito (127.0.0.0/8 por RFC 1122)
+            if (isIpv4Loopback(host)) {
                 return true;
             }
 
-            // 2. Loopback IPv6 (::1, [::1], 0:0:0:0:0:0:0:1)
+            // 2. Loopback IPv6 (::1, 0:0:0:0:0:0:0:1)
             if (host.equals("::1") || host.equals("0:0:0:0:0:0:0:1")) {
                 return true;
             }
 
-            // TLD reserved for local scope per RFC 6761. ".local" was intentionally
-            // excluded: RFC 6762 reserves it for mDNS/multicast resolution on the
-            // LOCAL NETWORK SEGMENT, not necessarily the same machine — a "*.local"
-            // origin can resolve to a different host on the LAN, which is still
-            // susceptible to the MitM risk this rule exists to catch.
+            // 3. TLD reservado para scope local por RFC 6761 (.localhost)
             return host.equals("localhost") || host.endsWith(".localhost");
 
         } catch (IllegalArgumentException e) {
-            // Specific catch: origins with invalid URI syntax (e.g., forbidden characters like '_')
-            // cannot be parsed as a valid URI, so they are fail-closed and not considered local.
+            return false;
+        }
+    }
+
+    private boolean isIpv4Loopback(String host) {
+        String[] parts = host.split("\\.", -1);
+        if (parts.length != 4) {
+            return false;
+        }
+
+        try {
+            // Rejeita zero à esquerda no primeiro octeto (ex: "0127.0.0.1")
+            if (parts[0].length() > 1 && parts[0].startsWith("0")) {
+                return false;
+            }
+
+            int firstOctet = Integer.parseInt(parts[0]);
+            if (firstOctet != 127) {
+                return false;
+            }
+
+            for (int i = 1; i < 4; i++) {
+                String part = parts[i];
+                // Rejeita zero à esquerda nos octetos subsequentes (ex: "127.0.0.01")
+                if (part.length() > 1 && part.startsWith("0")) {
+                    return false;
+                }
+
+                int octet = Integer.parseInt(part);
+                if (octet < 0 || octet > 255) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (NumberFormatException e) {
             return false;
         }
     }
