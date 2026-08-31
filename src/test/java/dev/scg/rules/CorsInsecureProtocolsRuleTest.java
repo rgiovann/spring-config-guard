@@ -8,6 +8,8 @@ import dev.scg.core.Finding;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -20,13 +22,15 @@ class CorsInsecureProtocolsRuleTest {
     private final CorsInsecureProtocolsRule rule = new CorsInsecureProtocolsRule();
     private static final Path FAKE_PATH = Path.of("application.yml");
 
-    @Test
-    @DisplayName("Should generate MEDIUM finding when origin uses http:// in an unsafe profile")
-    void shouldGenerateFindingForHttpInUnsafeProfile() {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"dev", "test", "local", "prod", "qa"})
+    @DisplayName("Should generate MEDIUM finding for http:// origin in any profile (Zero-Trust)")
+    void shouldGenerateFindingForHttpInAnyProfile(String profile) {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
-                "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "http://app.company.com")
+                profile,
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://app.company.com")
         );
 
         List<Finding> findings = rule.check(config);
@@ -39,24 +43,12 @@ class CorsInsecureProtocolsRuleTest {
     }
 
     @Test
-    @DisplayName("Should NOT generate finding for http:// in safe profiles (dev, test, local)")
-    void shouldNotGenerateFindingInDevOrTestProfile() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "dev",
-                Map.of("spring.mvc.cors.allowed-origins", "http://app.company.com")
-        );
-
-        assertThat(rule.check(config)).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should NOT generate finding for http://localhost or http://127.0.0.1 even in production")
-    void shouldNotGenerateFindingForLocalhostInProd() {
+    @DisplayName("Should NOT generate finding for http://localhost or http://127.0.0.1")
+    void shouldNotGenerateFindingForLocalhost() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "http://localhost:3000, http://127.0.0.1:8080")
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://localhost:3000, http://127.0.0.1:8080")
         );
 
         assertThat(rule.check(config)).isEmpty();
@@ -68,7 +60,7 @@ class CorsInsecureProtocolsRuleTest {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "https://app.company.com")
+                Map.of("management.endpoints.web.cors.allowed-origins", "https://app.company.com")
         );
 
         assertThat(rule.check(config)).isEmpty();
@@ -80,7 +72,7 @@ class CorsInsecureProtocolsRuleTest {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "https://secure.com, http://insecure.com")
+                Map.of("management.endpoints.web.cors.allowed-origins", "https://secure.com, http://insecure.com")
         );
 
         List<Finding> findings = rule.check(config);
@@ -90,18 +82,18 @@ class CorsInsecureProtocolsRuleTest {
     }
 
     @Test
-    @DisplayName("Should detect http:// in Actuator properties")
-    void shouldDetectHttpInActuatorProperties() {
+    @DisplayName("Should detect http:// in allowed-origin-patterns property")
+    void shouldDetectHttpInAllowedOriginPatterns() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("management.endpoints.web.cors.allowed-origins", "http://admin.company.com")
+                Map.of("management.endpoints.web.cors.allowed-origin-patterns", "http://*.company.com")
         );
 
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("management.endpoints.web.cors.allowed-origins");
+        assertThat(findings.getFirst().message()).contains("management.endpoints.web.cors.allowed-origin-patterns");
     }
 
     @Test
@@ -110,7 +102,7 @@ class CorsInsecureProtocolsRuleTest {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "http://localhost.attacker.com")
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://localhost.attacker.com")
         );
 
         List<Finding> findings = rule.check(config);
@@ -125,7 +117,7 @@ class CorsInsecureProtocolsRuleTest {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "http://127.0.1.1:8080, http://[::1]:3000, http://app.local")
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://127.0.1.1:8080, http://[::1]:3000, http://app.local")
         );
 
         assertThat(rule.check(config)).isEmpty();
@@ -137,11 +129,12 @@ class CorsInsecureProtocolsRuleTest {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
-                Map.of("spring.mvc.cors.allowed-origins", "http://an_invalid_syntax_origin.com")
+                Map.of("management.endpoints.web.cors.allowed-origins", "http://an_invalid_syntax_origin.com")
         );
 
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
     }
+
 }

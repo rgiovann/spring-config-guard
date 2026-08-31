@@ -217,8 +217,8 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertEquals(1, findings.size(), "Should report a violation for profile: " + profile);
-        assertEquals("SCG002", findings.get(0).ruleId());
-        assertEquals(Severity.HIGH, findings.get(0).severity());
+        assertEquals("SCG002", findings.getFirst().ruleId());
+        assertEquals(Severity.HIGH, findings.getFirst().severity());
     }
 
 }

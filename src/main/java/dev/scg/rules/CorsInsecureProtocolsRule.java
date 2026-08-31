@@ -12,8 +12,6 @@ import java.util.Locale;
 public final class CorsInsecureProtocolsRule implements Rule {
 
     private static final Set<String> ORIGIN_KEYS = Set.of(
-            "spring.mvc.cors.allowed-origins",
-            "spring.mvc.cors.allowed-origin-patterns",
             "management.endpoints.web.cors.allowed-origins",
             "management.endpoints.web.cors.allowed-origin-patterns"
     );
@@ -92,6 +90,10 @@ public final class CorsInsecureProtocolsRule implements Rule {
             if (host == null) {
                 // URIs without an explicit host (e.g., "http:", "relative/path") are not considered valid local origins
                 return false;
+            }
+
+            if (host.startsWith("[") && host.endsWith("]")) {
+                host = host.substring(1, host.length() - 1);
             }
 
             host = host.toLowerCase(Locale.ROOT);
