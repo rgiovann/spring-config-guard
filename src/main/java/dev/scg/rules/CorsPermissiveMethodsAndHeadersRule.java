@@ -1,6 +1,3 @@
-// FILE: CorsPermissiveMethodsAndHeadersRule.java
-// PACKAGE: dev.scg.rules
-
 package dev.scg.rules;
 
 import dev.scg.core.*;

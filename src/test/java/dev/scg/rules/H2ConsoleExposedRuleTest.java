@@ -6,6 +6,8 @@ import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -66,41 +68,6 @@ class H2ConsoleExposedRuleTest {
 
             List<Finding> findings = rule.check(config);
             assertEquals(1, findings.size(), "Should have generated a Finding for the truthy value: " + value);
-        }
-    }
-
-    @Test
-    @DisplayName("Should NOT generate a Finding when the H2 console is enabled in a safe profile (dev/test/local)")
-    void shouldNotGenerateFindingInSafeProfile() {
-        EffectiveConfig devConfig = new EffectiveConfig(
-                FAKE_PATH,
-                "dev",
-                Map.of("spring.h2.console.enabled", "true")
-        );
-
-        EffectiveConfig testConfig = new EffectiveConfig(
-                FAKE_PATH,
-                "test",
-                Map.of("spring.h2.console.enabled", "true")
-        );
-
-        assertTrue(rule.check(devConfig).isEmpty());
-        assertTrue(rule.check(testConfig).isEmpty());
-    }
-
-    @Test
-    @DisplayName("Should NOT generate a Finding for safe composite profiles (dev-local, cloud-test, local_db)")
-    void shouldNotGenerateFindingForSafeCompositeProfiles() {
-        List<String> safeCompositeProfiles = List.of("dev-local", "cloud-test", "local_db", "test.ci");
-
-        for (String profile : safeCompositeProfiles) {
-            EffectiveConfig config = new EffectiveConfig(
-                    FAKE_PATH,
-                    profile,
-                    Map.of("spring.h2.console.enabled", "true")
-            );
-
-            assertTrue(rule.check(config).isEmpty(), "Should be ignored because it is a safe composite profile: " + profile);
         }
     }
 
@@ -235,6 +202,23 @@ class H2ConsoleExposedRuleTest {
 
         assertThat(findings).hasSize(1);
         assertThat(findings.getFirst().message()).contains("AGGRAVATING FACTOR");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"dev", "test", "local", "dev-local", "cloud-test", "local_db", "test.ci", "prod", "qa"})
+    @DisplayName("Should generate a Finding when H2 console is enabled regardless of the profile (Zero-Trust)")
+    void shouldGenerateFindingRegardlessOfProfile(String profile) {
+        EffectiveConfig config = new EffectiveConfig(
+                FAKE_PATH,
+                profile,
+                Map.of("spring.h2.console.enabled", "true")
+        );
+
+        List<Finding> findings = rule.check(config);
+
+        assertEquals(1, findings.size(), "Should report a violation for profile: " + profile);
+        assertEquals("SCG002", findings.get(0).ruleId());
+        assertEquals(Severity.HIGH, findings.get(0).severity());
     }
 
 }

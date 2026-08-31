@@ -76,9 +76,8 @@ class CorsWildcardWithCredentialsRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).singleElement().satisfies(finding -> {
-            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        });
+        assertThat(findings).singleElement()
+                .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
     }
 
     @Test

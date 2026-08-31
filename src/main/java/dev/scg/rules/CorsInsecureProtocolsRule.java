@@ -1,6 +1,3 @@
-// FILE: CorsInsecureProtocolsRule.java
-// PACKAGE: dev.scg.rules
-
 package dev.scg.rules;
 
 import dev.scg.core.*;
@@ -28,14 +25,11 @@ public final class CorsInsecureProtocolsRule implements Rule {
 
     @Override
     public String description() {
-        return "Use of an insecure protocol (http://) in CORS origins outside local/dev environments";
+        return "Use of an insecure protocol (http://) in non-loopback CORS origins";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
-        if (SafeProfileClassifier.isSafeProfile(config.profileLabel())) {
-            return List.of();
-        }
 
         List<Finding> findings = new ArrayList<>();
 
@@ -51,7 +45,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
                             Severity.MEDIUM,
                             ("Insecure CORS origin detected in key '%s': %s. " +
                                     "Using 'http://' in non-development environments exposes the application to Man-in-the-Middle (MitM) attacks. " +
-                                    "Use HTTPS for all allowed origins outside local environments.")
+                                    "Use HTTPS for remote origins or restrict HTTP origins strictly to loopback addresses..")
                                     .formatted(originKey, String.join(", ", insecureOrigins)),
                             config.sourceFile().toString(),
                             config.profileLabel()
@@ -77,7 +71,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
         List<String> insecure = new ArrayList<>();
 
         for (String token : tokens) {
-            String origin = token.strip().toLowerCase();
+            String origin = token.strip().toLowerCase(Locale.ROOT);
             if (origin.startsWith("http://") && !isLocalhost(origin)) {
                 insecure.add(token.strip());
             }

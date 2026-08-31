@@ -33,9 +33,6 @@ public final class H2ConsoleExposedRule implements Rule {
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
-        if (SafeProfileClassifier.isSafeProfile(config.profileLabel())) {
-            return List.of(); // Local/dev profiles are exempt from the check
-        }
 
          String enabledValue = RelaxedProperties.get(config.properties(), H2_ENABLED_KEY);
 
