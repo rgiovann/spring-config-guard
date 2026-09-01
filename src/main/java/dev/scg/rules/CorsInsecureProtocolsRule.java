@@ -75,12 +75,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
             return List.of();
         }
 
-        Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
-        if (resolved.isEmpty()) {
-            return List.of(); // Sem default estático, não é possível determinar a URL em tempo de compilação
-        }
-
-        String[] tokens = resolved.get().split(",");
+        String[] tokens = value.split(",");
         List<String> insecure = new ArrayList<>();
 
         for (String token : tokens) {
@@ -112,17 +107,17 @@ public final class CorsInsecureProtocolsRule implements Rule {
 
             host = host.toLowerCase(Locale.ROOT);
 
-            // 1. Loopback IPv4 estrito (127.0.0.0/8 por RFC 1122)
+            // 1. Strict IPv4 loopback (127.0.0.0/8 according to RFC 1122)
             if (isIpv4Loopback(host)) {
                 return true;
             }
 
-            // 2. Loopback IPv6 (::1, 0:0:0:0:0:0:0:1)
+            // 2. IPv6 loopback (::1, 0:0:0:0:0:0:0:1)
             if (host.equals("::1") || host.equals("0:0:0:0:0:0:0:1")) {
                 return true;
             }
 
-            // 3. TLD reservado para scope local por RFC 6761 (.localhost)
+            // 3. TLD reserved for local scope by RFC 6761 (.localhost)
             return host.equals("localhost") || host.endsWith(".localhost");
 
         } catch (IllegalArgumentException e) {
@@ -137,7 +132,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
         }
 
         try {
-            // Rejeita zero à esquerda no primeiro octeto (ex: "0127.0.0.1")
+            // Rejects leading zero in the first octet (e.g., "0127.0.0.1")
             if (parts[0].length() > 1 && parts[0].startsWith("0")) {
                 return false;
             }
@@ -149,7 +144,7 @@ public final class CorsInsecureProtocolsRule implements Rule {
 
             for (int i = 1; i < 4; i++) {
                 String part = parts[i];
-                // Rejeita zero à esquerda nos octetos subsequentes (ex: "127.0.0.01")
+                // Rejects leading zero in subsequent octets (e.g., "127.0.0.01")
                 if (part.length() > 1 && part.startsWith("0")) {
                     return false;
                 }
