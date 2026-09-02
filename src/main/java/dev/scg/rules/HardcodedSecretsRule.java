@@ -117,6 +117,18 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                             config.sourceFile().toString(),
                             config.profileLabel()
                     ));
+                } else {
+                    // Trata placeholders com fallback vazio (${VAR:}) localmente na regra de segredos
+                    findings.add(new Finding(
+                            id(),
+                            Severity.INFO,
+                            ("Sensitive property '%s' relies on an unresolved environment placeholder or empty default fallback '%s'. " +
+                                    "Static analysis cannot verify the runtime value; " +
+                                    "ensure production secrets are injected securely via environment variables or a secret manager.")
+                                    .formatted(entry.getKey(), rawValue),
+                            config.sourceFile().toString(),
+                            config.profileLabel()
+                    ));
                 }
             }
         }
