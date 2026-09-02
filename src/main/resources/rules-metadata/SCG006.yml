@@ -1,0 +1,24 @@
+high-risk-keys:
+  - spring.datasource.password
+  - spring.r2dbc.password
+  - spring.flyway.password
+  - spring.liquibase.password
+  - spring.data.redis.password
+  - spring.rabbitmq.password
+  - spring.mail.password
+  - spring.security.user.password
+  - spring.neo4j.authentication.password
+
+secret-key-patterns:
+  - password
+  - secret
+  - private-key
+  - api-key
+  - apikey
+  - token
+  - credential
+  - access-key
+  
+ignored-value-prefixes:
+  - "{cipher}"
+  - "{vault}"

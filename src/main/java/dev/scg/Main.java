@@ -32,7 +32,7 @@ public final class Main {
         }
 
         if (!Files.isDirectory(options.directory())) {
-            System.err.println("Erro: '%s' não é um diretório válido.".formatted(options.directory()));
+            System.err.printf("Erro: '%s' não é um diretório válido.%n", options.directory());
             return ExitCodeResolver.USAGE_ERROR;
         }
 
@@ -54,7 +54,13 @@ public final class Main {
             return ExitCodeResolver.USAGE_ERROR;
         }
 
-        RuleEngine engine = new RuleEngine(rules);
+        RuleEngine engine;
+        try {
+            engine = new RuleEngine(rules);
+        } catch (IllegalStateException e) {
+            System.err.println("Startup Error: " + e.getMessage());
+            return ExitCodeResolver.USAGE_ERROR; // Ou o código de falha de configuração definido no seu projeto
+        }
         List<Finding> findings = engine.run(effectiveConfigs);
 
         Reporter reporter = options.jsonOutput() ? new JsonReporter() : new ConsoleReporter();
