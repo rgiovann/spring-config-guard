@@ -114,5 +114,23 @@ class EnvironmentPlaceholderTest {
         assertEquals("{\"host\":\"localhost:5432\"}", result.get());
     }
 
+    @Test
+    @DisplayName("Placeholder containing an unclosed raw brace should fail matching and treat expression safely")
+    void placeholderWithUnclosedRawBraceShouldFallbackSafely() {
+        // The inner '{' key consumes the only available '}', leaving the placeholder without a proper closure.
+        //Must return the safely handled string without throwing an exception or corrupting the state.
+        Optional<String> result = EnvironmentPlaceholder.resolve("${KEY:prefix{suffix}");
+        assertTrue(result.isPresent());
+        assertEquals("${KEY:prefix{suffix}", result.get());
+    }
+
+    @Test
+    @DisplayName("Empty placeholder body '${}' should safely return Optional.empty()")
+    void emptyPlaceholderBodyShouldReturnEmpty() {
+        // Empty body (configuration type) should not throw an exception when fetching separator/key.
+        Optional<String> result = EnvironmentPlaceholder.resolve("${}");
+        assertTrue(result.isEmpty());
+    }
+
 }
 
