@@ -8,6 +8,14 @@ high-risk-keys:
   - spring.mail.password
   - spring.security.user.password
   - spring.neo4j.authentication.password
+  # New native infrastructure keys for Spring Boot / Spring Security / Embedded Servers:
+  - server.ssl.key-store-password
+  - server.ssl.key-password
+  - spring.ldap.embedded.credential
+  - spring.elasticsearch.rest.password
+  - spring.cassandra.password
+  - spring.couchbase.env.ssl.key-store-password
+  - spring.kafka.properties.ssl.keystore.password
 
 secret-key-patterns:
   - password
