@@ -14,7 +14,6 @@ secret-key-patterns:
   - secret
   - private-key
   - api-key
-  - apikey
   - token
   - credential
   - access-key

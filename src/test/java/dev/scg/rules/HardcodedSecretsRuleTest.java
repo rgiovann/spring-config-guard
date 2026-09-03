@@ -188,10 +188,9 @@ class HardcodedSecretsRuleTest {
         @ParameterizedTest(name = "Should report INFO severity for unresolved placeholder: {0}")
         @ValueSource(strings = {
                 "${DB_PASSWORD}",
-                "${app.security.token}",
-                "${UNRESOLVED_ENV_VAR:}"
+                "${app.security.token}"
         })
-        @DisplayName("Flags unresolved dynamic placeholders as INFO severity for SecOps visibility")
+        @DisplayName("Flags placeholders without a default as INFO severity for SecOps visibility")
         void shouldFlagUnresolvedPlaceholdersAsInfo(String rawPlaceholder) {
             EffectiveConfig config = createConfig(Map.of("spring.datasource.password", rawPlaceholder));
 
@@ -203,6 +202,23 @@ class HardcodedSecretsRuleTest {
                     .satisfies(finding -> {
                         assertThat(finding.severity()).isEqualTo(Severity.INFO);
                         assertThat(finding.message()).contains("unresolved environment placeholder");
+                    });
+        }
+
+        @Test
+        @DisplayName("Flags a placeholder with an explicit empty default fallback as INFO, distinct from an unresolved placeholder")
+        void shouldFlagEmptyDefaultFallbackAsInfo() {
+            EffectiveConfig config = createConfig(Map.of("spring.datasource.password", "${UNRESOLVED_ENV_VAR:}"));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings)
+                    .hasSize(1)
+                    .first()
+                    .satisfies(finding -> {
+                        assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                        assertThat(finding.message()).contains("empty default fallback");
+                        assertThat(finding.message()).doesNotContain("unresolved environment placeholder");
                     });
         }
     }

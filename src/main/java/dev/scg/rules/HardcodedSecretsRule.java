@@ -54,10 +54,8 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 .map(RelaxedProperties::canonicalize)
                 .toList();
 
-        // Remove qualquer prefixo de placeholder da lista de ignorados
         this.ignoredValuePrefixes = rawIgnoredPrefixes.stream()
                 .map(String::strip)
-                .filter(prefix -> !prefix.startsWith("${")) // Impede a anulação do parser
                 .toList();
     }
 
@@ -118,12 +116,14 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                             config.profileLabel()
                     ));
                 } else {
-                    // Trata placeholders com fallback vazio (${VAR:}) localmente na regra de segredos
+                    // ${VAR:} — the placeholder WAS resolved, its declared default is just an
+                    // empty string. Distinct from the unresolvable case above: here we know the
+                    // static value (empty), we just don't know what the env var holds at runtime.
                     findings.add(new Finding(
                             id(),
                             Severity.INFO,
-                            ("Sensitive property '%s' relies on an unresolved environment placeholder or empty default fallback '%s'. " +
-                                    "Static analysis cannot verify the runtime value; " +
+                            ("Sensitive property '%s' declares an empty default fallback for its environment placeholder '%s'. " +
+                                    "Static analysis cannot verify the runtime value if the environment variable is unset; " +
                                     "ensure production secrets are injected securely via environment variables or a secret manager.")
                                     .formatted(entry.getKey(), rawValue),
                             config.sourceFile().toString(),
