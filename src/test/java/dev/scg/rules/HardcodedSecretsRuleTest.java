@@ -123,8 +123,11 @@ class HardcodedSecretsRuleTest {
             assertThat(findings)
                     .hasSize(1)
                     .first()
-                    .extracting(Finding::severity)
-                    .isEqualTo(Severity.HIGH);
+                    .satisfies(finding -> {
+                        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                        assertThat(finding.message()).contains("custom key pattern");
+                        assertThat(finding.message()).doesNotContain("core Spring Boot property");
+                    });
         }
     }
 
@@ -187,6 +190,23 @@ class HardcodedSecretsRuleTest {
                     });
         }
 
+        @Test
+        @DisplayName("Also appends the static placeholder default clause for custom-pattern keys, not just high-risk keys")
+        void shouldAppendPlaceholderDefaultClauseForCustomPatternKeyToo() {
+            EffectiveConfig config = createConfig(Map.of("app.jwt.token", "${JWT_SECRET:hardcoded_default}"));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings)
+                    .hasSize(1)
+                    .first()
+                    .satisfies(finding -> {
+                        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                        assertThat(finding.message()).contains("custom key pattern");
+                        assertThat(finding.message()).contains("static placeholder default");
+                    });
+        }
+
         @ParameterizedTest(name = "Should report INFO severity for unresolved placeholder: {0}")
         @ValueSource(strings = {
                 "${DB_PASSWORD}",
@@ -222,6 +242,49 @@ class HardcodedSecretsRuleTest {
                         assertThat(finding.message()).contains("empty default fallback");
                         assertThat(finding.message()).doesNotContain("unresolved environment placeholder");
                     });
+        }
+    }
+
+    @Nested
+    @DisplayName("Happy Path — Ordinary Configuration Without Secrets")
+    class HappyPathTests {
+
+        @Test
+        @DisplayName("Does not flag common non-sensitive Spring Boot properties")
+        void shouldNotFlagOrdinaryNonSensitiveProperties() {
+            Map<String, String> props = new HashMap<>();
+            props.put("server.port", "8080");
+            props.put("spring.application.name", "demo-service");
+            props.put("management.endpoints.web.exposure.include", "health,info");
+            props.put("spring.datasource.url", "jdbc:postgresql://localhost:5432/app");
+            props.put("spring.datasource.username", "app_user");
+
+            EffectiveConfig config = createConfig(props);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Flags only the sensitive keys when mixed with ordinary properties in the same config")
+        void shouldFlagOnlySensitiveKeysAmongMixedProperties() {
+            Map<String, String> props = new HashMap<>();
+            props.put("server.port", "8080");
+            props.put("spring.application.name", "demo-service");
+            props.put("spring.datasource.username", "app_user");
+            props.put("spring.datasource.password", "supersecret123");
+            props.put("custom.service.api-key", "raw-api-key-value");
+
+            EffectiveConfig config = createConfig(props);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings)
+                    .hasSize(2)
+                    .extracting(Finding::message)
+                    .anySatisfy(message -> assertThat(message).contains("spring.datasource.password"))
+                    .anySatisfy(message -> assertThat(message).contains("custom.service.api-key"));
         }
     }
 
