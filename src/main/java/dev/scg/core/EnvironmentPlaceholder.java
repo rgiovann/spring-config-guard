@@ -61,7 +61,8 @@ public final class EnvironmentPlaceholder {
         int depth = 1;
         for (int i = fromIndex; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (c == '{' && i > 0 && text.charAt(i - 1) == '$') {
+            //We are already inside a placeholder (${), so any '{' opens a new level.
+            if (c == '{') {
                 depth++;
             } else if (c == SUFFIX) {
                 depth--;
@@ -77,7 +78,8 @@ public final class EnvironmentPlaceholder {
         int depth = 0;
         for (int i = 0; i < body.length(); i++) {
             char c = body.charAt(i);
-            if (c == '{' && i > 0 && body.charAt(i - 1) == '$') {
+            // Any '{' increments the level within the body to protect the separator ':'
+            if (c == '{') {
                 depth++;
             } else if (c == '}') {
                 depth--;

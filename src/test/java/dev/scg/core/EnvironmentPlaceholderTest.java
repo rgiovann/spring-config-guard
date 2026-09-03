@@ -98,5 +98,21 @@ class EnvironmentPlaceholderTest {
                 .contains("tr${incompleto");
     }
 
+    @Test
+    @DisplayName("Placeholder with raw braces in default value should balance correctly without premature closure")
+    void placeholderWithRawBracesInDefaultShouldBalanceCorrectly() {
+        Optional<String> result = EnvironmentPlaceholder.resolve("${APP_CONFIG:{\"key\":\"value\"}}");
+        assertTrue(result.isPresent());
+        assertEquals("{\"key\":\"value\"}", result.get());
+    }
+
+    @Test
+    @DisplayName("Placeholder with colon inside raw braces in default value should preserve top-level separator boundary")
+    void placeholderWithColonInsideRawBracesInDefaultShouldPreserveTopLevelSeparator() {
+        Optional<String> result = EnvironmentPlaceholder.resolve("${DB_CONFIG:{\"host\":\"localhost:5432\"}}");
+        assertTrue(result.isPresent());
+        assertEquals("{\"host\":\"localhost:5432\"}", result.get());
+    }
+
 }
 
