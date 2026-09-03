@@ -104,6 +104,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
                 String valueToInspect = resolvedValue.get();
 
+
+                 // If the resolved value (e.g., the placeholder default) is an ignored prefix (e.g., {cipher}), skip the rule.
+                if (isIgnoredValue(valueToInspect)) {
+                    continue;
+                }
+
                 if (!valueToInspect.isBlank()) {
                     boolean isFromPlaceholderDefault = trimmedValue.contains("${");
 

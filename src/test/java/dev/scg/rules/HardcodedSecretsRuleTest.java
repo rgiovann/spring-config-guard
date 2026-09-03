@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("SCG006 - HardcodedSecretsRule Unit Tests")
 class HardcodedSecretsRuleTest {
@@ -164,6 +165,18 @@ class HardcodedSecretsRuleTest {
 
             assertThat(findings).isEmpty();
         }
+
+        @Test
+        @DisplayName("Should ignore sensitive keys when encrypted prefix is declared inside placeholder fallback")
+        void shouldIgnoreSensitiveKeyWhenEncryptedPrefixIsInsidePlaceholderFallback() {
+            EffectiveConfig config = createConfig(
+                    Map.of("spring.datasource.password", "${DB_PASSWORD:{cipher}FKJ39847239487}")
+            );
+
+            List<Finding> findings = rule.check(config);
+
+            assertTrue(findings.isEmpty(), "Values with ignored prefixes inside placeholder fallbacks must not trigger findings");
+        }
     }
 
     @Nested
@@ -286,7 +299,7 @@ class HardcodedSecretsRuleTest {
                     .anySatisfy(message -> assertThat(message).contains("spring.datasource.password"))
                     .anySatisfy(message -> assertThat(message).contains("custom.service.api-key"));
         }
-    }
+   }
 
     @Nested
     @DisplayName("Configuration and Fail-Fast Invariants")
