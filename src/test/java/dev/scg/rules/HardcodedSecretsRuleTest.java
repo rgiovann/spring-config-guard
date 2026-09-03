@@ -77,6 +77,8 @@ class HardcodedSecretsRuleTest {
                         assertThat(finding.ruleId()).isEqualTo("SCG006");
                         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
                         assertThat(finding.message()).contains(propertyKey);
+                        assertThat(finding.message()).contains("core Spring Boot property");
+                        assertThat(finding.message()).doesNotContain("static placeholder default");
                     });
         }
 
@@ -181,7 +183,7 @@ class HardcodedSecretsRuleTest {
                     .first()
                     .satisfies(finding -> {
                         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-                        assertThat(finding.message()).contains("static default fallback");
+                        assertThat(finding.message()).contains("static placeholder default");
                     });
         }
 

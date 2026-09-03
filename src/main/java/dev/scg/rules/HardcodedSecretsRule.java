@@ -74,7 +74,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
             String trimmedValue = rawValue.strip();
 
-            // Checagem dinamica contra a lista do YAML
+            // Dynamic check against the YAML list
             if (isIgnoredValue(trimmedValue)) {
                 continue;
             }
@@ -87,7 +87,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             if (isKnownHighRiskKey || isCustomSecretKey) {
                 Optional<String> resolvedValue = EnvironmentPlaceholder.resolve(trimmedValue);
 
-                // Padrão de observabilidade: Notifica INFO quando não é possível avaliar estaticamente
+                // Observability pattern: Notifies INFO when it is not possible to evaluate statically
                 if (resolvedValue.isEmpty()) {
                     findings.add(new Finding(
                             id(),
@@ -105,13 +105,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 String valueToInspect = resolvedValue.get();
 
                 if (!valueToInspect.isBlank()) {
+                    boolean isFromPlaceholderDefault = trimmedValue.contains("${");
+
                     findings.add(new Finding(
                             id(),
                             Severity.HIGH,
-                            ("Hardcoded secret or static default fallback detected in property '%s'. " +
-                                    "Avoid storing credentials in plaintext files or default placeholder values; " +
-                                    "use environment variables or a secret management system (e.g., Vault, AWS Secrets Manager).")
-                                    .formatted(entry.getKey()),
+                            buildHardcodedCredentialMessage(entry.getKey(), rawValue, isKnownHighRiskKey, isFromPlaceholderDefault),
                             config.sourceFile().toString(),
                             config.profileLabel()
                     ));
@@ -149,6 +148,32 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
+    }
+
+    /**
+     * Base message distinguishes WHERE the sensitive key comes from (native Spring Boot
+     * property vs. a custom key matching one of our patterns); when the offending value
+     * came from a static default inside a placeholder (${VAR:hardcoded}) rather than a
+     * plain literal, an extra clause is appended so that signal isn't lost — both are
+     * independent, useful facts about the same finding.
+     */
+    private String buildHardcodedCredentialMessage(
+            String key, String rawValue, boolean isKnownHighRiskKey, boolean isFromPlaceholderDefault
+    ) {
+        String base = isKnownHighRiskKey
+                ? ("Hardcoded credential detected in core Spring Boot property '%s'. " +
+                "Never store infrastructure credentials in plaintext configuration files; " +
+                "inject them dynamically via environment variables or a secret management system (e.g., Vault, AWS Secrets Manager).")
+                .formatted(key)
+                : ("Hardcoded secret detected matching custom key pattern in property '%s'. " +
+                "Avoid storing application secrets or API keys in plaintext configuration files; " +
+                "use environment variables or a secret management system.")
+                .formatted(key);
+
+        if (!isFromPlaceholderDefault) {
+            return base;
+        }
+        return base + " The value originates from a static placeholder default ('%s').".formatted(rawValue);
     }
 
     private boolean matchesSecretPattern(String canonicalKey) {

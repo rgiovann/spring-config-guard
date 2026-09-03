@@ -34,3 +34,4 @@ build/
 
 # Maven Shade Plugin generated POM
 dependency-reduced-pom.xml
+CLAUDE.md

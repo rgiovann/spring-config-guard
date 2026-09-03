@@ -17,7 +17,11 @@ secret-key-patterns:
   - token
   - credential
   - access-key
-  
+  - signing-key
+  - encryption-key
+  - master-key
+  - auth-key
+
 ignored-value-prefixes:
   - "{cipher}"
   - "{vault}"
