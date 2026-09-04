@@ -8,12 +8,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.yaml.snakeyaml.Yaml;
 
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,25 +33,20 @@ class HardcodedSecretsRuleTest {
     @BeforeEach
     void setUp() {
         rule = new HardcodedSecretsRule();
-        Map<String, List<String>> validMetadata = Map.of(
-                "high-risk-keys", List.of(
-                        "spring.datasource.password",
-                        "spring.r2dbc.password",
-                        "spring.flyway.password",
-                        "spring.liquibase.password",
-                        "spring.data.redis.password",
-                        "spring.rabbitmq.password",
-                        "spring.mail.password",
-                        "spring.security.user.password",
-                        "spring.neo4j.authentication.password"
-                ),
-                "secret-key-patterns", List.of(
-                        "password", "secret", "private-key", "api-key",
-                        "apikey", "token", "credential", "access-key"
-                ),
-                "ignored-value-prefixes", List.of("{cipher}", "{vault}")
-        );
-        rule.configure(validMetadata);
+
+        // Loads the SCG006.yml file directly from the resources in the test classpath.
+        try (InputStream is = getClass().getResourceAsStream("/rules-metadata/SCG006.yml")) {
+            if (is == null) {
+                throw new IllegalStateException("Rule metadata file '/rules-metadata/SCG006.yml' not found in test classpath resources");
+            }
+
+            Yaml yaml = new Yaml();
+            Map<String, List<String>> metadata = yaml.load(is);
+
+            rule.configure(metadata);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load or parse SCG006.yml metadata", e);
+        }
     }
 
     @Nested
@@ -54,18 +54,8 @@ class HardcodedSecretsRuleTest {
     class HighRiskKeyTests {
 
         @ParameterizedTest(name = "Should trigger HIGH finding for high-risk key: {0}")
-        @ValueSource(strings = {
-                "spring.datasource.password",
-                "spring.r2dbc.password",
-                "spring.flyway.password",
-                "spring.liquibase.password",
-                "spring.data.redis.password",
-                "spring.rabbitmq.password",
-                "spring.mail.password",
-                "spring.security.user.password",
-                "spring.neo4j.authentication.password"
-        })
-        @DisplayName("Detects hardcoded secrets in high-risk property keys")
+        @MethodSource("provideHighRiskKeys")
+        @DisplayName("Detects hardcoded secrets in high-risk property keys dynamically from YAML")
         void shouldDetectHighRiskKeys(String propertyKey) {
             EffectiveConfig config = createConfig(Map.of(propertyKey, "supersecret123"));
 
@@ -81,6 +71,17 @@ class HardcodedSecretsRuleTest {
                         assertThat(finding.message()).contains("core Spring Boot property");
                         assertThat(finding.message()).doesNotContain("static placeholder default");
                     });
+        }
+
+        private static Stream<String> provideHighRiskKeys() throws Exception {
+            try (InputStream is = HardcodedSecretsRuleTest.class.getResourceAsStream("/rules-metadata/SCG006.yml")) {
+                if (is == null) {
+                    throw new IllegalStateException("Metadata file '/rules-metadata/SCG006.yml' not found in test resources");
+                }
+                Yaml yaml = new Yaml();
+                Map<String, List<String>> metadata = yaml.load(is);
+                return metadata.get("high-risk-keys").stream();
+            }
         }
 
         @ParameterizedTest(name = "Should detect relaxed binding variation: {0}")
@@ -151,13 +152,32 @@ class HardcodedSecretsRuleTest {
             assertThat(findings).isEmpty();
         }
 
-        @ParameterizedTest(name = "Should ignore blank or null values for key: {0}")
+        @ParameterizedTest(name = "Should generate INFO for blank core key with value: ''{0}''")
+        @NullAndEmptySource
         @ValueSource(strings = {"  ", "\t", "\n"})
-        @DisplayName("Ignores empty or blank values without throwing exceptions")
-        void shouldIgnoreBlankValues(String blankValue) {
+        @DisplayName("Generates INFO finding for blank high-risk keys (CWE-258)")
+        void shouldGenerateInfoForBlankHighRiskKeys(String blankValue) {
+            // null is what SnakeYAML produces for "password:" with nothing after it (see
+            // ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX) — the most realistic real-world shape,
+            // not just a synthetic whitespace string.
             Map<String, String> props = new HashMap<>();
             props.put("spring.datasource.password", blankValue);
+            EffectiveConfig config = createConfig(props);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            Finding finding = findings.getFirst();
+            assertThat(finding.severity()).isEqualTo(Severity.INFO);
+            assertThat(finding.message()).contains("Core Spring Boot sensitive property 'spring.datasource.password' is declared blank");
+        }
+
+        @Test
+        @DisplayName("Ignores null or blank values for custom secret key patterns silently")
+        void shouldIgnoreBlankValuesForCustomPatterns() {
+            Map<String, String> props = new HashMap<>();
             props.put("app.secret.key", null);
+            props.put("app.custom.token", "   ");
 
             EffectiveConfig config = createConfig(props);
 

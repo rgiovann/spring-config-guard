@@ -1,3 +1,16 @@
+# SCG006 (HardcodedSecretsRule) configuration.
+#
+# All keys and patterns below are matched using RelaxedProperties.canonicalize()
+# (strips '-'/'_', lowercases), so "spring.datasource.password", "spring-datasource-password"
+# and "SPRING_DATASOURCE_PASSWORD" are all treated as the same key.
+
+# Exact-match allowlist of well-known, native Spring Boot / infrastructure property keys.
+# A property whose canonicalized key equals one of these entries is reported with the
+# "core Spring Boot property" message wording, and — unlike secret-key-patterns below —
+# is also the ONLY list that triggers an INFO finding (CWE-258: Empty Password in
+# Configuration File) when its value is blank or null. secret-key-patterns matches are
+# deliberately silent on blank values to avoid noise across dev/test/scaffolding files
+# that legitimately leave non-native properties empty.
 high-risk-keys:
   - spring.datasource.password
   - spring.r2dbc.password
@@ -8,7 +21,7 @@ high-risk-keys:
   - spring.mail.password
   - spring.security.user.password
   - spring.neo4j.authentication.password
-  # New native infrastructure keys for Spring Boot / Spring Security / Embedded Servers:
+  # Additional native infrastructure keys (SSL, LDAP, Elasticsearch, Cassandra, Couchbase, Kafka):
   - server.ssl.key-store-password
   - server.ssl.key-password
   - spring.ldap.embedded.credential
@@ -17,6 +30,13 @@ high-risk-keys:
   - spring.couchbase.env.ssl.key-store-password
   - spring.kafka.properties.ssl.keystore.password
 
+# Substring allowlist for custom/third-party property keys that aren't native Spring Boot
+# properties but still look like they hold a secret (e.g. "app.jwt.token",
+# "payment.gateway.secret"). A property matches if its canonicalized key CONTAINS one of
+# these entries (also canonicalized) anywhere. Reported with the "custom key pattern"
+# message wording. Keep entries specific/compound (e.g. "signing-key", not bare "key") —
+# a bare "key" would false-positive on benign properties like "key-store" or
+# "key-generator".
 secret-key-patterns:
   - password
   - secret
@@ -30,6 +50,12 @@ secret-key-patterns:
   - master-key
   - auth-key
 
+# Value-level allowlist: if a sensitive property's value (raw, or after resolving a
+# ${VAR:default} placeholder) starts with one of these prefixes, it is skipped entirely —
+# it's already been through a proper encryption/secret-reference mechanism, not hardcoded
+# in plaintext. "{cipher}" and "{vault}" are Spring Cloud Config's own conventions for an
+# encrypted value and a Vault-backed reference, respectively. Entries must not contain
+# "${" — that syntax is reserved for EnvironmentPlaceholder resolution, not this allowlist.
 ignored-value-prefixes:
   - "{cipher}"
   - "{vault}"

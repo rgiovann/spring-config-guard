@@ -11,6 +11,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private List<String> secretKeyPatterns;
     private List<String> ignoredValuePrefixes;
     private static final String RULE_NAME = "SCG006";
+
     @Override
     public String id() {
         return RULE_NAME;
@@ -45,7 +46,6 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             throw new IllegalArgumentException(RULE_NAME + " initialization failed: 'secret-key-patterns' is missing or empty.");
         }
 
-        // Canonicalizes all keys and patterns only once at startup.
         this.highRiskKeys = rawHighRisk.stream()
                 .map(RelaxedProperties::canonicalize)
                 .collect(Collectors.toUnmodifiableSet());
@@ -68,7 +68,30 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         for (Map.Entry<String, String> entry : config.properties().entrySet()) {
             String rawValue = entry.getValue();
 
+            String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
+            boolean isKnownHighRiskKey = highRiskKeys.contains(canonicalKey);
+            boolean isCustomSecretKey = !isKnownHighRiskKey && matchesSecretPattern(canonicalKey);
+
+            //Skips properties that don't match either native keys or secret patterns.
+            if (!isKnownHighRiskKey && !isCustomSecretKey) {
+                continue;
+            }
+
+            // Handles missing values ​​/ blank values
             if (rawValue == null || rawValue.isBlank()) {
+                // Emite INFO (CWE-258) exclusivamente para chaves nativas de infraestrutura
+                if (isKnownHighRiskKey) {
+                    findings.add(new Finding(
+                            id(),
+                            Severity.INFO,
+                            ("Core Spring Boot sensitive property '%s' is declared blank in configuration. " +
+                                    "Ensure credentials are injected securely via environment variables or a secret manager at runtime.")
+                                    .formatted(entry.getKey()),
+                            config.sourceFile().toString(),
+                            config.profileLabel()
+                    ));
+                }
+                // Blank generic patterns (secret-key-patterns) continue to be silently discarded.
                 continue;
             }
 
@@ -79,62 +102,52 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 continue;
             }
 
-            String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
+            Optional<String> resolvedValue = EnvironmentPlaceholder.resolve(trimmedValue);
 
-            boolean isKnownHighRiskKey = highRiskKeys.contains(canonicalKey);
-            boolean isCustomSecretKey = !isKnownHighRiskKey && matchesSecretPattern(canonicalKey);
+            // Observability pattern: Notifies INFO when it is not possible to evaluate statically
+            if (resolvedValue.isEmpty()) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.INFO,
+                        ("Sensitive property '%s' relies on an unresolved environment placeholder '%s'. " +
+                                "Static analysis cannot verify the runtime value; " +
+                                "ensure production secrets are injected securely via environment variables or a secret manager.")
+                                .formatted(entry.getKey(), rawValue),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+                continue;
+            }
 
-            if (isKnownHighRiskKey || isCustomSecretKey) {
-                Optional<String> resolvedValue = EnvironmentPlaceholder.resolve(trimmedValue);
+            String valueToInspect = resolvedValue.get();
 
-                // Observability pattern: Notifies INFO when it is not possible to evaluate statically
-                if (resolvedValue.isEmpty()) {
-                    findings.add(new Finding(
-                            id(),
-                            Severity.INFO,
-                            ("Sensitive property '%s' relies on an unresolved environment placeholder '%s'. " +
-                                    "Static analysis cannot verify the runtime value; " +
-                                    "ensure production secrets are injected securely via environment variables or a secret manager.")
-                                    .formatted(entry.getKey(), rawValue),
-                            config.sourceFile().toString(),
-                            config.profileLabel()
-                    ));
-                    continue;
-                }
+            // If the resolved value (e.g., the placeholder default) is an ignored prefix (e.g., {cipher}), skip the rule.
+            if (isIgnoredValue(valueToInspect)) {
+                continue;
+            }
 
-                String valueToInspect = resolvedValue.get();
+            if (!valueToInspect.isBlank()) {
+                boolean isFromPlaceholderDefault = trimmedValue.contains("${");
 
-
-                 // If the resolved value (e.g., the placeholder default) is an ignored prefix (e.g., {cipher}), skip the rule.
-                if (isIgnoredValue(valueToInspect)) {
-                    continue;
-                }
-
-                if (!valueToInspect.isBlank()) {
-                    boolean isFromPlaceholderDefault = trimmedValue.contains("${");
-
-                    findings.add(new Finding(
-                            id(),
-                            Severity.HIGH,
-                            buildHardcodedCredentialMessage(entry.getKey(), rawValue, isKnownHighRiskKey, isFromPlaceholderDefault),
-                            config.sourceFile().toString(),
-                            config.profileLabel()
-                    ));
-                } else {
-                    // ${VAR:} — the placeholder WAS resolved, its declared default is just an
-                    // empty string. Distinct from the unresolvable case above: here we know the
-                    // static value (empty), we just don't know what the env var holds at runtime.
-                    findings.add(new Finding(
-                            id(),
-                            Severity.INFO,
-                            ("Sensitive property '%s' declares an empty default fallback for its environment placeholder '%s'. " +
-                                    "Static analysis cannot verify the runtime value if the environment variable is unset; " +
-                                    "ensure production secrets are injected securely via environment variables or a secret manager.")
-                                    .formatted(entry.getKey(), rawValue),
-                            config.sourceFile().toString(),
-                            config.profileLabel()
-                    ));
-                }
+                findings.add(new Finding(
+                        id(),
+                        Severity.HIGH,
+                        buildHardcodedCredentialMessage(entry.getKey(), rawValue, isKnownHighRiskKey, isFromPlaceholderDefault),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            } else {
+                // ${VAR:} — the placeholder WAS resolved, its declared default is just an empty string.
+                findings.add(new Finding(
+                        id(),
+                        Severity.INFO,
+                        ("Sensitive property '%s' declares an empty default fallback for its environment placeholder '%s'. " +
+                                "Static analysis cannot verify the runtime value if the environment variable is unset; " +
+                                "ensure production secrets are injected securely via environment variables or a secret manager.")
+                                .formatted(entry.getKey(), rawValue),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
             }
         }
 
@@ -156,13 +169,6 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         }
     }
 
-    /**
-     * Base message distinguishes WHERE the sensitive key comes from (native Spring Boot
-     * property vs. a custom key matching one of our patterns); when the offending value
-     * came from a static default inside a placeholder (${VAR:hardcoded}) rather than a
-     * plain literal, an extra clause is appended so that signal isn't lost — both are
-     * independent, useful facts about the same finding.
-     */
     private String buildHardcodedCredentialMessage(
             String key, String rawValue, boolean isKnownHighRiskKey, boolean isFromPlaceholderDefault
     ) {
