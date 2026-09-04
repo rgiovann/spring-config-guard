@@ -178,7 +178,8 @@ class HardcodedSecretsRuleTest {
         @ValueSource(strings = {
                 "{cipher}FK2049SFKSL204920SLFK",
                 "{vault}secret/data/db#password",
-                "   {cipher}WITH_LEADING_SPACES"
+                "   {cipher}WITH_LEADING_SPACES",
+                "ENC(AQBvZ2VyZmFrZQ==)"
         })
         @DisplayName("Ignores encrypted or managed values starting with configured prefixes")
         void shouldIgnoreEncryptedValues(String encryptedValue) {

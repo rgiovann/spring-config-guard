@@ -54,8 +54,12 @@ secret-key-patterns:
 # ${VAR:default} placeholder) starts with one of these prefixes, it is skipped entirely —
 # it's already been through a proper encryption/secret-reference mechanism, not hardcoded
 # in plaintext. "{cipher}" and "{vault}" are Spring Cloud Config's own conventions for an
-# encrypted value and a Vault-backed reference, respectively. Entries must not contain
-# "${" — that syntax is reserved for EnvironmentPlaceholder resolution, not this allowlist.
+# encrypted value and a Vault-backed reference, respectively. "ENC(" is Jasypt's convention
+# (the most common third-party property-encryption library for Spring Boot outside the
+# Spring Cloud Config ecosystem) for a value encrypted with EncryptablePropertyResolver.
+# Entries must not contain "${" — that syntax is reserved for EnvironmentPlaceholder
+# resolution, not this allowlist.
 ignored-value-prefixes:
   - "{cipher}"
   - "{vault}"
+  - "ENC("
