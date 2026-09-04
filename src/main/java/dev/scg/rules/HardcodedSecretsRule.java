@@ -126,6 +126,14 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 continue;
             }
 
+            // Precision heuristic: custom key matches (substrings) with purely numeric/boolean
+            // resolved values (e.g. token-validity-in-seconds: 86400, or ${TOKEN_TTL:86400})
+            // are configuration metrics, not secrets. Checked against the RESOLVED value so it
+            // applies equally to a bare literal and to a placeholder's static default.
+            if (isCustomSecretKey && isNonSecretPrimitiveValue(valueToInspect)) {
+                continue;
+            }
+
             if (!valueToInspect.isBlank()) {
                 boolean isFromPlaceholderDefault = trimmedValue.contains("${");
 
@@ -195,5 +203,18 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             }
         }
         return false;
+    }
+
+    /**
+     * Checks if the value is a primitive/overt configuration type (integers, booleans)
+     * that does not represent a legitimate secret in custom pattern keys.
+     */
+    private boolean isNonSecretPrimitiveValue(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String trimmed = value.trim();
+        // Captures pure integers (e.g., 86400, 2592000) and booleans (true/false)
+        return trimmed.matches("\\d+") || trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("false");
     }
 }

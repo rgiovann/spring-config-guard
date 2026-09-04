@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -105,6 +106,42 @@ class HardcodedSecretsRuleTest {
     @Nested
     @DisplayName("Custom Secret Key Patterns Detection")
     class SecretKeyPatternTests {
+
+        @ParameterizedTest(name = "Should ignore custom secret pattern for ''{0}'' with primitive value ''{1}''")
+        @CsvSource({
+                "jwt.token-validity-in-seconds, 86400",
+                "jwt.token-validity-in-seconds, 2592000",
+                "jwt.token-validity-in-seconds, 0",
+                "app.security.token-remember-me-enabled, true",
+                "app.security.token-remember-me-enabled, TRUE",
+                "app.security.token-remember-me-enabled, false"
+        })
+        @DisplayName("Silently ignores custom key matches with numeric or boolean primitive values")
+        void shouldIgnoreCustomSecretKeyPatternForPrimitiveValues(String propertyKey, String primitiveValue) {
+            Map<String, String> props = Map.of(propertyKey, primitiveValue);
+            EffectiveConfig config = createConfig(props);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).isEmpty();
+        }
+
+        @ParameterizedTest(name = "Should ignore custom secret pattern for ''{0}'' with primitive value behind placeholder ''{1}''")
+        @CsvSource({
+                "jwt.token-validity-in-seconds, ${TOKEN_TTL:86400}",
+                "jwt.token-validity-in-seconds, ${TOKEN_TTL:0}",
+                "app.security.token-remember-me-enabled, ${REMEMBER_ME:true}",
+                "app.security.token-remember-me-enabled, ${REMEMBER_ME:FALSE}"
+        })
+        @DisplayName("Silently ignores custom key matches when the placeholder's static default is a numeric or boolean primitive")
+        void shouldIgnoreCustomSecretKeyPatternForPrimitiveValuesBehindPlaceholder(String propertyKey, String placeholderValue) {
+            Map<String, String> props = Map.of(propertyKey, placeholderValue);
+            EffectiveConfig config = createConfig(props);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).isEmpty();
+        }
 
         @ParameterizedTest(name = "Should detect custom property matching pattern: {0}")
         @ValueSource(strings = {
