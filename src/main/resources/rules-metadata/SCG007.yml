@@ -1,0 +1,25 @@
+# SCG007 (EmbeddedConnectionCredentialsRule) configuration.
+#
+# Both lists below hold canonicalized property keys (RelaxedProperties.canonicalize()) whose
+# VALUE is inspected for an embedded plaintext credential — this rule detects by value shape,
+# not by key name, so unlike SCG006 there is no substring/pattern matching here: a key either
+# is one of these connection-string properties, or it isn't checked at all.
+
+# Keys whose value is a connection URI of the form "scheme://user:password@host" (JDBC,
+# R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ, ActiveMQ, ...). Matched against
+# EMBEDDED_URI_PASSWORD_PATTERN after placeholder resolution.
+uri-based:
+  - "spring.datasource.url"
+  - "spring.r2dbc.url"
+  - "spring.data.mongodb.uri"
+  - "spring.redis.url"
+  - "spring.elasticsearch.uris"
+  - "spring.rabbitmq.addresses"
+  - "spring.activemq.broker-url"
+
+# Keys whose value is a JAAS configuration string (Kafka SASL) that may embed a
+# password="..." entry inline. Matched against JAAS_PASSWORD_PATTERN after placeholder
+# resolution.
+jaas-based:
+  - "spring.kafka.properties.sasl.jaas.config"
+  - "spring.kafka.jaas.options"
