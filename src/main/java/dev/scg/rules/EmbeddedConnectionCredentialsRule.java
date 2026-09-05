@@ -32,13 +32,16 @@ public final class EmbeddedConnectionCredentialsRule implements ConfigurableRule
 
     private static final String RULE_NAME = "SCG007";
 
-    // Pattern for capturing passwords in jaas.config (e.g., password="myPassword" or password='myPassword')
-    private static final Pattern JAAS_PASSWORD_PATTERN = Pattern.compile("password\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    // Pattern for capturing passwords in jaas.config (e.g., password="myPassword" or password='myPassword').
+    // Capture group uses '*' (not '+') so a present-but-empty credential (password="") still matches —
+    // distinguishing "no password field at all" from "password field present, resolved to empty".
+    private static final Pattern JAAS_PASSWORD_PATTERN = Pattern.compile("password\\s*=\\s*[\"']([^\"']*)[\"']", Pattern.CASE_INSENSITIVE);
 
-    // Captura qualquer formato <schema>://<user>:<password>@<host>
-    // Ignora prefixos como jdbc:, r2dbc:, pool:, etc.
+    // Captures any format <schema>://<user>:<password>@<host>
+    // Ignores prefixes like jdbc:, r2dbc:, pool:, etc.
+    // Capture group uses '*' for the same reason as JAAS_PASSWORD_PATTERN above (e.g. "user:@host").
     private static final Pattern EMBEDDED_URI_PASSWORD_PATTERN =
-            Pattern.compile("://[^:@]*:([^@]+)@", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("://[^:@]*:([^@]*)@", Pattern.CASE_INSENSITIVE);
 
     private Set<String> uriBasedKeys;
     private Set<String> jaasBasedKeys;
@@ -116,65 +119,95 @@ public final class EmbeddedConnectionCredentialsRule implements ConfigurableRule
             }
 
             String valueToInspect = resolvedValue.get();
+
+            // ${VAR:} — the WHOLE property value was a placeholder that resolved to an empty
+            // default. Distinct from the unresolvable case above: here the static value is known
+            // (empty), we just don't know what the env var holds at runtime. Mirrors SCG006's
+            // handling of the same placeholder shape.
             if (valueToInspect.isBlank()) {
-                continue;
-            }
-
-            // 2. Extrai e valida a credencial no valor resolvido
-            boolean hasCredential = isUriTarget
-                    ? hasEmbeddedUriCredential(valueToInspect)
-                    : hasEmbeddedJaasCredential(valueToInspect);
-
-            if (hasCredential) {
-                // A senha só veio de um placeholder default se a string original continha '${'
-                boolean isFromPlaceholderDefault = trimmedValue.contains("${");
-
-                String message = buildEmbeddedCredentialMessage(entry.getKey(), rawValue, isFromPlaceholderDefault);
-
                 findings.add(new Finding(
                         id(),
-                        Severity.HIGH,
-                        message,
+                        Severity.INFO,
+                        ("Connection property '%s' declares an empty default fallback for its environment placeholder '%s'. " +
+                                "Static analysis cannot verify the runtime value if the environment variable is unset; " +
+                                "ensure credentials are injected securely via environment variables or a secret manager.")
+                                .formatted(entry.getKey(), rawValue),
                         config.sourceFile().toString(),
                         config.profileLabel()
                 ));
+                continue;
+            }
+
+            // 2. Extract the credential (if there is a slot for it) in the resolved value
+            Optional<String> extractedCredential = isUriTarget
+                    ? extractUriCredential(valueToInspect)
+                    : extractJaasCredential(valueToInspect);
+
+            if (extractedCredential.isPresent()) {
+                String credential = extractedCredential.get();
+                // The password only came from a default placeholder if the original string contained '${'
+                boolean isFromPlaceholderDefault = trimmedValue.contains("${");
+
+                if (!credential.isBlank()) {
+                    findings.add(new Finding(
+                            id(),
+                            Severity.HIGH,
+                            buildEmbeddedCredentialMessage(entry.getKey(), rawValue, isFromPlaceholderDefault),
+                            config.sourceFile().toString(),
+                            config.profileLabel()
+                    ));
+                } else if (isFromPlaceholderDefault) {
+                    // Credential slot is present (e.g. "user:${DB_PASSWORD:}@host") but resolved to
+                    // empty because of the placeholder's default — distinct from a literal, permanently
+                    // empty credential with no placeholder involved, which stays silent (see below).
+                    findings.add(new Finding(
+                            id(),
+                            Severity.INFO,
+                            ("Connection property '%s' has a credential placeholder that resolves to an empty value ('%s'). " +
+                                    "Static analysis cannot verify the runtime value if the environment variable is unset; " +
+                                    "ensure credentials are injected securely via environment variables or a secret manager.")
+                                    .formatted(entry.getKey(), rawValue),
+                            config.sourceFile().toString(),
+                            config.profileLabel()
+                    ));
+                }
+                // else: a literal, permanently empty credential (e.g. "user:@host") with no placeholder
+                // involved — nothing hardcoded, nothing to verify at runtime either. Stays silent.
             }
         }
 
         return findings;
     }
 
-    private boolean hasEmbeddedUriCredential(String uriString) {
+    private Optional<String> extractUriCredential(String uriString) {
         if (uriString == null || uriString.isBlank()) {
-            return false;
+            return Optional.empty();
         }
 
-        // Processa o primeiro nó em caso de URIs com múltiplos hosts separados por vírgula (MongoDB, Elastic, etc.)
+        // Processes the first node in the case of URIs with multiple hosts separated by commas (MongoDB, Elastic, etc.)
         String primaryUri = uriString.split(",")[0].trim();
 
         Matcher matcher = EMBEDDED_URI_PASSWORD_PATTERN.matcher(primaryUri);
         if (matcher.find()) {
             String password = matcher.group(1);
 
-            // Se a senha extraída for um placeholder irresolvível (ex: ${DB_PASS}), ignora.
+            // If the extracted password is an unresolvable placeholder (e.g., ${DB_PASS}), ignore it.
             if (password.startsWith("${") && password.endsWith("}")) {
-                return false;
+                return Optional.empty();
             }
 
-            // Se contiver texto claro (mesmo que seja um default estático de placeholder já resolvido)
-            return !password.isBlank();
+            return Optional.of(password);
         }
 
-        return false;
+        return Optional.empty();
     }
 
-    private boolean hasEmbeddedJaasCredential(String jaasConfig) {
+    private Optional<String> extractJaasCredential(String jaasConfig) {
         Matcher matcher = JAAS_PASSWORD_PATTERN.matcher(jaasConfig);
         if (matcher.find()) {
-            String password = matcher.group(1);
-            return !password.isBlank();
+            return Optional.of(matcher.group(1));
         }
-        return false;
+        return Optional.empty();
     }
 
     private String buildEmbeddedCredentialMessage(String key, String rawValue, boolean isFromPlaceholderDefault) {
