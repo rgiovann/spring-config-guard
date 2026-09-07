@@ -75,4 +75,25 @@ public final class RelaxedProperties {
         }
         return Optional.empty();
     }
+
+
+    /**
+     * Check if there is any key in the property map that starts with the given canonical
+     * prefix (e.g., "springdoc"), matching either the prefix itself or a "prefix.*" segment —
+     * a raw startsWith would also match unrelated keys like "springdocument.path".
+     */
+    public static boolean hasKeyWithPrefix(Map<String, String> properties, String canonicalPrefix) {
+        if (properties == null || properties.isEmpty() || canonicalPrefix == null) {
+            return false;
+        }
+        String targetPrefix = canonicalize(canonicalPrefix);
+        String dottedPrefix = targetPrefix + ".";
+        for (String actualKey : properties.keySet()) {
+            String actual = canonicalize(actualKey);
+            if (actual.equals(targetPrefix) || actual.startsWith(dottedPrefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

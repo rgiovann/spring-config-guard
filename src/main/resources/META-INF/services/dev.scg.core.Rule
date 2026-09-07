@@ -5,3 +5,4 @@ dev.scg.rules.CorsInsecureProtocolsRule
 dev.scg.rules.CorsPermissiveMethodsAndHeadersRule
 dev.scg.rules.HardcodedSecretsRule
 dev.scg.rules.EmbeddedConnectionCredentialsRule
+dev.scg.rules.SwaggerOpenApiExposedRule
