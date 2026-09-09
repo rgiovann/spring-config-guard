@@ -16,16 +16,10 @@ public final class RelaxedBoolean {
         }
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
-        if (resolved.isEmpty()) {
-
         // Dynamic placeholder without a default: the actual value only exists at
         // runtime and cannot be determined through static analysis. Project security
         // posture: assume the worst case (true) instead of suppressing a potential risk.
+        return resolved.map(s -> TRUTHY_VALUES.contains(s.trim().toLowerCase(Locale.ROOT))).orElse(true);
 
-
-            return true;
-        }
-
-        return TRUTHY_VALUES.contains(resolved.get().trim().toLowerCase(Locale.ROOT));
     }
 }

@@ -24,7 +24,8 @@ class RuleRegistryTest {
                 "SCG005",
                 "SCG006",
                 "SCG007",
-                "SCG008");    }
+                "SCG008",
+                "SCG009");    }
 
     @Test
     @DisplayName("Should sort rules deterministically by ID")
