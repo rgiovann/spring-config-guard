@@ -1,0 +1,164 @@
+# Backlog
+
+Este arquivo é o estado planejado do projeto: o que está em andamento e as
+próximas regras candidatas, em ordem de prioridade. Não é um contrato — é
+esperado que itens sejam descobertos, descartados, divididos, combinados ou
+repriorizados conforme o projeto avança.
+
+A lista de regras já implementadas é
+`src/main/resources/META-INF/services/dev.scg.core.Rule`, com os IDs
+validados por `RuleRegistryTest`. Este arquivo não a duplica.
+
+## Em andamento
+
+### SCG011 — InsecureServerTransportRule
+
+Escopo fechado nesta sessão (2026-09-10), testes ainda não escritos.
+
+* `server.ssl.enabled=false` com `server.ssl.key-store` presente → HIGH
+  (SSL foi claramente pretendido e depois desligado).
+* `server.servlet.session.cookie.secure=false` → HIGH (CWE-614).
+* Um terceiro check (`server.forward-headers-strategy=NONE`) foi proposto e
+  **descartado** na revisão: `NONE` é o default real do Spring Boot, e
+  defini-lo explicitamente é a postura de hardening recomendada para apps
+  sem um reverse proxy confiável na frente (confiar em cabeçalhos
+  forwarded sem um proxy confiável habilita spoofing — CWE-290). O
+  heurístico estava invertido, não apenas mal evidenciado — não
+  reintroduzir como "NONE + porta HTTP comum"; presença de porta não
+  estabelece topologia de proxy.
+* `management.server.ssl.*` (porta de management do Actuator pode ter TLS
+  independente do `server.*`) ficou deliberadamente fora do escopo da
+  SCG011 e está documentada como não-coberta no Javadoc da classe — ver
+  item da lista de candidatas abaixo.
+
+## Próximas regras candidatas
+
+Ordem por relação esforço/valor, não por dependência técnica.
+
+1. **`management.endpoint.health.show-details=always`** — vaza detalhes
+   internos do sistema (disco, DB, filas) via `/actuator/health` sem
+   autenticação.
+2. **Cookie de sessão: `http-only=false` / `same-site` ausente ou
+   `none`** — o restante da ideia original de "flags do cookie de
+   sessão"; a flag `secure` já é coberta pela SCG011.
+3. **`management.server.ssl.*` sem TLS** — keystore presente +
+   `management.server.ssl.enabled=false` explícito na porta de
+   management. Deixado de fora da SCG011 de propósito (ver acima);
+   provavelmente espelha o formato de evidência do check 1 da SCG011.
+4. **`management.endpoint.env.show-values` / `configprops.show-values` =
+   `always`** — gap real na SCG001 (`ActuatorExposureRule`): ela só
+   dispara quando `exposure.include` contém `*`; se `env`/`configprops`
+   estiver listado explicitamente (sem wildcard) com valores expostos,
+   a SCG001 não pega isso hoje.
+5. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
+   `useSSL=false`/`verifyServerCertificate=false`, Postgres
+   `sslmode=disable`, Mongo/Redis `ssl=false`. Ângulo de transporte que
+   complementa o parsing de URI já feito pela SCG007 (focado em
+   credenciais).
+6. **(Prioridade baixa) Upload multipart sem limite** —
+   `spring.servlet.multipart.max-file-size`/`max-request-size`
+   ilimitado ou `-1`. Mais adjacente a DoS do que a
+   confidencialidade/integridade, por isso a prioridade menor.
+7. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+   `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
+   `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
+   OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
+   (`CorsInsecureProtocolsRule`) só olha
+   `management.endpoints.web.cors.allowed-origins`/`-origin-patterns`; a
+   SCG006 (`HardcodedSecretsRule`) é sobre segredos, não protocolo. É
+   um vetor de transporte diferente do item 5 acima (que mira parâmetros
+   de conexão JDBC/Postgres/Mongo/Redis, não propriedades de domínio
+   arbitrárias) — complementares, não duplicados.
+   Prioridade baixa é deliberada, não um descuido: definir quais chaves
+   arbitrárias contam como "transporte crítico" exige esforço semântico
+   alto para um retorno marginal comparado a vetores diretamente
+   exploráveis (SCG001 Actuator exposto, SCG003/004/005 CORS permissivo,
+   SCG006 segredo vazado), com risco real de ruído em mocks locais,
+   containers isolados e service mesh com TLS no sidecar — o tipo de
+   falso positivo que mina a confiança na ferramenta logo nas primeiras
+   execuções.
+
+## Débito técnico e features de plataforma
+
+### Sentinel de profile base vaza para a saída da CLI
+
+`ProfileMerger.BASE_PROFILE_LABEL` (`__spring_config_guard_base__`) é o
+label sintético usado internamente para "sem profile ativo" — ver o
+Javadoc da constante em
+[ProfileMerger.java:22](src/main/java/dev/scg/core/ProfileMerger.java:22)
+para o porquê de não ser simplesmente `"base"` (colidiria com um profile
+Spring real chamado literalmente `base`, sintaticamente válido embora
+raro). O problema é que `Finding.toString()`
+([Finding.java:29](src/main/java/dev/scg/core/Finding.java:29)) imprime
+`profileLabel` cru, então o `ConsoleReporter` hoje mostra o sentinel
+interno direto pro usuário:
+
+```
+[HIGH] SCG003 (demo-project\application.yml) [profile: __spring_config_guard_base__]
+```
+
+que parece ser um profile Spring real, mas não é.
+
+Comportamento desejado: `application.yml` → `[base]`;
+`application-prod.yml` → `[profile: prod]` (nomes reais de profile
+preservados exatamente como no arquivo — a distinção deve vir da origem
+estrutural do arquivo, não de inferência sobre o nome do profile, já que
+um profile real pode se chamar quase qualquer coisa).
+
+Fix pertence à camada de apresentação, não ao modelo interno: manter
+`BASE_PROFILE_LABEL` como está (não criar um profile reservado chamado
+`"base"` — seria reintroduzir exatamente o problema que a constante já
+resolveu) e traduzir apenas na formatação do `ConsoleReporter`/
+`Finding.toString()`. Vale decidir também o que fazer no `JsonReporter`
+— que hoje serializa o `Finding` bruto via Jackson, então o mesmo
+sentinel aparece no JSON; para um formato consumido por máquina isso é
+plausivelmente aceitável (valor estável para matching), mas é uma
+decisão em aberto, não assumida aqui.
+
+### Camada de Policy: supressão binária de findings por regra + profile
+
+Feature nova — não existe hoje. Registra um design já discutido e
+decidido, não apenas uma ideia solta.
+
+**Motivação:** as regras do projeto são — e devem continuar sendo —
+agnósticas a profile: recebem uma `EffectiveConfig`, avaliam, emitem
+`Finding` com severidade fixa definida pela própria regra, sem embutir
+política de "profile X merece menos rigor" (ver
+[[feedback_zero_trust_no_profile_exemption]]). Decisões desse tipo (ex:
+"aceitamos segredo hardcoded em dev") pertencem a cada time analisado,
+não à ferramenta — por isso saem da regra e viram uma camada separada,
+pós-avaliação.
+
+**Design confirmado:**
+
+1. **Posição no pipeline:** entre `RuleEngine.run()` (produz
+   `List<Finding>`) e `Reporter`/`ExitCodeResolver` — confirmado contra
+   o wiring atual em
+   [Main.java:64-69](src/main/java/dev/scg/Main.java:64): hoje é
+   `findings = engine.run(...)` seguido direto por `reporter.report(...)`
+   e `new ExitCodeResolver().resolve(...)`; a Policy entraria filtrando
+   `findings` entre essas duas chamadas. Nem `Reporter` nem
+   `ExitCodeResolver` precisam saber que a política existe.
+2. **Escopo inicial:** supressão binária apenas (ignora o finding
+   inteiro). Ajuste gradual de severidade (rebaixar em vez de suprimir)
+   foi cogitado e deliberadamente adiado — mesmo raciocínio YAGNI já
+   aplicado em outras partes do projeto (ex: `RelaxedBoolean`): não
+   generalizar antes de uma segunda necessidade real aparecer.
+3. **Granularidade:** por regra + profile (não só por profile) —
+   motivação explícita: um time pode querer manter algumas regras ativas
+   mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
+   continua ativa em `dev`).
+
+## Descartado / fora de escopo
+
+* **CSRF desabilitado** — normalmente feito via `http.csrf().disable()`
+  em um bean `SecurityFilterChain` Java, não em
+  `application.yml`/`.properties`. O projeto só faz parsing estático de
+  arquivos de config (sem dependência do Spring Boot, sem análise de
+  bytecode/AST), então não há superfície de propriedade para detectar
+  isso. Exigiria mudança de escopo do projeto inteiro, não uma regra
+  nova.
+* **Springfox (`springfox.documentation.*`)** — legado, incompatível com
+  Spring Boot 3/Java 21 (o alvo declarado do projeto). Descartado por
+  YAGNI; só valeria a pena se um projeto legado real em Boot 2 aparecesse
+  no escopo.
