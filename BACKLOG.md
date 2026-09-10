@@ -9,28 +9,6 @@ A lista de regras já implementadas é
 `src/main/resources/META-INF/services/dev.scg.core.Rule`, com os IDs
 validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
-## Em andamento
-
-### SCG011 — InsecureServerTransportRule
-
-Escopo fechado nesta sessão (2026-09-10), testes ainda não escritos.
-
-* `server.ssl.enabled=false` com `server.ssl.key-store` presente → HIGH
-  (SSL foi claramente pretendido e depois desligado).
-* `server.servlet.session.cookie.secure=false` → HIGH (CWE-614).
-* Um terceiro check (`server.forward-headers-strategy=NONE`) foi proposto e
-  **descartado** na revisão: `NONE` é o default real do Spring Boot, e
-  defini-lo explicitamente é a postura de hardening recomendada para apps
-  sem um reverse proxy confiável na frente (confiar em cabeçalhos
-  forwarded sem um proxy confiável habilita spoofing — CWE-290). O
-  heurístico estava invertido, não apenas mal evidenciado — não
-  reintroduzir como "NONE + porta HTTP comum"; presença de porta não
-  estabelece topologia de proxy.
-* `management.server.ssl.*` (porta de management do Actuator pode ter TLS
-  independente do `server.*`) ficou deliberadamente fora do escopo da
-  SCG011 e está documentada como não-coberta no Javadoc da classe — ver
-  item da lista de candidatas abaixo.
-
 ## Próximas regras candidatas
 
 Ordem por relação esforço/valor, não por dependência técnica.
@@ -38,28 +16,21 @@ Ordem por relação esforço/valor, não por dependência técnica.
 1. **`management.endpoint.health.show-details=always`** — vaza detalhes
    internos do sistema (disco, DB, filas) via `/actuator/health` sem
    autenticação.
-2. **Cookie de sessão: `http-only=false` / `same-site` ausente ou
-   `none`** — o restante da ideia original de "flags do cookie de
-   sessão"; a flag `secure` já é coberta pela SCG011.
-3. **`management.server.ssl.*` sem TLS** — keystore presente +
-   `management.server.ssl.enabled=false` explícito na porta de
-   management. Deixado de fora da SCG011 de propósito (ver acima);
-   provavelmente espelha o formato de evidência do check 1 da SCG011.
-4. **`management.endpoint.env.show-values` / `configprops.show-values` =
+2. **`management.endpoint.env.show-values` / `configprops.show-values` =
    `always`** — gap real na SCG001 (`ActuatorExposureRule`): ela só
    dispara quando `exposure.include` contém `*`; se `env`/`configprops`
    estiver listado explicitamente (sem wildcard) com valores expostos,
    a SCG001 não pega isso hoje.
-5. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
+3. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
    `useSSL=false`/`verifyServerCertificate=false`, Postgres
    `sslmode=disable`, Mongo/Redis `ssl=false`. Ângulo de transporte que
    complementa o parsing de URI já feito pela SCG007 (focado em
    credenciais).
-6. **(Prioridade baixa) Upload multipart sem limite** —
+4. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-7. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+5. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
