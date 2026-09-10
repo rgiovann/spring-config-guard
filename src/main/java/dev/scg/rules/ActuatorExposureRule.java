@@ -4,6 +4,7 @@ import dev.scg.core.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -29,6 +30,19 @@ import java.util.Set;
  * BUT shutdown (default=none since 3.4) and heapdump (default=none since 3.5) are exceptions.
  * Also empirically confirmed against a real Spring Boot 4.1 application: heapdump only appears on
  * the discovery page after explicitly setting access=unrestricted, even with exposure.include=*.
+ * <p>
+ * Also detects {@code management.endpoint.env.show-values} / {@code management.endpoint.configprops.show-values}
+ * set to {@code always} or {@code when-authorized} on a reachable, unrestricted env/configprops
+ * endpoint (HIGH) — independent of the wildcard-exposure check above, since {@code exposure.include}
+ * can list these endpoints explicitly without a wildcard. Confirmed against the actual Spring Boot
+ * {@code Sanitizer} source: {@code show-values} is a master switch — at the safe default
+ * ({@code never}), every value is masked regardless of key name; once elevated, only keys matching
+ * known-sensitive patterns (password, secret, token, ...) stay masked, so this property is what
+ * actually decides whether raw values are exposed, not endpoint reachability by itself.
+ * {@code when-authorized} is treated as equally risky as {@code always}, not a lesser opt-out: its
+ * actual safety depends on a runtime {@code SecurityContext} this tool has no visibility into, so
+ * the mere opt-out from the safe {@code never} default is the signal, same posture as the rest of
+ * this project's Zero-Trust checks.
  */
 public final class ActuatorExposureRule implements Rule {
 
@@ -46,6 +60,13 @@ public final class ActuatorExposureRule implements Rule {
     private static final Set<String> RESTRICTED_BY_DEFAULT = Set.of("shutdown", "heapdump");
 
     private static final String RESTRICTED_ACCESS_VALUE = "none";
+
+    private static final Set<String> SHOW_VALUES_ENDPOINTS = Set.of("env", "configprops");
+    // Both underscore and hyphen spellings included -- same reason as VerboseErrorResponseRule's
+    // RISKY_ENUM_VALUES: this project does not deserialize into the real Spring enum, it matches
+    // the literal text a user would write in YAML (kebab-case, "when-authorized"), and that must
+    // not be missed just because the Java enum constant itself uses an underscore.
+    private static final Set<String> RISKY_SHOW_VALUES = Set.of("ALWAYS", "WHEN_AUTHORIZED", "WHEN-AUTHORIZED");
 
     @Override
     public String id() {
@@ -65,24 +86,44 @@ public final class ActuatorExposureRule implements Rule {
                 .stream()
                 .anyMatch(this::mayContainWildcard);
 
-        if (!hasWildcardExposure) {
-            return findings;
-        }
+        if (hasWildcardExposure) {
+            List<String> stillEnabled = new ArrayList<>();
+            for (String endpoint : SENSITIVE_ENDPOINTS) {
+                if (!isRestricted(config, endpoint)) {
+                    stillEnabled.add(endpoint);
+                }
+            }
 
-        List<String> stillEnabled = new ArrayList<>();
-        for (String endpoint : SENSITIVE_ENDPOINTS) {
-            if (!isRestricted(config, endpoint)) {
-                stillEnabled.add(endpoint);
+            if (!stillEnabled.isEmpty()) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.HIGH,
+                        "%s contains * and exposes all endpoints via HTTP, and the following remain unrestricted: %s. "
+                                .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
+                                + "Consider setting management.endpoint.<name>.access=none for each one, or replacing '*' with an explicit list.",
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
             }
         }
 
-        if (!stillEnabled.isEmpty()) {
+        // Independent of hasWildcardExposure above: exposure.include can list env/configprops
+        // explicitly without a wildcard, and that path must still be evaluated for show-values.
+        List<String> leakingValues = new ArrayList<>();
+        for (String endpoint : SHOW_VALUES_ENDPOINTS) {
+            if (isEndpointReachable(config, endpoint) && !isRestricted(config, endpoint)
+                    && hasRiskyShowValues(config, endpoint, findings)) {
+                leakingValues.add(endpoint);
+            }
+        }
+
+        if (!leakingValues.isEmpty()) {
             findings.add(new Finding(
                     id(),
                     Severity.HIGH,
-                    "%s contains * and exposes all endpoints via HTTP, and the following remain unrestricted: %s. "
-                            .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
-                            + "Consider setting management.endpoint.<name>.access=none for each one, or replacing '*' with an explicit list.",
+                    "management.endpoint.<id>.show-values exposes raw property values for: %s (reachable via %s). "
+                            .formatted(String.join(", ", leakingValues), EXPOSURE_KEY)
+                            + "Set show-values=never (the safe default) unless authenticated access to raw values is a deliberate, justified requirement.",
                     config.sourceFile().toString(),
                     config.profileLabel()
             ));
@@ -101,6 +142,84 @@ public final class ActuatorExposureRule implements Rule {
         // so we assume it MAY be "*" — security-oriented approach.
         return resolved.map(s -> s.contains("*")).orElse(true);
 
+    }
+
+    /**
+     * True when {@code endpointId} is reachable via {@code exposure.include}: a wildcard
+     * (delegates to {@link #mayContainWildcard(String)}) or the id present as an explicit,
+     * exact token — covers both the YAML list form (each item already isolated by
+     * {@code valuesForKeyOrListChildren}) and the comma-separated scalar form used by
+     * {@code .properties} files and flow-style YAML. Exact token match after split+trim,
+     * not a substring check, so a hypothetical endpoint id sharing a prefix with another
+     * token can't false-positive (same class of bug {@code hasKeyWithPrefix} was written
+     * to avoid for key matching).
+     */
+    private boolean isEndpointReachable(EffectiveConfig config, String endpointId) {
+        return RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY).stream()
+                .anyMatch(rawValue -> mayContainWildcard(rawValue) || explicitlyIncludes(rawValue, endpointId));
+    }
+
+    private boolean explicitlyIncludes(String rawValue, String endpointId) {
+        if (rawValue == null) {
+            return false; // explicit null (BL-09): intentional override, not a risk
+        }
+
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+        // Same 2-state posture as mayContainWildcard() for this same property: an unresolved
+        // placeholder without a default is treated as "may include this endpoint" rather than
+        // silently assumed safe -- consistent with how the sibling wildcard check already
+        // treats exposure.include's own uncertainty. Deliberately NOT the 3-state INFO model
+        // used by hasRiskyShowValues() below: this is the same key mayContainWildcard() already
+        // reads with 2-state semantics, so splitting the two paths would make exposure.include's
+        // uncertainty behave differently depending on which check happens to evaluate it.
+        if (resolved.isEmpty()) {
+            return true;
+        }
+
+        for (String token : resolved.get().split(",")) {
+            if (endpointId.equalsIgnoreCase(token.strip())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Unlike {@link #isRestricted(EffectiveConfig, String)}, this follows the project's newer
+     * 3-state placeholder model (INFO for unresolved) rather than the older 2-state
+     * assume-worst-case one. {@code show-values} is a property this rule has never evaluated
+     * before, so there is no existing 2-state precedent on this specific key to stay consistent
+     * with — and CLAUDE.md's Findings section defines INFO as exactly this case ("static
+     * analysis cannot determine the actual risk"). isRestricted() and mayContainWildcard() are
+     * untouched and keep their existing 2-state behavior on their own keys; this is a deliberate,
+     * documented exception, not an oversight.
+     */
+    private boolean hasRiskyShowValues(EffectiveConfig config, String endpointId, List<Finding> findings) {
+        String key = "management.endpoint." + endpointId + ".show-values";
+        String raw = RelaxedProperties.get(config.properties(), key);
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
+        if (resolved.isEmpty()) {
+            findings.add(unresolvedPlaceholderFinding(key, raw, config));
+            return false;
+        }
+
+        return RISKY_SHOW_VALUES.contains(resolved.get().strip().toUpperCase(Locale.ROOT));
+    }
+
+    private Finding unresolvedPlaceholderFinding(String key, String rawValue, EffectiveConfig config) {
+        return new Finding(
+                id(),
+                Severity.INFO,
+                ("Actuator property '%s' relies on an unresolved environment placeholder '%s'. " +
+                        "Static analysis cannot verify whether raw property values are exposed at runtime.")
+                        .formatted(key, rawValue),
+                config.sourceFile().toString(),
+                config.profileLabel()
+        );
     }
 
     /**
