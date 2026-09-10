@@ -16,28 +16,23 @@ Ordem por relação esforço/valor, não por dependência técnica.
 1. **`management.endpoint.health.show-details=always`** — vaza detalhes
    internos do sistema (disco, DB, filas) via `/actuator/health` sem
    autenticação.
-2. **`management.endpoint.env.show-values` / `configprops.show-values` =
-   `always`** — gap real na SCG001 (`ActuatorExposureRule`): ela só
-   dispara quando `exposure.include` contém `*`; se `env`/`configprops`
-   estiver listado explicitamente (sem wildcard) com valores expostos,
-   a SCG001 não pega isso hoje.
-3. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
+2. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
    `useSSL=false`/`verifyServerCertificate=false`, Postgres
    `sslmode=disable`, Mongo/Redis `ssl=false`. Ângulo de transporte que
    complementa o parsing de URI já feito pela SCG007 (focado em
    credenciais).
-4. **(Prioridade baixa) Upload multipart sem limite** —
+3. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-5. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+4. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
    (`CorsInsecureProtocolsRule`) só olha
    `management.endpoints.web.cors.allowed-origins`/`-origin-patterns`; a
    SCG006 (`HardcodedSecretsRule`) é sobre segredos, não protocolo. É
-   um vetor de transporte diferente do item 5 acima (que mira parâmetros
+   um vetor de transporte diferente do item 2 acima (que mira parâmetros
    de conexão JDBC/Postgres/Mongo/Redis, não propriedades de domínio
    arbitrárias) — complementares, não duplicados.
    Prioridade baixa é deliberada, não um descuido: definir quais chaves
@@ -85,6 +80,29 @@ resolveu) e traduzir apenas na formatação do `ConsoleReporter`/
 sentinel aparece no JSON; para um formato consumido por máquina isso é
 plausivelmente aceitável (valor estável para matching), mas é uma
 decisão em aberto, não assumida aqui.
+
+### Mensagem da SCG001 superestima o vazamento quando `show-values` fica no default
+
+Descoberto investigando o gap de `show-values` (sessão 2026-09-10), fora do
+escopo daquele fix — é sobre o finding *original* de wildcard, não o novo.
+
+`ActuatorExposureRuleTest`/`ActuatorExposureRule.java` — o finding de
+`exposure.include=*` com endpoint irrestrito diz *"exposes actual secrets
+in memory"*. Confirmado no source real do Spring Boot
+(`org.springframework.boot.actuate.endpoint.Sanitizer`): `show-values` é
+um master switch — no default (`never`), **todo** valor é mascarado, sem
+nem rodar o pattern-matching de chaves sensíveis (`password`, `secret`,
+`token`...). Ou seja, um endpoint `env`/`configprops` reachable +
+irrestrito, mas com `show-values` ainda no default, vaza nomes de
+propriedades e estrutura de config — não os valores em si. A frase atual
+superestima esse cenário específico.
+
+Não é urgente corrigir: a severidade HIGH continua correta (a estrutura
+exposta já é reconhecimento útil pra um atacante, e a maioria dos deploys
+reais não deixa `show-values` no default junto de um wildcard por muito
+tempo), é só a redação que fala mais do que o dado prova. Ajuste seria
+puramente de wording na mensagem do finding de wildcard, sem mudar
+lógica/severidade/testes.
 
 ### Camada de Policy: supressão binária de findings por regra + profile
 
