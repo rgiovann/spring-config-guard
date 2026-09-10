@@ -80,19 +80,32 @@ SCREAMING_SNAKE_CASE flattening works for property-file keys.
 
 ## Placeholder handling
 
-CLAUDE.md's Placeholder Resolution section covers the semantics. What it
-doesn't specify — and every existing rule implements identically — is the
-severity shape:
+CLAUDE.md's Placeholder Resolution section covers the semantics. Two of
+the three states are universal:
 
 1. No default at all → `INFO`.
-2. Default present but blank (`${VAR:}`) → also `INFO`, worded distinctly
-   from case 1.
-3. Resolves to a concrete value → apply the rule's real logic.
+2. Resolves to a concrete, non-blank value → apply the rule's real logic.
 
-Reuse this shape rather than inventing new resolution logic. (SCG007 also
-distinguishes a credential that's empty *because of* a placeholder default
-— INFO — from a literal, always-empty credential — silent; worth checking
-if a new rule inspects a similarly optional value.)
+The third — a default present but blank (`${VAR:}`) — is **not** a fixed
+INFO-or-silent choice; it depends on what blank means for that specific
+property:
+
+* **Blank means "unset," and unset is already the safe state** (a boolean
+  flag whose class default is safe — `server.ssl.enabled` defaults to
+  `true`, `cookie.secure` defaults to auto-detect): treat as silent, same
+  as absence. Spring's `Binder` treats an empty-string source as absent
+  for these types, so flagging it as "explicitly disabled" would be a
+  false positive. Precedent: `VerboseLoggingRule` (SCG009),
+  `InsecureServerTransportRule` (SCG011).
+* **Blank is itself a distinct, worth-surfacing state** (a credential
+  that's empty *because of* a placeholder default, vs. one that's simply
+  never set): treat as `INFO`, worded distinctly from the no-default case.
+  Precedent: SCG006/SCG007.
+
+Decide based on the property's own semantics, not by copying whichever
+existing rule is closest — and document the choice in the new rule's
+Javadoc/comment either way (see SCG009/SCG011), so a future reader doesn't
+"fix" it into the other pattern.
 
 ## Rule vs. ConfigurableRule
 
