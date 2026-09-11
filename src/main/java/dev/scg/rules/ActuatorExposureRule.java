@@ -16,8 +16,10 @@ import java.util.Set;
 *  DELIBERATE DECISION (session on 2026-08-21): this rule does NOT exempt safe profiles (dev/test/local),
  *  unlike H2ConsoleExposedRule. This is not a gap to be fixed — it was explicitly evaluated and the
  *  decision was made to keep it this way. Reasons: (1) the nature of the exposure is different —
- *  the H2 console exposes a database access tool, while Actuator (env, configprops, heapdump)
- *  exposes actual secrets in memory (API tokens, passwords, environment variables);
+ *  the H2 console exposes a database access tool, while Actuator (env, configprops, heapdump) can
+ *  expose actual secrets in memory (API tokens, passwords, environment variables) once show-values
+ *  is also elevated (see the show-values check below) — and even at show-values' safe default, mere
+ *  reachability still discloses property names and config structure, itself useful reconnaissance;
  *  (2) dev/local environments commonly share real or semi-real credentials from staging/external services,
  *  so an exposed /env endpoint in a dev environment connected to the corporate network is already a direct
  *  attack vector; (3) the correct Spring Boot practice is for the base configuration to declare only safe
@@ -100,6 +102,9 @@ public final class ActuatorExposureRule implements Rule {
                         Severity.HIGH,
                         "%s contains * and exposes all endpoints via HTTP, and the following remain unrestricted: %s. "
                                 .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
+                                + "Endpoint structure and property names are disclosed regardless of show-values; "
+                                + "raw values stay masked unless show-values is also elevated (see SCG001's separate "
+                                + "show-values finding, if any). "
                                 + "Consider setting management.endpoint.<name>.access=none for each one, or replacing '*' with an explicit list.",
                         config.sourceFile().toString(),
                         config.profileLabel()
