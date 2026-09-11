@@ -156,7 +156,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects semicolon-separated query parameters (e.g., SQL Server format)")
         void shouldDetectInsecureParamsWithSemicolonDelimiter() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;databaseName=db;NoVerifyQueryParamsTests"
+                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;databaseName=db;encrypt=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
