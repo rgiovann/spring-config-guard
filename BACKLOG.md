@@ -41,21 +41,6 @@ Ordem por relação esforço/valor, não por dependência técnica.
 
 ## Débito técnico e features de plataforma
 
-### SCG012 não cobre os flags de "no-verify" próprios do MongoDB
-
-`no-verify-query-params` hoje só tem os equivalentes do MySQL
-(`verifyServerCertificate=false`) e do SQL Server
-(`trustServerCertificate=true`, polaridade invertida). MongoDB tem os
-próprios flags pra desabilitar validação de certificado/hostname —
-`tlsInsecure=true`, `tlsAllowInvalidCertificates=true`,
-`tlsAllowInvalidHostnames=true` — nenhum coberto ainda.
-
-Não é bug — o mecanismo de detecção (`no-verify-query-params` em
-`SCG012.yml` + `findMatch()`) já é genérico, só falta alimentar mais
-entradas de dado. Fronteira deliberada desta sessão, não descuido; ver
-[InsecureDatabaseTransportRule.java](src/main/java/dev/scg/rules/InsecureDatabaseTransportRule.java)
-e [SCG012.yml](src/main/resources/rules-metadata/SCG012.yml).
-
 ### Camada de Policy: supressão binária de findings por regra + profile
 
 Feature nova — não existe hoje. Registra um design já discutido e

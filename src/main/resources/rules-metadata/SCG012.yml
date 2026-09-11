@@ -42,3 +42,7 @@ risky-query-params:
 no-verify-query-params:
   - "verifyservercertificate=false"
   - "trustservercertificate=true"
+  - "tlsinsecure=true"
+  - "tlsallowinvalidcertificates=true"
+  - "tlsallowinvalidhostnames=true"
+  - "verifypeer=none"

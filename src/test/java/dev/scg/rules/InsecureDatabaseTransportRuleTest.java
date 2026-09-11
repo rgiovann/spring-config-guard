@@ -156,7 +156,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects semicolon-separated query parameters (e.g., SQL Server format)")
         void shouldDetectInsecureParamsWithSemicolonDelimiter() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;databaseName=db;encrypt=false"
+                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;databaseName=db;NoVerifyQueryParamsTests"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -207,6 +207,44 @@ class InsecureDatabaseTransportRuleTest {
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message())
                     .contains("trustservercertificate=true")
+                    .contains("CWE-295");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"tlsInsecure=true", "tlsAllowInvalidCertificates=true", "tlsAllowInvalidHostnames=true"})
+        @DisplayName("Detects MongoDB's own certificate/hostname validation opt-outs")
+        void shouldDetectMongoNoVerifyParameters(String queryParam) {
+            Map<String, String> properties = Map.of(
+                    "spring.data.mongodb.uri", "mongodb://user:pass@localhost:27017/db?" + queryParam
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            Finding finding = findings.getFirst();
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).contains("CWE-295");
+        }
+
+        @Test
+        @DisplayName("Detects Lettuce's verifyPeer=NONE on a Redis connection URI")
+        void shouldDetectRedisVerifyPeerNone() {
+            // Confirmed against RedisURI.java (Lettuce): verifyPeer is one of the few query
+            // parameters its own string-URI parser actually recognizes (NONE|CA|FULL) --
+            // unlike a made-up "sslInsecure", which it would silently ignore.
+            Map<String, String> properties = Map.of(
+                    "spring.redis.url", "rediss://localhost:6379?verifyPeer=NONE"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            Finding finding = findings.getFirst();
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message())
+                    .contains("verifypeer=none")
                     .contains("CWE-295");
         }
 
