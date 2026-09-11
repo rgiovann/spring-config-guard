@@ -1,6 +1,7 @@
 package dev.scg.report;
 
 import dev.scg.core.Finding;
+import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,6 +65,28 @@ class ConsoleReporterTest {
                 .contains("HIGH: 2")
                 .contains("MEDIUM: 0")
                 .contains("LOW: 1");
+    }
+
+    @Test
+    @DisplayName("Should display the base config sentinel as [base], not the raw internal label")
+    void shouldDisplayBaseConfigSentinelAsBase() {
+        Finding base = new Finding("SCG001", Severity.HIGH, "msg", "application.yml", ProfileMerger.BASE_PROFILE_LABEL);
+
+        String output = captureReport(List.of(base));
+
+        assertThat(output)
+                .contains("[base]")
+                .doesNotContain(ProfileMerger.BASE_PROFILE_LABEL);
+    }
+
+    @Test
+    @DisplayName("Should still display real profile names as [profile: <name>]")
+    void shouldStillDisplayRealProfileNamesAsProfile() {
+        Finding prod = new Finding("SCG001", Severity.HIGH, "msg", "application-prod.yml", "prod");
+
+        String output = captureReport(List.of(prod));
+
+        assertThat(output).contains("[profile: prod]");
     }
 }
 

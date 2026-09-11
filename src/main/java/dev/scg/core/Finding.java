@@ -26,6 +26,15 @@ public record Finding(
                     .thenComparing(Finding::profileLabel);
     @Override
     public String toString() {
-        return "[%s] %s (%s) [profile: %s] — %s".formatted(severity, ruleId, sourceFile, profileLabel, message);
+        // BASE_PROFILE_LABEL is an internal sentinel, not a real Spring profile name (see its
+        // Javadoc in ProfileMerger) -- printing it raw here would read as if a profile literally
+        // named "__spring_config_guard_base__" existed. Translated only for this human-facing
+        // rendering; JsonReporter intentionally keeps the raw sentinel (round-trip fidelity for
+        // machine consumers, see JsonReporterTest), so this substitution must stay local to
+        // toString() and not move into the Finding record's actual data.
+        String profileDisplay = ProfileMerger.BASE_PROFILE_LABEL.equals(profileLabel)
+                ? "base"
+                : "profile: " + profileLabel;
+        return "[%s] %s (%s) [%s] — %s".formatted(severity, ruleId, sourceFile, profileDisplay, message);
     }
 }

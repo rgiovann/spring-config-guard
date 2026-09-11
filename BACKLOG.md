@@ -46,41 +46,6 @@ Ordem por relação esforço/valor, não por dependência técnica.
 
 ## Débito técnico e features de plataforma
 
-### Sentinel de profile base vaza para a saída da CLI
-
-`ProfileMerger.BASE_PROFILE_LABEL` (`__spring_config_guard_base__`) é o
-label sintético usado internamente para "sem profile ativo" — ver o
-Javadoc da constante em
-[ProfileMerger.java:22](src/main/java/dev/scg/core/ProfileMerger.java:22)
-para o porquê de não ser simplesmente `"base"` (colidiria com um profile
-Spring real chamado literalmente `base`, sintaticamente válido embora
-raro). O problema é que `Finding.toString()`
-([Finding.java:29](src/main/java/dev/scg/core/Finding.java:29)) imprime
-`profileLabel` cru, então o `ConsoleReporter` hoje mostra o sentinel
-interno direto pro usuário:
-
-```
-[HIGH] SCG003 (demo-project\application.yml) [profile: __spring_config_guard_base__]
-```
-
-que parece ser um profile Spring real, mas não é.
-
-Comportamento desejado: `application.yml` → `[base]`;
-`application-prod.yml` → `[profile: prod]` (nomes reais de profile
-preservados exatamente como no arquivo — a distinção deve vir da origem
-estrutural do arquivo, não de inferência sobre o nome do profile, já que
-um profile real pode se chamar quase qualquer coisa).
-
-Fix pertence à camada de apresentação, não ao modelo interno: manter
-`BASE_PROFILE_LABEL` como está (não criar um profile reservado chamado
-`"base"` — seria reintroduzir exatamente o problema que a constante já
-resolveu) e traduzir apenas na formatação do `ConsoleReporter`/
-`Finding.toString()`. Vale decidir também o que fazer no `JsonReporter`
-— que hoje serializa o `Finding` bruto via Jackson, então o mesmo
-sentinel aparece no JSON; para um formato consumido por máquina isso é
-plausivelmente aceitável (valor estável para matching), mas é uma
-decisão em aberto, não assumida aqui.
-
 ### Camada de Policy: supressão binária de findings por regra + profile
 
 Feature nova — não existe hoje. Registra um design já discutido e
