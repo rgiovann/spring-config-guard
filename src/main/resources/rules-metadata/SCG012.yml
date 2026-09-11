@@ -31,8 +31,14 @@ risky-query-params:
   - "sslmode=disable"
   - "sslmode=disabled"
   - "sslmode=allow"
+  - "encrypt=false"
 
 # Parameter=value pairs (lowercased) meaning TLS is used but certificate/hostname validation
 # is explicitly turned off (CWE-295) -- encrypted, but trivially MITM-able with a forged cert.
+# NOTE polarity: trustServerCertificate is the one entry here where the risky value is "true",
+# not "false" like everywhere else in this file -- SQL Server's flag means "trust the server's
+# certificate without verifying it" when set to true, the opposite naming convention from
+# MySQL's verifyServerCertificate.
 no-verify-query-params:
   - "verifyservercertificate=false"
+  - "trustservercertificate=true"

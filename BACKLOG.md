@@ -9,25 +9,6 @@ A lista de regras já implementadas é
 `src/main/resources/META-INF/services/dev.scg.core.Rule`, com os IDs
 validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
-## Em andamento
-
-### SCG012 — InsecureDatabaseTransportRule
-
-Esboço inicial em revisão (sessão 2026-09-11) — ainda não registrada em
-`META-INF/services`, sem classe de teste.
-
-* `ConfigurableRule`, dois grupos de parâmetro de query separados por
-  mecanismo/CWE: `risky-query-params` (TLS desabilitado/downgradável —
-  CWE-319, HIGH) e `no-verify-query-params` (TLS ativo mas validação de
-  certificado desligada — CWE-295, HIGH também: o resultado prático é o
-  mesmo, um atacante na rede lê todo o tráfego).
-* `sslmode=prefer` foi removido da lista de risco: é o default do próprio
-  driver pgjdbc quando a propriedade está ausente (confirmado na doc
-  oficial) — mesma lição do `forward-headers-strategy=NONE` na SCG011.
-* Reaproveita a lista `uri-based` da SCG007 (mesmas 7 chaves) — duplicada
-  como dado, não como código; aceito por ora, sem fonte única
-  compartilhada entre os dois YAMLs de metadata.
-
 ## Próximas regras candidatas
 
 Ordem por relação esforço/valor, não por dependência técnica.
@@ -60,35 +41,20 @@ Ordem por relação esforço/valor, não por dependência técnica.
 
 ## Débito técnico e features de plataforma
 
-### Correção de Regressão/Gap na SCG007: false negative silencioso em coleções
+### SCG012 não cobre os flags de "no-verify" próprios do MongoDB
 
-Descoberto revisando o esboço da SCG012 (sessão 2026-09-11) — afeta a
-SCG007 (`EmbeddedConnectionCredentialsRule`), já em produção, não a
-regra nova.
+`no-verify-query-params` hoje só tem os equivalentes do MySQL
+(`verifyServerCertificate=false`) e do SQL Server
+(`trustServerCertificate=true`, polaridade invertida). MongoDB tem os
+próprios flags pra desabilitar validação de certificado/hostname —
+`tlsInsecure=true`, `tlsAllowInvalidCertificates=true`,
+`tlsAllowInvalidHostnames=true` — nenhum coberto ainda.
 
-`spring.elasticsearch.uris` e `spring.rabbitmq.addresses` são
-propriedades genuinamente `List<String>` no binding real do Spring Boot
-— o jeito idiomático de escrevê-las em YAML é como lista de verdade, não
-como string única. Mas o matching de chave da SCG007
-(`RelaxedProperties.canonicalize(entry.getKey())` seguido de
-`Set.contains(...)`) não lida com a forma indexada que o `ConfigLoader`
-gera pra listas (`chave[0]`, `chave[1]`...): `RelaxedProperties.canonicalize()`
-não remove `[`/`]`/dígitos, então `spring.elasticsearch.uris[0]`
-canonicaliza pra si mesmo e nunca bate com `spring.elasticsearch.uris`
-no `uri-based`.
-
-Resultado: se alguém escrever essas duas chaves como lista YAML real (o
-formato correto/esperado pra elas), a SCG007 **deixa de detectar
-credencial embutida hoje, silenciosamente** — falso negativo numa regra
-de detecção de credencial, a categoria de risco mais alta do projeto.
-
-Fix: trocar o matching manual por `RelaxedProperties.findActualKey()` +
-`RelaxedProperties.valuesForKeyOrListChildren()` (os métodos que
-CLAUDE.md já exige pra esse tipo de lookup, e que lidam com a forma
-indexada corretamente). A SCG012 (esboço em andamento acima) herdou a
-mesma estrutura de matching da SCG007 e tem o mesmo gap — decidir se as
-duas são corrigidas juntas ou a SCG012 nasce já com o fix e a SCG007
-é corrigida à parte.
+Não é bug — o mecanismo de detecção (`no-verify-query-params` em
+`SCG012.yml` + `findMatch()`) já é genérico, só falta alimentar mais
+entradas de dado. Fronteira deliberada desta sessão, não descuido; ver
+[InsecureDatabaseTransportRule.java](src/main/java/dev/scg/rules/InsecureDatabaseTransportRule.java)
+e [SCG012.yml](src/main/resources/rules-metadata/SCG012.yml).
 
 ### Camada de Policy: supressão binária de findings por regra + profile
 

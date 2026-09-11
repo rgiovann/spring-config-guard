@@ -107,7 +107,11 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
                 continue;
             }
 
-            String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
+            // canonicalRoot strips a trailing "[0]"/"[1]"/... so a key written as one item of a
+            // YAML list (e.g. spring.elasticsearch.uris[0]) still matches the plain target key
+            // -- same fix as EmbeddedConnectionCredentialsRule (SCG007), applied here from the
+            // start instead of inheriting the gap.
+            String canonicalKey = RelaxedProperties.canonicalRoot(RelaxedProperties.canonicalize(entry.getKey()));
             if (!uriBasedKeys.contains(canonicalKey)) {
                 continue;
             }
@@ -170,13 +174,22 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
 
     private Optional<String> findMatch(String uriString, Map<String, Set<String>> paramMap) {
         int queryStart = uriString.indexOf('?');
-        if (queryStart == -1 || queryStart == uriString.length() - 1) {
-            return Optional.empty();
+        String queryString;
+
+            if (queryStart != -1) {
+
+            // Standard URL/JDBC format: jdbc:mysql://host:port/db?param=val
+            queryString = uriString.substring(queryStart + 1);
+        } else {
+            // SQL Server/Oracle format without '?': jdbc:sqlserver://host:1433;param=val
+            int firstSemicolon = uriString.indexOf(';');
+            if (firstSemicolon == -1 || firstSemicolon == uriString.length() - 1) {
+                return Optional.empty();
+            }
+            queryString = uriString.substring(firstSemicolon + 1);
         }
 
-        String queryString = uriString.substring(queryStart + 1);
         String[] pairs = queryString.split("[&;]");
-
         for (String pair : pairs) {
             String[] kv = pair.split("=", 2);
             if (kv.length != 2) {
