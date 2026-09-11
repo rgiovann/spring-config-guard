@@ -9,6 +9,25 @@ A lista de regras já implementadas é
 `src/main/resources/META-INF/services/dev.scg.core.Rule`, com os IDs
 validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
+## Em andamento
+
+### SCG012 — InsecureDatabaseTransportRule
+
+Esboço inicial em revisão (sessão 2026-09-11) — ainda não registrada em
+`META-INF/services`, sem classe de teste.
+
+* `ConfigurableRule`, dois grupos de parâmetro de query separados por
+  mecanismo/CWE: `risky-query-params` (TLS desabilitado/downgradável —
+  CWE-319, HIGH) e `no-verify-query-params` (TLS ativo mas validação de
+  certificado desligada — CWE-295, HIGH também: o resultado prático é o
+  mesmo, um atacante na rede lê todo o tráfego).
+* `sslmode=prefer` foi removido da lista de risco: é o default do próprio
+  driver pgjdbc quando a propriedade está ausente (confirmado na doc
+  oficial) — mesma lição do `forward-headers-strategy=NONE` na SCG011.
+* Reaproveita a lista `uri-based` da SCG007 (mesmas 7 chaves) — duplicada
+  como dado, não como código; aceito por ora, sem fonte única
+  compartilhada entre os dois YAMLs de metadata.
+
 ## Próximas regras candidatas
 
 Ordem por relação esforço/valor, não por dependência técnica.
@@ -16,23 +35,18 @@ Ordem por relação esforço/valor, não por dependência técnica.
 1. **`management.endpoint.health.show-details=always`** — vaza detalhes
    internos do sistema (disco, DB, filas) via `/actuator/health` sem
    autenticação.
-2. **TLS desabilitado em URIs de conexão com serviços de apoio** — JDBC
-   `useSSL=false`/`verifyServerCertificate=false`, Postgres
-   `sslmode=disable`, Mongo/Redis `ssl=false`. Ângulo de transporte que
-   complementa o parsing de URI já feito pela SCG007 (focado em
-   credenciais).
-3. **(Prioridade baixa) Upload multipart sem limite** —
+2. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-4. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+3. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
    (`CorsInsecureProtocolsRule`) só olha
    `management.endpoints.web.cors.allowed-origins`/`-origin-patterns`; a
    SCG006 (`HardcodedSecretsRule`) é sobre segredos, não protocolo. É
-   um vetor de transporte diferente do item 2 acima (que mira parâmetros
+   um vetor de transporte diferente da SCG012 (que mira parâmetros
    de conexão JDBC/Postgres/Mongo/Redis, não propriedades de domínio
    arbitrárias) — complementares, não duplicados.
    Prioridade baixa é deliberada, não um descuido: definir quais chaves
@@ -45,6 +59,36 @@ Ordem por relação esforço/valor, não por dependência técnica.
    execuções.
 
 ## Débito técnico e features de plataforma
+
+### Correção de Regressão/Gap na SCG007: false negative silencioso em coleções
+
+Descoberto revisando o esboço da SCG012 (sessão 2026-09-11) — afeta a
+SCG007 (`EmbeddedConnectionCredentialsRule`), já em produção, não a
+regra nova.
+
+`spring.elasticsearch.uris` e `spring.rabbitmq.addresses` são
+propriedades genuinamente `List<String>` no binding real do Spring Boot
+— o jeito idiomático de escrevê-las em YAML é como lista de verdade, não
+como string única. Mas o matching de chave da SCG007
+(`RelaxedProperties.canonicalize(entry.getKey())` seguido de
+`Set.contains(...)`) não lida com a forma indexada que o `ConfigLoader`
+gera pra listas (`chave[0]`, `chave[1]`...): `RelaxedProperties.canonicalize()`
+não remove `[`/`]`/dígitos, então `spring.elasticsearch.uris[0]`
+canonicaliza pra si mesmo e nunca bate com `spring.elasticsearch.uris`
+no `uri-based`.
+
+Resultado: se alguém escrever essas duas chaves como lista YAML real (o
+formato correto/esperado pra elas), a SCG007 **deixa de detectar
+credencial embutida hoje, silenciosamente** — falso negativo numa regra
+de detecção de credencial, a categoria de risco mais alta do projeto.
+
+Fix: trocar o matching manual por `RelaxedProperties.findActualKey()` +
+`RelaxedProperties.valuesForKeyOrListChildren()` (os métodos que
+CLAUDE.md já exige pra esse tipo de lookup, e que lidam com a forma
+indexada corretamente). A SCG012 (esboço em andamento acima) herdou a
+mesma estrutura de matching da SCG007 e tem o mesmo gap — decidir se as
+duas são corrigidas juntas ou a SCG012 nasce já com o fix e a SCG007
+é corrigida à parte.
 
 ### Camada de Policy: supressão binária de findings por regra + profile
 
