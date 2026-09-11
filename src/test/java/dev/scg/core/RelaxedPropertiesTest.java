@@ -70,5 +70,21 @@ class RelaxedPropertiesTest {
     void findActualKeyShouldReturnEmptyWhenKeyDoesNotExist() {
         assertThat(RelaxedProperties.findActualKey(Map.of(), "qualquer.chave")).isEmpty();
     }
+
+    @Test
+    @DisplayName("CanonicalRoot should strip a trailing list-index suffix")
+    void canonicalRootShouldStripTrailingListIndexSuffix() {
+        assertThat(RelaxedProperties.canonicalRoot("spring.elasticsearch.uris[0]"))
+                .isEqualTo("spring.elasticsearch.uris");
+        assertThat(RelaxedProperties.canonicalRoot("spring.elasticsearch.uris[12]"))
+                .isEqualTo("spring.elasticsearch.uris");
+    }
+
+    @Test
+    @DisplayName("CanonicalRoot should return the key unchanged when there is no list-index suffix")
+    void canonicalRootShouldReturnKeyUnchangedWhenNoListIndexSuffix() {
+        assertThat(RelaxedProperties.canonicalRoot("spring.datasource.url"))
+                .isEqualTo("spring.datasource.url");
+    }
 }
 

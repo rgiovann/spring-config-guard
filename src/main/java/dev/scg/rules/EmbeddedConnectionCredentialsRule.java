@@ -91,7 +91,10 @@ public final class EmbeddedConnectionCredentialsRule implements ConfigurableRule
                 continue;
             }
 
-            String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
+            // canonicalRoot strips a trailing "[0]"/"[1]"/... so a key written as one item of a
+            // YAML list (e.g. spring.elasticsearch.uris[0]) still matches the plain target key
+            // -- a raw canonicalize()+equals() would silently miss every indexed item.
+            String canonicalKey = RelaxedProperties.canonicalRoot(RelaxedProperties.canonicalize(entry.getKey()));
             boolean isUriTarget = uriBasedKeys.contains(canonicalKey);
             boolean isJaasTarget = jaasBasedKeys.contains(canonicalKey);
 

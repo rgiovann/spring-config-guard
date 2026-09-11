@@ -215,6 +215,28 @@ class EmbeddedConnectionCredentialsRuleTest {
                     });
         }
 
+        @ParameterizedTest
+        @ValueSource(strings = {"spring.elasticsearch.uris", "spring.rabbitmq.addresses"})
+        @DisplayName("Detects an embedded credential when a uri-based key is written as a real YAML list (regression)")
+        void shouldDetectEmbeddedCredentialWhenUriBasedKeyIsWrittenAsYamlList(String baseKey) {
+            // Both keys are genuinely List<String>-typed in Spring Boot's real binding, so the
+            // idiomatic way to write them is an actual YAML list, not one joined scalar. Before
+            // canonicalRoot(), ConfigLoader's "key[0]"/"key[1]" flattened form never matched the
+            // plain canonical target -- this credential would have been silently missed.
+            Map<String, String> properties = Map.of(
+                    baseKey + "[0]", "https://safe-host:9200",
+                    baseKey + "[1]", "https://user:S3cr3tPass123@other-host:9200"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            Finding finding = findings.getFirst();
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).contains(baseKey + "[1]");
+        }
+
         /**
          * SCG007.yml only lists property KEYS, never example values — the YAML has no notion of
          * "a URI with a credential embedded in it". So key names are sourced dynamically from

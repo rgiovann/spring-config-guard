@@ -65,6 +65,24 @@ public final class RelaxedProperties {
         return values;
     }
 
+    /**
+     * Strips a trailing list-index suffix ("[0]", "[1]", ...) from an already-canonicalized
+     * key, if present — the same bracket-detection rule valuesForKeyOrListChildren() uses
+     * internally for its bracketPrefix check. Exposed for rules that iterate
+     * properties.entrySet() directly (needing the actual key/value pair together, not just
+     * the collected values) and must still match a canonical target correctly whether the
+     * property was written as a scalar or as one item of a YAML list — a raw equals() against
+     * the target would silently miss every indexed item. This is exactly the gap that let
+     * EmbeddedConnectionCredentialsRule (SCG007) miss credentials in
+     * spring.elasticsearch.uris/spring.rabbitmq.addresses when written as real YAML lists
+     * instead of a single scalar (see BACKLOG.md).
+     */
+    public static String canonicalRoot(String canonicalKey) {
+        if (canonicalKey == null) return null;
+        int bracketIdx = canonicalKey.indexOf('[');
+        return bracketIdx >= 0 ? canonicalKey.substring(0, bracketIdx) : canonicalKey;
+    }
+
     /** Retorna a chave real presente no mapa que canonicaliza para canonicalKey, se houver. */
     public static Optional<String> findActualKey(Map<String, String> properties, String canonicalKey) {
         String target = canonicalize(canonicalKey);
