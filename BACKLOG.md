@@ -16,11 +16,33 @@ Ordem por relação esforço/valor, não por dependência técnica.
 1. **`management.endpoint.health.show-details=always`** — vaza detalhes
    internos do sistema (disco, DB, filas) via `/actuator/health` sem
    autenticação.
-2. **(Prioridade baixa) Upload multipart sem limite** —
+2. **Transporte inseguro no Kafka (`spring.kafka.security.protocol`)** —
+   descoberto revisando o escopo da SCG012 (sessão 2026-09-11): Kafka
+   ficou fora dela de propósito, não por esquecimento — ver
+   [ADR-001](ARCHITECTURE.md#adr-001-decoupling-uri-property-catalogs-between-security-rules-scg007-vs-scg012)
+   pro contexto da decisão de catálogo de URIs, e a discussão da mesma
+   sessão sobre por que Kafka não se encaixa na forma de evidência da
+   SCG012. `spring.kafka.bootstrap-servers` não é uma URI com query
+   string (é só `host1:porta1,host2:porta2`) — forçá-la no `uri-based`
+   da SCG012 seria uma entrada morta que nunca dispara, dando falsa
+   sensação de cobertura. O sinal real é outra propriedade: valores
+   conhecidos de `security.protocol` são `PLAINTEXT`, `SSL`,
+   `SASL_PLAINTEXT`, `SASL_SSL` — `PLAINTEXT` é sem TLS/sem auth;
+   `SASL_PLAINTEXT` tem autenticação SASL mas o transporte continua em
+   texto claro, então credenciais e dados ainda vazam na rede. Mesma
+   forma de evidência da SCG001/SCG002/SCG009 (comparar valor de
+   propriedade contra um enum conhecido), não da SCG012 (parsing de
+   query param em URI) — regra nova, não extensão.
+   Decisão pendente: `Rule` simples ou `ConfigurableRule`? Os valores do
+   enum são fatos fixos do protocolo Kafka, não algo específico de
+   organização, o que sugeriria `Rule` simples (mesmo raciocínio da
+   SCG009/SCG011) — mas vale reavaliar quando for especificar de
+   verdade.
+3. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-3. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+4. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
