@@ -1,0 +1,38 @@
+# SCG012 (InsecureDatabaseTransportRule) configuration.
+#
+# Two mechanisms, kept as separate groups because they're different vulnerability classes
+# with different messages/CWEs, not just a flat "risky value" list:
+#   - risky-query-params:    TLS/SSL disabled or downgradable to cleartext (CWE-319).
+#   - no-verify-query-params: TLS is used, but certificate/hostname validation is explicitly
+#                              disabled -- traffic is encrypted but a forged/self-signed
+#                              certificate lets an attacker MITM anyway (CWE-295).
+# sslmode=prefer is deliberately NOT listed as risky: it's pgjdbc's own default when the
+# property is absent entirely (confirmed in the official pgjdbc docs), so flagging it would
+# punish writing the default explicitly rather than detecting an actual downgrade.
+
+# Keys whose value is a connection URI (JDBC, R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ, ActiveMQ, ...)
+# that may contain TLS/SSL query parameters after placeholder resolution.
+uri-based:
+  - "spring.datasource.url"
+  - "spring.r2dbc.url"
+  - "spring.data.mongodb.uri"
+  - "spring.redis.url"
+  - "spring.elasticsearch.uris"
+  - "spring.rabbitmq.addresses"
+  - "spring.activemq.broker-url"
+
+# Parameter=value pairs (lowercased) meaning TLS/SSL is disabled or may be silently
+# downgraded to cleartext (CWE-319).
+risky-query-params:
+  - "usessl=false"
+  - "requiressl=false"
+  - "ssl=false"
+  - "tls=false"
+  - "sslmode=disable"
+  - "sslmode=disabled"
+  - "sslmode=allow"
+
+# Parameter=value pairs (lowercased) meaning TLS is used but certificate/hostname validation
+# is explicitly turned off (CWE-295) -- encrypted, but trivially MITM-able with a forged cert.
+no-verify-query-params:
+  - "verifyservercertificate=false"
