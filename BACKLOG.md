@@ -13,36 +13,47 @@ validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
 Ordem por relação esforço/valor, não por dependência técnica.
 
-1. **`management.endpoint.health.show-details=always`** — vaza detalhes
-   internos do sistema (disco, DB, filas) via `/actuator/health` sem
-   autenticação.
-2. **Transporte inseguro no Kafka (`spring.kafka.security.protocol`)** —
-   descoberto revisando o escopo da SCG012 (sessão 2026-09-11): Kafka
-   ficou fora dela de propósito, não por esquecimento — ver
-   [ADR-001](ARCHITECTURE.md#adr-001-decoupling-uri-property-catalogs-between-security-rules-scg007-vs-scg012)
-   pro contexto da decisão de catálogo de URIs, e a discussão da mesma
-   sessão sobre por que Kafka não se encaixa na forma de evidência da
-   SCG012. `spring.kafka.bootstrap-servers` não é uma URI com query
-   string (é só `host1:porta1,host2:porta2`) — forçá-la no `uri-based`
-   da SCG012 seria uma entrada morta que nunca dispara, dando falsa
-   sensação de cobertura. O sinal real é outra propriedade: valores
-   conhecidos de `security.protocol` são `PLAINTEXT`, `SSL`,
-   `SASL_PLAINTEXT`, `SASL_SSL` — `PLAINTEXT` é sem TLS/sem auth;
-   `SASL_PLAINTEXT` tem autenticação SASL mas o transporte continua em
-   texto claro, então credenciais e dados ainda vazam na rede. Mesma
-   forma de evidência da SCG001/SCG002/SCG009 (comparar valor de
-   propriedade contra um enum conhecido), não da SCG012 (parsing de
-   query param em URI) — regra nova, não extensão.
-   Decisão pendente: `Rule` simples ou `ConfigurableRule`? Os valores do
-   enum são fatos fixos do protocolo Kafka, não algo específico de
-   organização, o que sugeriria `Rule` simples (mesmo raciocínio da
-   SCG009/SCG011) — mas vale reavaliar quando for especificar de
-   verdade.
-3. **(Prioridade baixa) Upload multipart sem limite** —
+1. **Transporte inseguro no RabbitMQ (`spring.rabbitmq.ssl.enabled`)** —
+   mesma forma de evidência já usada em SCG012/SCG014: mensageria com
+   payload real trafegando sem TLS. Padrão AMQP mais usado no Spring ao
+   lado do Kafka. A confirmar antes de especificar: o default de
+   `spring.rabbitmq.ssl.enabled` (suspeita é `false`, o que replicaria o
+   design "ausência = inseguro" já resolvido na SCG014 — gatilho por
+   evidência de uso via `spring.rabbitmq.host`/`spring.rabbitmq.addresses`,
+   não por valor explícito). Complementar, não redundante, ao mecanismo
+   `risky-schemes` já implementado na SCG012 (sessão 2026-09-14): aquele
+   só pega a forma explícita `amqp://`/`amqps://` em `addresses`; a forma
+   mais comum (`host:port` puro, sem scheme) fica sem sinal de TLS
+   nenhum ali — é exatamente essa lacuna que esta regra nova fecha.
+2. **Transporte inseguro no Vault (`spring.cloud.vault.uri` /
+   `spring.cloud.vault.scheme`)** — Vault é gerenciador de segredos: se o
+   transporte é inseguro, as credenciais que a própria aplicação carrega
+   no bootstrap trafegam em claro — mesma classe de severidade de
+   SCG007/SCG012, mais grave que um simples endereço de descoberta (ver
+   seção "Pós-1.0" abaixo pro porquê isso importa na triagem). A
+   confirmar: o default de `spring.cloud.vault.scheme` (suspeita é
+   `https`, o que tornaria essa regra mais simples que a SCG014 — sem
+   precisar do design "ausência = inseguro").
+3. **(Prioridade a avaliar) Transporte inseguro em SMTP/Mail
+   (`spring.mail.properties.mail.smtp.starttls.enable` /
+   `mail.smtp.ssl.enable`)** — descoberto na mesma sessão 2026-09-14 ao
+   avaliar LDAP/Elasticsearch. Carrega credencial real (SMTP AUTH) e
+   payload de e-mail, mesma classe de valor de SCG007/SCG012 — mas o
+   design é mais caro que RabbitMQ/Vault: duas condições alternativas de
+   segurança (STARTTLS na porta 587 *ou* SSL implícito na porta 465, não
+   um único enum/boolean), e a chave vive aninhada dentro do mapa
+   genérico `spring.mail.properties.*` (mesmo padrão pass-through da
+   SCG014 pro Kafka), não como propriedade tipada direta. Prioridade
+   depende de quão comum é SMTP direto (vs. serviço de e-mail
+   transacional via API) nas aplicações reais do time — o próprio
+   backlog já cita `jhipster.mail.base-url` como exemplo no item abaixo,
+   o que sugere que configuração de mail *é* comum no contexto do time,
+   mas isso não confirma que seja especificamente via SMTP cru.
+4. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-4. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+5. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
@@ -60,6 +71,11 @@ Ordem por relação esforço/valor, não por dependência técnica.
    containers isolados e service mesh com TLS no sidecar — o tipo de
    falso positivo que mina a confiança na ferramenta logo nas primeiras
    execuções.
+
+Com RabbitMQ e Vault, a família "transporte inseguro" fica fechada pra
+v1.0 (junto com SCG011/SCG012/SCG014 já implementadas) — novos candidatos
+da mesma família entram na seção "Pós-1.0" abaixo por padrão, não aqui,
+a menos que passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
@@ -96,6 +112,39 @@ pós-avaliação.
    motivação explícita: um time pode querer manter algumas regras ativas
    mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
    continua ativa em `dev`).
+
+## Pós-1.0 (catalogado, não descartado)
+
+Diferente da seção "Descartado" abaixo: os itens aqui são tecnicamente
+viáveis, mas adiados deliberadamente pra depois da v1.0 por uma razão
+específica (não por falta de ideia) — registrados pra não serem
+re-propostos do zero.
+
+**Critério de triagem** (sessão 2026-09-14, ao avaliar candidatos de
+transporte inseguro em ferramentas de microsserviços além de
+Kafka/RabbitMQ/Vault): a propriedade carrega credencial ou payload de
+dados real (entra na lista de regras candidatas acima), ou é só endereço
+de descoberta/observabilidade (fica aqui)? O segundo grupo tem alto risco
+de ruído pelo mesmo motivo já documentado no item 5 acima
+(`InsecureTransportProtocolRule`): esses componentes são classicamente
+implantados intra-cluster/intra-mesh (Docker network, namespace do k8s,
+sidecar Istio/Linkerd cuidando do TLS), então `http://` ali é
+frequentemente uma configuração legítima, não uma falha real — o tipo de
+falso positivo que mina confiança logo nas primeiras execuções.
+
+* **Service Discovery inseguro (Eureka/Consul —
+  `eureka.client.service-url.defaultZone`,
+  `spring.cloud.consul.discovery.scheme`)** — o endereço aponta pro
+  *registry*, não prova por si só que o tráfego inter-serviço real é
+  inseguro. Agravante: o default do Consul
+  (`spring.cloud.consul.discovery.scheme`) já é `http`, então a maioria
+  dos projetos Consul dispararia isso sem estar genuinamente exposta.
+* **Exportação de telemetria insegura (Zipkin/OTEL —
+  `management.zipkin.tracing.endpoint`,
+  `management.otlp.metrics.export.url`)** — coletor de tracing/métricas
+  quase sempre roda como sidecar ou dentro do mesmo cluster privado;
+  severidade também mais baixa (MEDIUM, não HIGH) por não carregar
+  credencial de aplicação, só metadado de requisição/trace.
 
 ## Descartado / fora de escopo
 

@@ -9,19 +9,25 @@ import java.util.stream.Collectors;
  * Security rule (SCG012) that detects explicit disabling or degradation of TLS/SSL
  * transport encryption in database and broker connection URIs.
  *
- * <p>Inspects {@code uri-based} connection properties (JDBC, R2DBC, MongoDB, Redis, etc.)
- * for query parameters that weaken transport security, split into two mechanisms since
- * they're different vulnerability classes, not one flat "risky value" bucket:
+ * <p>Inspects {@code uri-based} connection properties (JDBC, R2DBC, MongoDB, Redis,
+ * Elasticsearch, RabbitMQ, ActiveMQ, LDAP, ...) via three mechanisms, kept separate since
+ * they're different vulnerability classes or evidence shapes, not one flat "risky value"
+ * bucket:
  * <ul>
  *     <li>{@code risky-query-params}: TLS/SSL disabled or downgradable to cleartext
  *     (e.g., {@code sslmode=disable}, {@code useSSL=false}) — CWE-319.</li>
  *     <li>{@code no-verify-query-params}: TLS is used, but certificate/hostname validation
  *     is explicitly disabled (e.g., {@code verifyServerCertificate=false}) — the wire is
  *     encrypted, but a forged/self-signed certificate lets an attacker MITM anyway — CWE-295.</li>
+ *     <li>{@code risky-schemes}: same CWE-319 outcome as {@code risky-query-params}, but the
+ *     signal is the URI's own scheme ({@code http://}, {@code amqp://}, {@code tcp://},
+ *     {@code ldap://}), not a query parameter — added because Elasticsearch/RabbitMQ/ActiveMQ/
+ *     LDAP don't express TLS via query string the way JDBC drivers do; listing them under
+ *     {@code uri-based} alone (as Elasticsearch/RabbitMQ/ActiveMQ originally were) left them as
+ *     dead entries that could never actually match either query-param mechanism.</li>
  * </ul>
- * Both are reported at {@link Severity#HIGH}: the practical outcome (an attacker in the
- * network path reads all traffic) is the same either way — only the mechanism differs — so
- * this rule does not treat CWE-295 as a lesser finding than CWE-319.
+ * All three are reported at {@link Severity#HIGH}: the practical outcome (an attacker in the
+ * network path reads all traffic) is the same regardless of which mechanism detects it.
  * <p>
  * {@code sslmode=prefer} is deliberately NOT in {@code risky-query-params}: it's the
  * PostgreSQL JDBC driver's own default when the property is absent entirely (confirmed in
@@ -39,6 +45,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
     private Set<String> uriBasedKeys;
     private Map<String, Set<String>> riskyQueryParams;
     private Map<String, Set<String>> noVerifyQueryParams;
+    private Set<String> riskySchemes;
 
     @Override
     public String id() {
@@ -69,12 +76,21 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
             throw new IllegalArgumentException(RULE_NAME + " initialization failed: 'no-verify-query-params' is missing or empty.");
         }
 
+        List<String> rawRiskySchemes = metadata.get("risky-schemes");
+        if (rawRiskySchemes == null || rawRiskySchemes.isEmpty()) {
+            throw new IllegalArgumentException(RULE_NAME + " initialization failed: 'risky-schemes' is missing or empty.");
+        }
+
         this.uriBasedKeys = rawUriKeys.stream()
                 .map(RelaxedProperties::canonicalize)
                 .collect(Collectors.toUnmodifiableSet());
 
         this.riskyQueryParams = parseQueryParamMap(rawRiskyParams);
         this.noVerifyQueryParams = parseQueryParamMap(rawNoVerifyParams);
+
+        this.riskySchemes = rawRiskySchemes.stream()
+                .map(s -> s.strip().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     // Parse do formato "param=valor" mantendo 1 único nível no YAML
@@ -140,10 +156,24 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
                 continue;
             }
 
-            // 2. Inspect query parameters for explicit TLS opt-outs, then for disabled
-            // certificate validation -- two different mechanisms/CWEs, checked in sequence
-            // rather than merged into one lookup so each keeps its own message.
+            // 2. Inspect the scheme first, then query parameters for explicit TLS opt-outs, then
+            // for disabled certificate validation -- three different mechanisms, checked in
+            // sequence rather than merged into one lookup so each keeps its own message. Scheme
+            // goes first since it needs no "?"/";" boundary to exist at all -- a bare
+            // "http://host:port" with no query string would never reach the other two checks.
             boolean isFromPlaceholderDefault = trimmedValue.contains("${");
+
+            Optional<String> insecureScheme = findSchemeMatch(valueToInspect);
+            if (insecureScheme.isPresent()) {
+                findings.add(new Finding(
+                        id(),
+                        Severity.HIGH,
+                        buildInsecureSchemeMessage(entry.getKey(), rawValue, insecureScheme.get(), isFromPlaceholderDefault),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+                continue;
+            }
 
             Optional<String> disabledTls = findMatch(valueToInspect, riskyQueryParams);
             if (disabledTls.isPresent()) {
@@ -172,11 +202,25 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
         return findings;
     }
 
+    /**
+     * Unlike {@link #findMatch(String, Map)}, this needs no "?"/";" query boundary -- Elasticsearch,
+     * RabbitMQ, ActiveMQ, and LDAP express transport security via the URI's own scheme
+     * ({@code http://} vs {@code https://}, {@code tcp://} vs {@code ssl://}, ...), not a query
+     * parameter, so a value like {@code http://es-node:9200} with no query string at all must
+     * still match here.
+     */
+    private Optional<String> findSchemeMatch(String uriString) {
+        String lowerCased = uriString.toLowerCase(Locale.ROOT);
+        return riskySchemes.stream()
+                .filter(lowerCased::startsWith)
+                .findFirst();
+    }
+
     private Optional<String> findMatch(String uriString, Map<String, Set<String>> paramMap) {
         int queryStart = uriString.indexOf('?');
         String queryString;
 
-            if (queryStart != -1) {
+        if (queryStart != -1) {
 
             // Standard URL/JDBC format: jdbc:mysql://host:port/db?param=val
             queryString = uriString.substring(queryStart + 1);
@@ -208,6 +252,15 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
         return Optional.empty();
     }
 
+    private String buildInsecureSchemeMessage(String key, String rawValue, String matchedScheme, boolean isFromPlaceholderDefault) {
+        String base = ("Insecure scheme '%s' detected in connection property '%s'. " +
+                "This service does not express transport security via a query parameter -- the scheme itself " +
+                "is the signal -- and traffic to it is transmitted in cleartext (CWE-319).")
+                .formatted(matchedScheme, key);
+
+        return withPlaceholderNote(base, rawValue, isFromPlaceholderDefault);
+    }
+
     private String buildDisabledTlsMessage(String key, String rawValue, String matchedParam, boolean isFromPlaceholderDefault) {
         String base = ("Insecure TLS configuration detected in connection property '%s' via parameter '%s'. " +
                 "Disabling TLS or allowing unencrypted fallback exposes all database traffic, queries, " +
@@ -234,7 +287,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
     }
 
     private void ensureConfigured() {
-        if (uriBasedKeys == null || riskyQueryParams == null || noVerifyQueryParams == null) {
+        if (uriBasedKeys == null || riskyQueryParams == null || noVerifyQueryParams == null || riskySchemes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
     }

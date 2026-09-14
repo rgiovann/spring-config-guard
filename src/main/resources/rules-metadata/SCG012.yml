@@ -1,17 +1,25 @@
 # SCG012 (InsecureDatabaseTransportRule) configuration.
 #
-# Two mechanisms, kept as separate groups because they're different vulnerability classes
-# with different messages/CWEs, not just a flat "risky value" list:
-#   - risky-query-params:    TLS/SSL disabled or downgradable to cleartext (CWE-319).
+# Three mechanisms, kept as separate groups because they're different vulnerability classes
+# (or different evidence shapes) with different messages, not just a flat "risky value" list:
+#   - risky-query-params:    TLS/SSL disabled or downgradable to cleartext (CWE-319),
+#                              expressed as a query-string parameter (JDBC/Mongo/Redis style).
 #   - no-verify-query-params: TLS is used, but certificate/hostname validation is explicitly
 #                              disabled -- traffic is encrypted but a forged/self-signed
 #                              certificate lets an attacker MITM anyway (CWE-295).
+#   - risky-schemes:          TLS disabled or absent, expressed as the URI's own scheme
+#                              (Elasticsearch/RabbitMQ/ActiveMQ/LDAP style) rather than a query
+#                              parameter -- confirmed (session 2026-09-14) that none of these
+#                              tools express TLS via query string the way JDBC drivers do, so
+#                              listing them under uri-based alone left them as dead entries that
+#                              could never match risky-query-params/no-verify-query-params.
 # sslmode=prefer is deliberately NOT listed as risky: it's pgjdbc's own default when the
 # property is absent entirely (confirmed in the official pgjdbc docs), so flagging it would
 # punish writing the default explicitly rather than detecting an actual downgrade.
 
-# Keys whose value is a connection URI (JDBC, R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ, ActiveMQ, ...)
-# that may contain TLS/SSL query parameters after placeholder resolution.
+# Keys whose value is a connection URI (JDBC, R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ,
+# ActiveMQ, LDAP, ...) that may contain TLS/SSL query parameters and/or an insecure scheme
+# after placeholder resolution.
 uri-based:
   - "spring.datasource.url"
   - "spring.r2dbc.url"
@@ -20,6 +28,7 @@ uri-based:
   - "spring.elasticsearch.uris"
   - "spring.rabbitmq.addresses"
   - "spring.activemq.broker-url"
+  - "spring.ldap.urls"
 
 # Parameter=value pairs (lowercased) meaning TLS/SSL is disabled or may be silently
 # downgraded to cleartext (CWE-319).
@@ -46,3 +55,15 @@ no-verify-query-params:
   - "tlsallowinvalidcertificates=true"
   - "tlsallowinvalidhostnames=true"
   - "verifypeer=none"
+
+# URI scheme prefixes (lowercase, matched against the start of the value) meaning the
+# connection itself is unencrypted -- no secure counterpart needs to be listed: "https://"
+# does not start with "http://" (5th character diverges, 's' vs ':'), same for
+# "amqps://"/"ldaps://" against their insecure prefixes, so a plain prefix match already
+# discriminates correctly. "tcp://" has no such prefix relationship with ActiveMQ's "ssl://"
+# transport -- it's a different word entirely, not a longer/shorter variant of it.
+risky-schemes:
+  - "http://"
+  - "amqp://"
+  - "tcp://"
+  - "ldap://"

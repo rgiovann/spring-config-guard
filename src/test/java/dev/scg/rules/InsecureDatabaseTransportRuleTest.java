@@ -103,12 +103,28 @@ class InsecureDatabaseTransportRuleTest {
             InsecureDatabaseTransportRule newRule = new InsecureDatabaseTransportRule();
             Map<String, List<String>> invalidMetadata = Map.of(
                     "uri-based", List.of("spring.datasource.url"),
-                    "risky-query-params", List.of("usessl=false")
+                    "risky-query-params", List.of("usessl=false"),
+                    "risky-schemes", List.of("http://")
             );
 
             assertThatThrownBy(() -> newRule.configure(invalidMetadata))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("'no-verify-query-params' is missing or empty");
+        }
+
+        @Test
+        @DisplayName("Initialization should fail if 'risky-schemes' metadata is missing or empty")
+        void shouldThrowExceptionWhenRiskySchemesMetadataIsInvalid() {
+            InsecureDatabaseTransportRule newRule = new InsecureDatabaseTransportRule();
+            Map<String, List<String>> invalidMetadata = Map.of(
+                    "uri-based", List.of("spring.datasource.url"),
+                    "risky-query-params", List.of("usessl=false"),
+                    "no-verify-query-params", List.of("verifyservercertificate=false")
+            );
+
+            assertThatThrownBy(() -> newRule.configure(invalidMetadata))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("'risky-schemes' is missing or empty");
         }
     }
 
@@ -260,6 +276,145 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(1);
             assertThat(findings.getFirst().message()).contains("CWE-319");
+        }
+    }
+
+    @Nested
+    @DisplayName("Insecure Scheme Detection (CWE-319, non-query-param tools)")
+    class RiskySchemeTests {
+
+        @Test
+        @DisplayName("Detects http:// on an Elasticsearch URI with no query string at all")
+        void shouldDetectHttpSchemeOnElasticsearch() {
+            Map<String, String> properties = Map.of(
+                    "spring.elasticsearch.uris", "http://localhost:9200"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            Finding finding = findings.getFirst();
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message())
+                    .contains("http://")
+                    .contains("spring.elasticsearch.uris")
+                    .contains("CWE-319");
+        }
+
+        @Test
+        @DisplayName("Stays silent when Elasticsearch URI uses https://")
+        void shouldStaySilentOnHttpsElasticsearch() {
+            Map<String, String> properties = Map.of(
+                    "spring.elasticsearch.uris", "https://localhost:9200"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Detects amqp:// on a RabbitMQ address written as a full AMQP URI")
+        void shouldDetectAmqpSchemeOnRabbitMq() {
+            Map<String, String> properties = Map.of(
+                    "spring.rabbitmq.addresses", "amqp://guest:guest@localhost:5672/vhost"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("Stays silent when RabbitMQ address uses amqps://")
+        void shouldStaySilentOnAmqpsRabbitMq() {
+            Map<String, String> properties = Map.of(
+                    "spring.rabbitmq.addresses", "amqps://guest:guest@localhost:5671/vhost"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Stays silent on the bare host:port RabbitMQ address form (no scheme to inspect)")
+        void shouldStaySilentOnBareHostPortRabbitMq() {
+            // Deliberate boundary, not a gap: "host:port" carries no TLS signal of its own --
+            // that's spring.rabbitmq.ssl.enabled's job (tracked separately in BACKLOG.md as a
+            // future SCG01x rule). This mechanism only catches the explicit amqp:///amqps:// URI
+            // authoring style.
+            Map<String, String> properties = Map.of(
+                    "spring.rabbitmq.addresses", "localhost:5672"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Detects tcp:// on an ActiveMQ broker URL")
+        void shouldDetectTcpSchemeOnActiveMq() {
+            Map<String, String> properties = Map.of(
+                    "spring.activemq.broker-url", "tcp://localhost:61616"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("Stays silent when ActiveMQ broker URL uses ssl://")
+        void shouldStaySilentOnSslActiveMq() {
+            Map<String, String> properties = Map.of(
+                    "spring.activemq.broker-url", "ssl://localhost:61617"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Detects ldap:// on an LDAP URL")
+        void shouldDetectLdapScheme() {
+            Map<String, String> properties = Map.of(
+                    "spring.ldap.urls", "ldap://directory.internal:389"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("Stays silent when LDAP URL uses ldaps://")
+        void shouldStaySilentOnLdaps() {
+            Map<String, String> properties = Map.of(
+                    "spring.ldap.urls", "ldaps://directory.internal:636"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Reports INFO for an unresolved placeholder on a scheme-based key, same as query-param keys")
+        void shouldReportInfoOnUnresolvedPlaceholderForSchemeBasedKey() {
+            Map<String, String> properties = Map.of(
+                    "spring.elasticsearch.uris", "${ES_URI}"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
         }
     }
 
