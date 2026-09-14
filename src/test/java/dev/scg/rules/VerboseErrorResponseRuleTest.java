@@ -34,7 +34,12 @@ class VerboseErrorResponseRuleTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"always", "ALWAYS", "on_param", "ON_PARAM", "on-param", "ON-PARAM"})
+    @ValueSource(strings = {
+            "always", "ALWAYS",
+            "on_param", "ON_PARAM",
+            "on-param", "ON-PARAM",
+            "onParam", "ONPARAM"
+    })
     @DisplayName("Should report HIGH severity when include-stacktrace is set to risky enum values")
     void shouldReportHighOnRiskyIncludeStacktrace(String enumValue) {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
@@ -48,6 +53,24 @@ class VerboseErrorResponseRuleTest {
         assertThat(finding.ruleId()).isEqualTo("SCG010");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("server.error.include-stacktrace=" + enumValue);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"on.param", "on param"})
+    @DisplayName("Should report HIGH even for atypical separators, proving canonicalize() strips any non-alphanumeric char")
+    void shouldReportHighOnAtypicalSeparators(String enumValue) {
+        // Not real Spring Boot authoring styles, but they prove the canonicalize() comparison
+        // (shared approach with SCG001/SCG013) isn't secretly hardcoded to just '-'/'_' the way
+        // the old Set<String> + toUpperCase() approach was -- that older approach missed
+        // "onParam" specifically because it has no separator to match a Set entry written with one.
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "server.error.include-stacktrace", enumValue
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
     }
 
     @ParameterizedTest

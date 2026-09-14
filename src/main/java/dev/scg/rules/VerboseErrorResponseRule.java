@@ -4,7 +4,6 @@ import dev.scg.core.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -60,7 +59,15 @@ public final class VerboseErrorResponseRule implements Rule {
     private static final String INCLUDE_MESSAGE_KEY = "server.error.include-message";
     private static final String INCLUDE_BINDING_ERRORS_KEY = "server.error.include-binding-errors";
 
-    private static final Set<String> RISKY_ENUM_VALUES = Set.of("ALWAYS", "ON_PARAM", "ON-PARAM");
+    // Matches Spring Boot's own lenient enum binding rather than enumerating separator variants
+    // by hand: LenientObjectToEnumConverterFactory.getCanonicalName() (org.springframework.boot.convert)
+    // reduces both the source string and the enum constant name to letters/digits only, lowercased,
+    // before comparing -- so "on-param", "on_param", and "onParam" all bind to the same constant.
+    // A Set of separator variants compared via toUpperCase() (this rule's original approach)
+    // misses "onParam": it canonicalizes to "onparam", which has no separator left to match a set
+    // entry written with one. Same fix already applied to ActuatorExposureRule (SCG001) and
+    // HealthDetailsExposureRule (SCG013).
+    private static final Set<String> RISKY_CANONICAL_ENUM_VALUES = Set.of("always", "onparam");
 
     @Override
     public String id() {
@@ -113,8 +120,22 @@ public final class VerboseErrorResponseRule implements Rule {
     private void checkEnumProperty(EffectiveConfig config, String key, Severity severity,
                                    String messageTemplate, List<Finding> findings) {
         checkProperty(config, key, severity, messageTemplate,
-                value -> RISKY_ENUM_VALUES.contains(value.toUpperCase(Locale.ROOT)),
+                value -> RISKY_CANONICAL_ENUM_VALUES.contains(canonicalize(value)),
                 findings);
+    }
+
+    /**
+     * Same reduction as Spring Boot's {@code LenientObjectToEnumConverterFactory.getCanonicalName()}:
+     * keep only letters/digits, lowercase -- so separator style (hyphen/underscore/none) and casing
+     * stop mattering, matching how the real {@code Binder} would resolve this enum value at runtime.
+     */
+    private static String canonicalize(String value) {
+        StringBuilder canonical = new StringBuilder(value.length());
+        value.chars()
+                .filter(Character::isLetterOrDigit)
+                .map(Character::toLowerCase)
+                .forEach(c -> canonical.append((char) c));
+        return canonical.toString();
     }
 
     /**

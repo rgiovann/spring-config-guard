@@ -97,37 +97,6 @@ pós-avaliação.
    mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
    continua ativa em `dev`).
 
-### Matching de valores de enum não replica o binding lenient real do Spring Boot (SCG010)
-
-Descoberto durante revisão da SCG013 (sessão 2026-09-14), mesmo gap também
-presente em `ActuatorExposureRule` (SCG001) — já corrigida (sessão
-2026-09-14). `VerboseErrorResponseRule` (`RISKY_ENUM_VALUES`,
-[VerboseErrorResponseRule.java:63](src/main/java/dev/scg/rules/VerboseErrorResponseRule.java:63))
-ainda compara o valor resolvido contra um `Set` fixo de variantes de
-separador (`ON_PARAM`, `ON-PARAM`, ...) via `value.toUpperCase(Locale.ROOT)`.
-
-Isso não corresponde ao binding real do Spring Boot. Confirmado contra o
-algoritmo de `LenientObjectToEnumConverterFactory.getCanonicalName()`
-(`org.springframework.boot.convert`, spring-boot-project/spring-boot): tanto o
-valor recebido quanto a constante do enum são reduzidos a "somente
-letras/dígitos, minúsculo" antes da comparação — ou seja, `on-param`,
-`on_param`, `onParam` e `ONPARAM` são todos equivalentes para o Spring,
-independente de separador ou posição de maiúscula. Um `Set` de variantes
-escritas à mão nunca cobre todas as formas; especificamente, `onParam`
-(camelCase, sem separador) escapa do `toUpperCase()` + `Set` atual e gera
-falso negativo (`ONPARAM` != nenhuma entrada do `Set`, que só tem as formas
-com `_`/`-`).
-
-A correção já está implementada em duas regras como modelo — SCG013
-([HealthDetailsExposureRule.canonicalize()](src/main/java/dev/scg/rules/HealthDetailsExposureRule.java:124))
-e SCG001 (`ActuatorExposureRule.canonicalize()`): reduzir o valor a
-letras/dígitos minúsculos e comparar contra um `Set` de formas já canônicas,
-em vez de enumerar separadores manualmente. Aplicar o mesmo padrão em SCG010
-quando o foco migrar para ela, sem mudar severidade ou qualquer outro
-comportamento — escopo é puramente a forma de comparação do valor.
-`include-exception` (o único booleano puro entre as quatro propriedades da
-SCG010) não é afetado, pois usa `RelaxedBoolean::isTruthy`, não este `Set`.
-
 ## Descartado / fora de escopo
 
 * **CSRF desabilitado** — normalmente feito via `http.csrf().disable()`
