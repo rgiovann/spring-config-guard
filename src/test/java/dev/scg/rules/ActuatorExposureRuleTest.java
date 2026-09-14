@@ -246,7 +246,12 @@ class ActuatorExposureRuleTest {
     // new tests added
 
     @ParameterizedTest
-    @ValueSource(strings = {"always", "ALWAYS", "when_authorized", "WHEN_AUTHORIZED", "when-authorized", "WHEN-AUTHORIZED"})
+    @ValueSource(strings = {
+            "always", "ALWAYS",
+            "when_authorized", "WHEN_AUTHORIZED",
+            "when-authorized", "WHEN-AUTHORIZED",
+            "whenAuthorized", "WHENAUTHORIZED"
+    })
     @DisplayName("Should report HIGH when show-values is risky and endpoint is exposed explicitly without wildcard")
     void shouldReportHighWhenShowValuesIsRiskyAndEndpointExposedExplicitly(String showValues) {
         EffectiveConfig config = configWith(Map.of(
@@ -263,6 +268,26 @@ class ActuatorExposureRuleTest {
         assertThat(finding.message())
                 .contains("management.endpoint.<id>.show-values")
                 .contains("env");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"when.authorized", "when authorized"})
+    @DisplayName("Should report HIGH even for atypical separators, proving canonicalize() strips any non-alphanumeric char")
+    void shouldReportHighOnAtypicalSeparators(String showValues) {
+        // Not real Spring Boot authoring styles, but they prove the canonicalize() comparison
+        // (shared approach with HealthDetailsExposureRule/SCG013) isn't secretly hardcoded to
+        // just '-'/'_' the way the old Set<String> + toUpperCase() approach was -- that older
+        // approach missed "whenAuthorized" specifically because it has no separator to match a
+        // Set entry written with one.
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "health,env",
+                "management.endpoint.env.show-values", showValues
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test

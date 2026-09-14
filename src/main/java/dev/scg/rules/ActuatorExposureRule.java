@@ -4,7 +4,6 @@ import dev.scg.core.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -64,11 +63,16 @@ public final class ActuatorExposureRule implements Rule {
     private static final String RESTRICTED_ACCESS_VALUE = "none";
 
     private static final Set<String> SHOW_VALUES_ENDPOINTS = Set.of("env", "configprops");
-    // Both underscore and hyphen spellings included -- same reason as VerboseErrorResponseRule's
-    // RISKY_ENUM_VALUES: this project does not deserialize into the real Spring enum, it matches
-    // the literal text a user would write in YAML (kebab-case, "when-authorized"), and that must
-    // not be missed just because the Java enum constant itself uses an underscore.
-    private static final Set<String> RISKY_SHOW_VALUES = Set.of("ALWAYS", "WHEN_AUTHORIZED", "WHEN-AUTHORIZED");
+    // Matches Spring Boot's own lenient enum binding rather than enumerating separator variants
+    // by hand: LenientObjectToEnumConverterFactory.getCanonicalName() (org.springframework.boot.convert)
+    // reduces both the source string and the enum constant name to letters/digits only, lowercased,
+    // before comparing -- so "when-authorized", "when_authorized", and "whenAuthorized" all bind to
+    // the same constant. A Set of separator variants compared via toUpperCase() (this project's
+    // original approach here, and still VerboseErrorResponseRule's RISKY_ENUM_VALUES) misses
+    // "whenAuthorized": it canonicalizes to "whenauthorized", which has no separator left to match a
+    // set entry written with one. See HealthDetailsExposureRule (SCG013) for the same fix applied
+    // from the start.
+    private static final Set<String> RISKY_CANONICAL_SHOW_VALUES = Set.of("always", "whenauthorized");
 
     @Override
     public String id() {
@@ -212,7 +216,21 @@ public final class ActuatorExposureRule implements Rule {
             return false;
         }
 
-        return RISKY_SHOW_VALUES.contains(resolved.get().strip().toUpperCase(Locale.ROOT));
+        return RISKY_CANONICAL_SHOW_VALUES.contains(canonicalize(resolved.get().strip()));
+    }
+
+    /**
+     * Same reduction as Spring Boot's {@code LenientObjectToEnumConverterFactory.getCanonicalName()}:
+     * keep only letters/digits, lowercase -- so separator style (hyphen/underscore/none) and casing
+     * stop mattering, matching how the real {@code Binder} would resolve this enum value at runtime.
+     */
+    private static String canonicalize(String value) {
+        StringBuilder canonical = new StringBuilder(value.length());
+        value.chars()
+                .filter(Character::isLetterOrDigit)
+                .map(Character::toLowerCase)
+                .forEach(c -> canonical.append((char) c));
+        return canonical.toString();
     }
 
     private Finding unresolvedPlaceholderFinding(String key, String rawValue, EffectiveConfig config) {
