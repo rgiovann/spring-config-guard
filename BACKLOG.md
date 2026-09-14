@@ -97,6 +97,41 @@ pós-avaliação.
    mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
    continua ativa em `dev`).
 
+### Matching de valores de enum não replica o binding lenient real do Spring Boot (SCG001, SCG010)
+
+Descoberto durante revisão da SCG013 (sessão 2026-09-14): `ActuatorExposureRule`
+(`RISKY_SHOW_VALUES`, [ActuatorExposureRule.java:71](src/main/java/dev/scg/rules/ActuatorExposureRule.java:71))
+e `VerboseErrorResponseRule` (`RISKY_ENUM_VALUES`,
+[VerboseErrorResponseRule.java:63](src/main/java/dev/scg/rules/VerboseErrorResponseRule.java:63))
+comparam o valor resolvido contra um `Set` fixo de variantes de separador
+(`WHEN_AUTHORIZED`, `WHEN-AUTHORIZED`, `ON_PARAM`, `ON-PARAM`, ...) via
+`value.toUpperCase(Locale.ROOT)`.
+
+Isso não corresponde ao binding real do Spring Boot. Confirmado contra o
+algoritmo de `LenientObjectToEnumConverterFactory.getCanonicalName()`
+(`org.springframework.boot.convert`, spring-boot-project/spring-boot): tanto o
+valor recebido quanto a constante do enum são reduzidos a "somente
+letras/dígitos, minúsculo" antes da comparação — ou seja, `when-authorized`,
+`when_authorized`, `whenAuthorized` e `WHENAUTHORIZED` são todos equivalentes
+para o Spring, independente de separador ou posição de maiúscula. Um `Set` de
+variantes escritas à mão nunca cobre todas as formas; especificamente,
+`whenAuthorized`/`onParam` (camelCase, sem separador) escapam do
+`toUpperCase()` + `Set` atual e geram falso negativo (`WHENAUTHORIZED` !=
+nenhuma entrada do `Set`, que só tem as formas com `_`/`-`).
+
+A correção já está implementada como modelo em SCG013
+([HealthDetailsExposureRule.canonicalize()](src/main/java/dev/scg/rules/HealthDetailsExposureRule.java:124)):
+reduzir o valor a letras/dígitos minúsculos e comparar contra um `Set` de
+formas já canônicas, em vez de enumerar separadores manualmente.
+
+Adiado deliberadamente: SCG013 ainda não está madura (implementada nesta
+mesma sessão), e mexer em SCG001/SCG010 agora desviaria o foco antes de
+confirmar se a SCG013 em si está estável — e revisar SCG013 pode revelar mais
+problemas do mesmo tipo que ainda afetariam esse retrofit. Aplicar o mesmo
+padrão de `canonicalize()` às duas regras existentes quando o foco puder
+migrar para elas, sem mudar severidade ou qualquer outro comportamento —
+escopo é puramente a forma de comparação do valor.
+
 ## Descartado / fora de escopo
 
 * **CSRF desabilitado** — normalmente feito via `http.csrf().disable()`
