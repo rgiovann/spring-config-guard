@@ -11,3 +11,4 @@ dev.scg.rules.VerboseErrorResponseRule
 dev.scg.rules.InsecureServerTransportRule
 dev.scg.rules.InsecureDatabaseTransportRule
 dev.scg.rules.HealthDetailsExposureRule
+dev.scg.rules.KafkaInsecureProtocolRule
