@@ -18,8 +18,8 @@
 # punish writing the default explicitly rather than detecting an actual downgrade.
 
 # Keys whose value is a connection URI (JDBC, R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ,
-# ActiveMQ, LDAP, ...) that may contain TLS/SSL query parameters and/or an insecure scheme
-# after placeholder resolution.
+# ActiveMQ, LDAP, Spring Cloud Config Server, ...) that may contain TLS/SSL query parameters
+# and/or an insecure scheme after placeholder resolution.
 uri-based:
   - "spring.datasource.url"
   - "spring.r2dbc.url"
@@ -29,6 +29,7 @@ uri-based:
   - "spring.rabbitmq.addresses"
   - "spring.activemq.broker-url"
   - "spring.ldap.urls"
+  - "spring.cloud.config.uri"
 
 # Parameter=value pairs (lowercased) meaning TLS/SSL is disabled or may be silently
 # downgraded to cleartext (CWE-319).

@@ -48,18 +48,7 @@ pra lista atual).
    sustentou. Falta confirmar antes do design: o que o `NimbusJwtDecoder`
    aceita quando a propriedade não é setada (default real), e se o
    literal `none` é sequer um valor que o binding aceita.
-3. **Spring Cloud Config Server em HTTP (`spring.cloud.config.uri`)** —
-   mesma classe de risco da SCG016 (carrega configuração e
-   potencialmente segredos no bootstrap), mas sem a complicação de
-   precedência `uri`/`scheme` que o Vault tem: `uri` aqui é só uma URI
-   comum. Custo de implementação é quase zero — só adicionar
-   `spring.cloud.config.uri` na lista `uri-based` do `SCG012.yml`;
-   `http://` já está cadastrado em `risky-schemes`. Ressalva: o default
-   é `http://localhost:8888` (loopback/dev), então só é sinal real pra
-   host não-loopback — o projeto já tem `dev.scg.core.LoopbackAddresses`
-   pra essa exata distinção (reaproveitável, não precisa de mecanismo
-   novo).
-4. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
+3. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
    (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
    sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
    um vetor real e documentado (inclusive campanhas de ransomware via
@@ -70,15 +59,22 @@ pra lista atual).
    "Pós-1.0" abaixo. Não é auto-evidente que o custo/benefício feche;
    fica registrado pra avaliação, não como decisão tomada.
 
+Spring Cloud Config Server (`spring.cloud.config.uri` em HTTP) saiu
+dessa lista: implementado com esforço mínimo direto na SCG012 (chave
+nova em `uri-based` no `SCG012.yml`, `http://` já cadastrado em
+`risky-schemes` — sem exceção de loopback, mesma decisão de design já
+validada pelas outras 8 chaves da lista e travada pela suíte de testes
+existente da SCG012).
+
 Com SCG016 (Vault), a família "transporte inseguro" original (JDBC/
 Mongo/Redis/RabbitMQ/ActiveMQ/LDAP/Kafka/Vault) está fechada pra v1.0
-(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); os itens de
-transporte HTTP acima (issuer-uri/jwk-set-uri, Spring Cloud Config) são
-propriedades novas descobertas depois desse fechamento, não uma
-reabertura dele — o item de algoritmo JWT fraco não é sequer da família
-"transporte", é um mecanismo de assinatura diferente. Novos candidatos
-de descoberta/observabilidade entram na seção "Pós-1.0" abaixo por
-padrão, não aqui, a menos que passem no critério de triagem descrito lá.
+(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); o item de
+issuer-uri/jwk-set-uri acima é propriedade nova descoberta depois desse
+fechamento, não uma reabertura dele — o item de algoritmo JWT fraco não
+é sequer da família "transporte", é um mecanismo de assinatura
+diferente. Novos candidatos de descoberta/observabilidade entram na
+seção "Pós-1.0" abaixo por padrão, não aqui, a menos que passem no
+critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
