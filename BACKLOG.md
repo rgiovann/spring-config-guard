@@ -27,7 +27,28 @@ pra lista atual).
    dado. As duas propriedades são alternativas pro mesmo propósito (JWKS
    direto vs. descoberta OIDC via issuer), então a regra deve cobrir
    ambas, não só `issuer-uri`.
-2. **Spring Cloud Config Server em HTTP (`spring.cloud.config.uri`)** —
+2. **Algoritmo JWT fraco/inadequado no OAuth2 Resource Server
+   (`spring.security.oauth2.resourceserver.jwt.jws-algorithms`)** —
+   mesma família de hardening do item 1, mas mecanismo diferente:
+   confirmado que a propriedade existe de verdade (Spring Security 5.2+,
+   consumida pelo `NimbusJwtDecoder` quando `jwk-set-uri`/`issuer-uri`
+   está configurado). Vetor real e histórico — *algorithm confusion*: se
+   a lista inclui um algoritmo simétrico (`HS256`/`HS384`/`HS512`) num
+   cenário onde o JWKS serve chaves assimétricas (RSA/EC), um atacante
+   pode assinar um token usando a chave pública (conhecida) como
+   "segredo" HMAC, forjando autenticação. Sugerido originalmente pelo
+   Gemini num brainstorm externo sem visibilidade do projeto — avaliado
+   e filtrado nesta sessão (2026-09-15): dos 5 itens que ele propôs, 2
+   eram duplicatas de regras já implementadas (Actuator wildcard = SCG001,
+   H2 console = SCG002), 1 já estava descartado no backlog com razão
+   documentada (CSRF — sem superfície de propriedade), 1 era factualmente
+   incorreto (desserialização polimórfica do Jackson não é controlável
+   via `spring.jackson.*` — o vetor real de RCE, `default typing`, não é
+   uma propriedade bindável do Spring Boot), e este foi o único que se
+   sustentou. Falta confirmar antes do design: o que o `NimbusJwtDecoder`
+   aceita quando a propriedade não é setada (default real), e se o
+   literal `none` é sequer um valor que o binding aceita.
+3. **Spring Cloud Config Server em HTTP (`spring.cloud.config.uri`)** —
    mesma classe de risco da SCG016 (carrega configuração e
    potencialmente segredos no bootstrap), mas sem a complicação de
    precedência `uri`/`scheme` que o Vault tem: `uri` aqui é só uma URI
@@ -38,7 +59,7 @@ pra lista atual).
    host não-loopback — o projeto já tem `dev.scg.core.LoopbackAddresses`
    pra essa exata distinção (reaproveitável, não precisa de mecanismo
    novo).
-3. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
+4. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
    (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
    sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
    um vetor real e documentado (inclusive campanhas de ransomware via
@@ -51,11 +72,13 @@ pra lista atual).
 
 Com SCG016 (Vault), a família "transporte inseguro" original (JDBC/
 Mongo/Redis/RabbitMQ/ActiveMQ/LDAP/Kafka/Vault) está fechada pra v1.0
-(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); os itens 1-2
-acima são propriedades novas descobertas depois desse fechamento, não
-uma reabertura dele. Novos candidatos de descoberta/observabilidade
-entram na seção "Pós-1.0" abaixo por padrão, não aqui, a menos que
-passem no critério de triagem descrito lá.
+(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); os itens de
+transporte HTTP acima (issuer-uri/jwk-set-uri, Spring Cloud Config) são
+propriedades novas descobertas depois desse fechamento, não uma
+reabertura dele — o item de algoritmo JWT fraco não é sequer da família
+"transporte", é um mecanismo de assinatura diferente. Novos candidatos
+de descoberta/observabilidade entram na seção "Pós-1.0" abaixo por
+padrão, não aqui, a menos que passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
