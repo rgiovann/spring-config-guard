@@ -13,16 +13,7 @@ validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
 Ordem por relação esforço/valor, não por dependência técnica.
 
-1. **Transporte inseguro no Vault (`spring.cloud.vault.uri` /
-   `spring.cloud.vault.scheme`)** — Vault é gerenciador de segredos: se o
-   transporte é inseguro, as credenciais que a própria aplicação carrega
-   no bootstrap trafegam em claro — mesma classe de severidade de
-   SCG007/SCG012, mais grave que um simples endereço de descoberta (ver
-   seção "Pós-1.0" abaixo pro porquê isso importa na triagem). A
-   confirmar: o default de `spring.cloud.vault.scheme` (suspeita é
-   `https`, o que tornaria essa regra mais simples que a SCG014 — sem
-   precisar do design "ausência = inseguro").
-2. **(Prioridade a avaliar) Transporte inseguro em SMTP/Mail
+1. **(Prioridade a avaliar) Transporte inseguro em SMTP/Mail
    (`spring.mail.properties.mail.smtp.starttls.enable` /
    `mail.smtp.ssl.enable`)** — descoberto na mesma sessão 2026-09-14 ao
    avaliar LDAP/Elasticsearch. Carrega credencial real (SMTP AUTH) e
@@ -37,11 +28,11 @@ Ordem por relação esforço/valor, não por dependência técnica.
    backlog já cita `jhipster.mail.base-url` como exemplo no item abaixo,
    o que sugere que configuração de mail *é* comum no contexto do time,
    mas isso não confirma que seja especificamente via SMTP cru.
-3. **(Prioridade baixa) Upload multipart sem limite** —
+2. **(Prioridade baixa) Upload multipart sem limite** —
    `spring.servlet.multipart.max-file-size`/`max-request-size`
    ilimitado ou `-1`. Mais adjacente a DoS do que a
    confidencialidade/integridade, por isso a prioridade menor.
-4. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
+3. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
    `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
    `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
    OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
@@ -60,10 +51,10 @@ Ordem por relação esforço/valor, não por dependência técnica.
    falso positivo que mina a confiança na ferramenta logo nas primeiras
    execuções.
 
-Com Vault, a família "transporte inseguro" fica fechada pra v1.0 (junto
-com SCG011/SCG012/SCG014/SCG015 já implementadas) — novos candidatos da
-mesma família entram na seção "Pós-1.0" abaixo por padrão, não aqui, a
-menos que passem no critério de triagem descrito lá.
+Com SCG016 (Vault), a família "transporte inseguro" está fechada pra
+v1.0 (junto com SCG011/SCG012/SCG014/SCG015 já implementadas) — novos
+candidatos da mesma família entram na seção "Pós-1.0" abaixo por padrão,
+não aqui, a menos que passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
