@@ -48,39 +48,21 @@ pra lista atual).
    sustentou. Falta confirmar antes do design: o que o `NimbusJwtDecoder`
    aceita quando a propriedade não é setada (default real), e se o
    literal `none` é sequer um valor que o binding aceita.
-3. **Transporte inseguro em AWS Secrets Manager / Parameter Store / endpoint
-   global (`spring.cloud.aws.endpoint`, `.secretsmanager.endpoint`,
-   `.parameterstore.endpoint`)** — mesma classe de risco da SCG016/Config
-   Server: essas três carregam segredo real no bootstrap (Secrets
-   Manager e Parameter Store são gerenciadores de segredo; o endpoint
-   global sobrescreve todos os clients AWS de uma vez, então também
-   cobre esses dois quando usado). Custo de implementação é o mesmo
-   padrão de baixo esforço do Config Server — só adicionar as 3 chaves
-   na lista `uri-based` do `SCG012.yml`, `http://` já cadastrado em
-   `risky-schemes`, sem exceção de loopback (mesma decisão já validada e
-   travada pela suíte de testes existente da SCG012). Confirmado via
-   documentação oficial do Spring Cloud AWS (`docs.awspring.io`, sessão
-   2026-09-15) em pelo menos uma fonte cada. **Antes de implementar:**
-   `spring.cloud.aws.parameterstore.endpoint` apareceu como
-   `paramstore.endpoint` numa das duas buscas — a grafia exata do
-   prefixo diverge entre fontes e precisa ser confirmada contra o
-   `*Properties.java` fonte do módulo (mesmo rigor já aplicado ao
-   RabbitMQ/Vault) antes de escrever a chave no YAML; uma chave errada
-   no `SCG012.yml` significa silêncio total, sem erro nenhum.
-4. **(Prioridade mais baixa — ressalva de ruído mais forte que o item 3)
-   Transporte inseguro em AWS S3 / SQS / SNS / DynamoDB / RDS / SES
+3. **(Prioridade mais baixa — ressalva de ruído) Transporte inseguro em
+   AWS S3 / SQS / SNS / DynamoDB / RDS / SES
    (`spring.cloud.aws.s3.endpoint`, `.sqs.endpoint`, `.sns.endpoint`,
    `.dynamodb.endpoint`, `.rds.endpoint`, `.ses.endpoint`)** — mesmo
-   mecanismo de baixo custo do item 3, mas carrega dado de negócio
+   mecanismo de baixo custo do endpoint global/Secrets Manager/Parameter
+   Store (já implementado, ver nota abaixo), mas carrega dado de negócio
    (payload de fila/objeto/item de tabela), não segredo de bootstrap —
-   por isso prioridade menor que o item 3, não descartado. Ressalva de
-   ruído mais forte que qualquer outra chave já na SCG012: o uso mais
-   comum dessas propriedades na prática **é LocalStack**
-   (`http://localhost:4566`) pra teste local — ainda mais universal que
-   "JDBC em localhost". Como a SCG012 deliberadamente não tem exceção de
-   loopback (decisão já tomada e travada pela suíte de testes), essa
-   família provavelmente seria a que mais gera finding esperado/
-   intencional em configs de dev/teste entre todas as chaves do
+   por isso prioridade menor, não descartado. Ressalva de ruído mais
+   forte que qualquer chave já na SCG012 (inclusive as recém-
+   implementadas): o uso mais comum dessas propriedades na prática **é
+   LocalStack** (`http://localhost:4566`) pra teste local — ainda mais
+   universal que "JDBC em localhost". Como a SCG012 deliberadamente não
+   tem exceção de loopback (decisão já tomada e travada pela suíte de
+   testes), essa família provavelmente seria a que mais gera finding
+   esperado/intencional em configs de dev/teste entre todas as chaves do
    `uri-based`. Não é motivo pra não adicionar — a Policy layer (ver
    "Débito técnico" abaixo) é a resposta arquitetural certa pra esse
    ruído — mas é a maior faca de dois gumes já candidatada. **Antes de
@@ -91,8 +73,11 @@ pra lista atual).
    "mail", não pela sigla AWS "ses") — e `rds.endpoint` só foi
    confirmado numa única fonte, confiança mais baixa que as demais desta
    lista. Confirmar todas as 6 grafias contra o `*Properties.java` fonte
-   de cada módulo antes de escrever o YAML.
-5. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
+   de cada módulo antes de escrever o YAML (mesmo cuidado que já rendeu
+   uma correção real no item do endpoint global/Secrets Manager/
+   Parameter Store — `parameterstore` não `paramstore` — antes dele ser
+   implementado).
+4. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
    (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
    sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
    um vetor real e documentado (inclusive campanhas de ransomware via
@@ -103,23 +88,32 @@ pra lista atual).
    "Pós-1.0" abaixo. Não é auto-evidente que o custo/benefício feche;
    fica registrado pra avaliação, não como decisão tomada.
 
-Spring Cloud Config Server (`spring.cloud.config.uri` em HTTP) saiu
-dessa lista: implementado com esforço mínimo direto na SCG012 (chave
-nova em `uri-based` no `SCG012.yml`, `http://` já cadastrado em
+Saíram dessa lista, implementadas com esforço mínimo direto na SCG012
+(chave nova em `uri-based` no `SCG012.yml`, `http://` já cadastrado em
 `risky-schemes` — sem exceção de loopback, mesma decisão de design já
-validada pelas outras 8 chaves da lista e travada pela suíte de testes
-existente da SCG012).
+validada pelas outras chaves da lista e travada pela suíte de testes
+existente da SCG012):
+
+* Spring Cloud Config Server (`spring.cloud.config.uri` em HTTP).
+* AWS Secrets Manager / Parameter Store / endpoint global
+  (`spring.cloud.aws.endpoint`, `.secretsmanager.endpoint`,
+  `.parameterstore.endpoint` em HTTP) — grafia de `parameterstore`
+  confirmada contra uma issue real do repositório
+  `awspring/spring-cloud-aws` antes de escrever a chave (não é
+  `paramstore`, prefixo antigo do Spring Cloud AWS 2.x; também não deve
+  ser confundida com `spring.cloud.config.server.awsparamstore.endpoint`,
+  propriedade de um componente diferente — o backend AWS Parameter
+  Store do Spring Cloud Config Server).
 
 Com SCG016 (Vault), a família "transporte inseguro" original (JDBC/
 Mongo/Redis/RabbitMQ/ActiveMQ/LDAP/Kafka/Vault) está fechada pra v1.0
-(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); os itens de
-issuer-uri/jwk-set-uri e AWS (Secrets Manager/Parameter Store/endpoint
-global, e S3/SQS/SNS/DynamoDB/RDS/SES) acima são propriedades novas
-descobertas depois desse fechamento, não uma reabertura dele — o item
-de algoritmo JWT fraco não é sequer da família "transporte", é um
-mecanismo de assinatura diferente. Novos candidatos de descoberta/
-observabilidade entram na seção "Pós-1.0" abaixo por padrão, não aqui,
-a menos que passem no critério de triagem descrito lá.
+(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); o item de
+issuer-uri/jwk-set-uri e o item de AWS S3/SQS/SNS/DynamoDB/RDS/SES acima
+são propriedades novas descobertas depois desse fechamento, não uma
+reabertura dele — o item de algoritmo JWT fraco não é sequer da família
+"transporte", é um mecanismo de assinatura diferente. Novos candidatos
+de descoberta/observabilidade entram na seção "Pós-1.0" abaixo por
+padrão, não aqui, a menos que passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
