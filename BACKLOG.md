@@ -11,50 +11,51 @@ validados por `RuleRegistryTest`. Este arquivo não a duplica.
 
 ## Próximas regras candidatas
 
-Ordem por relação esforço/valor, não por dependência técnica.
+Ordem por relação esforço/valor, não por dependência técnica. Levantados
+na sessão 2026-09-15 ao mapear a superfície de propriedades de segurança
+do Spring Boot/Security/Cloud ainda não coberta pelas 16 regras
+existentes (ver `src/main/resources/META-INF/services/dev.scg.core.Rule`
+pra lista atual).
 
-1. **(Prioridade a avaliar) Transporte inseguro em SMTP/Mail
-   (`spring.mail.properties.mail.smtp.starttls.enable` /
-   `mail.smtp.ssl.enable`)** — descoberto na mesma sessão 2026-09-14 ao
-   avaliar LDAP/Elasticsearch. Carrega credencial real (SMTP AUTH) e
-   payload de e-mail, mesma classe de valor de SCG007/SCG012 — mas o
-   design é mais caro que RabbitMQ/Vault: duas condições alternativas de
-   segurança (STARTTLS na porta 587 *ou* SSL implícito na porta 465, não
-   um único enum/boolean), e a chave vive aninhada dentro do mapa
-   genérico `spring.mail.properties.*` (mesmo padrão pass-through da
-   SCG014 pro Kafka), não como propriedade tipada direta. Prioridade
-   depende de quão comum é SMTP direto (vs. serviço de e-mail
-   transacional via API) nas aplicações reais do time — o próprio
-   backlog já cita `jhipster.mail.base-url` como exemplo no item abaixo,
-   o que sugere que configuração de mail *é* comum no contexto do time,
-   mas isso não confirma que seja especificamente via SMTP cru.
-2. **(Prioridade baixa) Upload multipart sem limite** —
-   `spring.servlet.multipart.max-file-size`/`max-request-size`
-   ilimitado ou `-1`. Mais adjacente a DoS do que a
-   confidencialidade/integridade, por isso a prioridade menor.
-3. **(Prioridade baixa, deliberada) `InsecureTransportProtocolRule`** —
-   `http://` em propriedades arbitrárias fora do escopo de CORS (ex:
-   `jhipster.mail.base-url`, webhooks, callback URLs, `issuer-uri` de
-   OAuth2/OIDC). Confirmado que hoje não há sobreposição: a SCG004
-   (`CorsInsecureProtocolsRule`) só olha
-   `management.endpoints.web.cors.allowed-origins`/`-origin-patterns`; a
-   SCG006 (`HardcodedSecretsRule`) é sobre segredos, não protocolo. É
-   um vetor de transporte diferente da SCG012 (que mira parâmetros
-   de conexão JDBC/Postgres/Mongo/Redis, não propriedades de domínio
-   arbitrárias) — complementares, não duplicados.
-   Prioridade baixa é deliberada, não um descuido: definir quais chaves
-   arbitrárias contam como "transporte crítico" exige esforço semântico
-   alto para um retorno marginal comparado a vetores diretamente
-   exploráveis (SCG001 Actuator exposto, SCG003/004/005 CORS permissivo,
-   SCG006 segredo vazado), com risco real de ruído em mocks locais,
-   containers isolados e service mesh com TLS no sidecar — o tipo de
-   falso positivo que mina a confiança na ferramenta logo nas primeiras
-   execuções.
+1. **Transporte inseguro em OAuth2 Resource Server JWT
+   (`spring.security.oauth2.resourceserver.jwt.issuer-uri` /
+   `.jwk-set-uri`)** — regra dedicada (motivou a remoção da
+   `InsecureTransportProtocolRule` genérica do backlog, ver "Descartado /
+   fora de escopo"). Qualquer uma das duas propriedades em HTTP permite a
+   um atacante na rede servir uma JWKS forjada e a aplicação aceitar
+   tokens assinados por ele — bypass de autenticação, não só vazamento de
+   dado. As duas propriedades são alternativas pro mesmo propósito (JWKS
+   direto vs. descoberta OIDC via issuer), então a regra deve cobrir
+   ambas, não só `issuer-uri`.
+2. **Spring Cloud Config Server em HTTP (`spring.cloud.config.uri`)** —
+   mesma classe de risco da SCG016 (carrega configuração e
+   potencialmente segredos no bootstrap), mas sem a complicação de
+   precedência `uri`/`scheme` que o Vault tem: `uri` aqui é só uma URI
+   comum. Custo de implementação é quase zero — só adicionar
+   `spring.cloud.config.uri` na lista `uri-based` do `SCG012.yml`;
+   `http://` já está cadastrado em `risky-schemes`. Ressalva: o default
+   é `http://localhost:8888` (loopback/dev), então só é sinal real pra
+   host não-loopback — o projeto já tem `dev.scg.core.LoopbackAddresses`
+   pra essa exata distinção (reaproveitável, não precisa de mecanismo
+   novo).
+3. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
+   (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
+   sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
+   um vetor real e documentado (inclusive campanhas de ransomware via
+   Redis exposto publicamente). Mas é um design "ausência = inseguro"
+   como Kafka/RabbitMQ (SCG014/SCG015), e Redis é comumente protegido só
+   por isolamento de rede (containers, VPC), não por senha de aplicação
+   — mesmo tipo de ruído que já levou Eureka/Consul/Zipkin/OTEL pra
+   "Pós-1.0" abaixo. Não é auto-evidente que o custo/benefício feche;
+   fica registrado pra avaliação, não como decisão tomada.
 
-Com SCG016 (Vault), a família "transporte inseguro" está fechada pra
-v1.0 (junto com SCG011/SCG012/SCG014/SCG015 já implementadas) — novos
-candidatos da mesma família entram na seção "Pós-1.0" abaixo por padrão,
-não aqui, a menos que passem no critério de triagem descrito lá.
+Com SCG016 (Vault), a família "transporte inseguro" original (JDBC/
+Mongo/Redis/RabbitMQ/ActiveMQ/LDAP/Kafka/Vault) está fechada pra v1.0
+(SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); os itens 1-2
+acima são propriedades novas descobertas depois desse fechamento, não
+uma reabertura dele. Novos candidatos de descoberta/observabilidade
+entram na seção "Pós-1.0" abaixo por padrão, não aqui, a menos que
+passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
@@ -92,6 +93,31 @@ pós-avaliação.
    mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
    continua ativa em `dev`).
 
+### SCG001: cobertura incompleta de endpoints sensíveis do Actuator
+
+Não é uma regra nova — é uma lacuna real na `ActuatorExposureRule`
+existente, achada na sessão 2026-09-15 ao ler `check()` com cuidado
+(não só a Javadoc/descrição).
+
+1. **Caminho de inclusão explícita não é verificado:** o finding de
+   "endpoint sensível ainda irrestrito" (`stillEnabled`) só roda dentro
+   do `if (hasWildcardExposure)`. Se `exposure.include` lista endpoints
+   explicitamente sem `*` (ex: `exposure.include=threaddump,beans`), a
+   regra fica totalmente silenciosa — mesmo com `threaddump`/`beans`
+   tendo `access=unrestricted` por padrão (ao contrário de
+   `heapdump`/`shutdown`), então já ficam de fato alcançáveis sem
+   nenhuma configuração adicional.
+2. **`SENSITIVE_ENDPOINTS` está desatualizado frente à superfície real
+   do Actuator:** hoje é `{env, heapdump, threaddump, shutdown,
+   configprops, beans}`. Faltam pelo menos `restart`, `refresh`,
+   `jolokia`, `loggers`, `sessions` — todos citados em fontes de
+   hardening do Actuator como sensíveis (ex: a combinação
+   `env` POST + `restart`/`refresh` é um vetor conhecido de RCE via
+   injeção de propriedade em runtime). Antes de adicionar cada um, exige
+   o mesmo rigor já aplicado a `shutdown`/`heapdump`: confirmar o
+   `access` default real de cada endpoint (alguns podem exigir entrada
+   em `RESTRICTED_BY_DEFAULT`, outros não).
+
 ## Pós-1.0 (catalogado, não descartado)
 
 Diferente da seção "Descartado" abaixo: os itens aqui são tecnicamente
@@ -104,8 +130,8 @@ transporte inseguro em ferramentas de microsserviços além de
 Kafka/RabbitMQ/Vault): a propriedade carrega credencial ou payload de
 dados real (entra na lista de regras candidatas acima), ou é só endereço
 de descoberta/observabilidade (fica aqui)? O segundo grupo tem alto risco
-de ruído pelo mesmo motivo já documentado no item 5 acima
-(`InsecureTransportProtocolRule`): esses componentes são classicamente
+de ruído pelo mesmo motivo já documentado em "Descartado / fora de escopo"
+abaixo pra `InsecureTransportProtocolRule`: esses componentes são classicamente
 implantados intra-cluster/intra-mesh (Docker network, namespace do k8s,
 sidecar Istio/Linkerd cuidando do TLS), então `http://` ali é
 frequentemente uma configuração legítima, não uma falha real — o tipo de
@@ -138,3 +164,38 @@ falso positivo que mina confiança logo nas primeiras execuções.
   Spring Boot 3/Java 21 (o alvo declarado do projeto). Descartado por
   YAGNI; só valeria a pena se um projeto legado real em Boot 2 aparecesse
   no escopo.
+* **Transporte inseguro em SMTP/Mail
+  (`spring.mail.properties.mail.smtp.starttls.enable` /
+  `mail.smtp.ssl.enable`)** — descartado por custo/benefício (sessão
+  2026-09-15): o design é confirmadamente mais caro que RabbitMQ/Vault
+  (SCG015/SCG016) — duas condições alternativas de segurança (STARTTLS na
+  porta 587 *ou* SSL implícito na porta 465, não um único enum/boolean) e
+  chave aninhada no mapa genérico `spring.mail.properties.*` — sem
+  confirmação de que o time realmente usa SMTP cru (vs. serviço de e-mail
+  transacional via API) para justificar esse esforço. Deixado pra um
+  contribuidor externo com um caso de uso específico que precise dela,
+  não descartado por ser tecnicamente inviável.
+* **Upload multipart sem limite
+  (`spring.servlet.multipart.max-file-size`/`max-request-size`)** —
+  descartado (sessão 2026-09-15): Spring Boot já tem padrões seguros
+  nativos (defaults não-ilimitados), e o limite de payload de upload
+  costuma ser travado na camada de borda (gateway/load balancer), não na
+  aplicação — o que essa regra detectaria é mais adjacente a DoS do que
+  ao escopo de confidencialidade/integridade que o projeto prioriza, e a
+  superfície de risco real já é coberta fora da aplicação na maioria dos
+  ambientes de produção.
+* **`InsecureTransportProtocolRule`** (scanner genérico de `http://` em
+  propriedades arbitrárias) — descartado por princípio de design (sessão
+  2026-09-15), não só por custo/ruído: quando uma propriedade genérica
+  específica tem impacto de segurança desastroso em HTTP (ex.:
+  `spring.security.oauth2.resourceserver.jwt.issuer-uri`, que expõe a
+  aplicação a falsificação de token JWT se o endpoint JWKS for buscado
+  sem TLS), o design correto é uma regra dedicada e restrita a essa
+  chave — não um scanner genérico de `http://` que varre toda
+  `EffectiveConfig`. Uma regra dedicada consegue expressar o *porquê* do
+  risco na mensagem do finding e calibrar severidade pelo dano real da
+  chave específica; o scanner genérico não distingue uma
+  `jhipster.mail.base-url` de baixo risco de um `issuer-uri` que permite
+  bypass de autenticação via token forjado — mesma classe de raciocínio que já levou a
+  manter Kafka (SCG014) e Vault (SCG016) como regras dedicadas em vez de
+  entradas genéricas no SCG012.
