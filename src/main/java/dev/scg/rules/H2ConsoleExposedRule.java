@@ -5,7 +5,8 @@ import dev.scg.core.*;
 import java.util.List;
 
 /**
- * SCG002 — Detects spring.h2.console.enabled=true outside dev/test/local profiles.
+ * SCG002 — Detects spring.h2.console.enabled=true, flagged regardless of profile (Zero-Trust:
+ * no profile exemption — see CLAUDE.md).
 
  * The H2 Console is a web interface that allows arbitrary SQL execution in the application.
  * It is extremely useful for local development, but a critical vector for RCE (Remote Code Execution)
@@ -28,7 +29,7 @@ public final class H2ConsoleExposedRule implements Rule {
 
     @Override
     public String description() {
-        return "H2 console enabled outside dev/test/local profiles";
+        return "H2 console enabled (flagged regardless of profile)";
     }
 
     @Override
