@@ -98,8 +98,9 @@ class ActuatorExposureRuleTest {
     @DisplayName("Should generate a HIGH finding with endpoints unrestricted by default " +
                  "when a wildcard is used without additional configuration")
     void shouldGenerateHighFindingWithEndpointsUnrestrictedByDefaultWhenWildcardIsUsedWithoutAdditionalConfig() {
-        // No enabled/access configuration for any endpoint — shutdown and heapdump are
-        // restricted by Spring's own default (BL-11), while the other four are not.
+        // No enabled/access configuration for any endpoint — shutdown, heapdump, and restart are
+        // restricted by Spring's own default (BL-11, and restart's own enableByDefault=false),
+        // while the other five are not.
 
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*"
@@ -117,8 +118,10 @@ class ActuatorExposureRuleTest {
                 .contains("threaddump")
                 .contains("configprops")
                 .contains("beans")
+                .contains("loggers")
                 .doesNotContain("shutdown")
-                .doesNotContain("heapdump");
+                .doesNotContain("heapdump")
+                .doesNotContain("restart");
     }
 
     @Test
@@ -132,7 +135,8 @@ class ActuatorExposureRuleTest {
                 Map.entry("management.endpoint.threaddump.enabled", "false"),
                 Map.entry("management.endpoint.shutdown.enabled", "false"),
                 Map.entry("management.endpoint.configprops.enabled", "false"),
-                Map.entry("management.endpoint.beans.enabled", "false")
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.loggers.enabled", "false")
         ));
 
         assertThat(rule.check(config)).isEmpty();
@@ -204,6 +208,86 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
+    @DisplayName("Should generate a finding when restart is explicitly unrestricted via access")
+    void shouldGenerateFindingWhenRestartIsExplicitlyUnrestrictedViaAccess() {
+        // RestartEndpoint (Spring Cloud Context) is @Endpoint(enableByDefault=false), same
+        // restricted-by-default shape as shutdown/heapdump -- only an explicit override should
+        // trigger this finding for it.
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.loggers.enabled", "false"),
+                Map.entry("management.endpoint.shutdown.enabled", "false"),
+                Map.entry("management.endpoint.restart.access", "unrestricted")
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains("restart");
+    }
+
+    @Test
+    @DisplayName("Should generate a finding when restart is explicitly enabled via the legacy 'enabled' key")
+    void shouldGenerateFindingWhenRestartIsExplicitlyEnabledViaLegacyKey() {
+        // Same scenario the Gemini review flagged: a developer who deliberately writes
+        // management.endpoint.restart.enabled=true (not just leaves the wildcard alone) is
+        // exercising the .enabled fallback branch, not the RESTRICTED_BY_DEFAULT one -- must
+        // still fire, even though this project has no classpath visibility to confirm
+        // spring-cloud-context is actually present.
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.loggers.enabled", "false"),
+                Map.entry("management.endpoint.shutdown.enabled", "false"),
+                Map.entry("management.endpoint.restart.enabled", "true")
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains("restart");
+    }
+
+    @Test
+    @DisplayName("Should stay silent for restart when no configuration touches it at all")
+    void shouldStaySilentForRestartWithNoConfiguration() {
+        EffectiveConfig config = configWith(Map.ofEntries(
+                Map.entry("management.endpoints.web.exposure.include", "*"),
+                Map.entry("management.endpoint.env.enabled", "false"),
+                Map.entry("management.endpoint.threaddump.enabled", "false"),
+                Map.entry("management.endpoint.heapdump.enabled", "false"),
+                Map.entry("management.endpoint.configprops.enabled", "false"),
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.loggers.enabled", "false"),
+                Map.entry("management.endpoint.shutdown.enabled", "false")
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should generate a finding when loggers is reachable via an explicit list, without a wildcard")
+    void shouldGenerateFindingWhenLoggersIsReachableViaExplicitList() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "loggers"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains("loggers");
+    }
+
+    @Test
     @DisplayName("Should recognize a YAML indexed list with a wildcard")
     void shouldRecognizeYamlIndexedListWithWildcard() {
         EffectiveConfig config = configWith(Map.of(
@@ -237,7 +321,8 @@ class ActuatorExposureRuleTest {
                 Map.entry("management.endpoint.env.access", "none"),
                 Map.entry("management.endpoint.threaddump.enabled", "false"),
                 Map.entry("management.endpoint.configprops.enabled", "false"),
-                Map.entry("management.endpoint.beans.enabled", "false")
+                Map.entry("management.endpoint.beans.enabled", "false"),
+                Map.entry("management.endpoint.loggers.enabled", "false")
         ));
 
         List<Finding> findings = rule.check(config);
@@ -313,13 +398,16 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.ruleId()).isEqualTo("SCG001");
-        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.message())
-                .contains("management.endpoint.<id>.show-values")
-                .contains("env");
+        // Two independent findings now fire for this config: the sensitive-endpoints-reachable
+        // bucket (env and configprops are both explicitly listed and unrestricted) and the
+        // show-values leak specific to env. Isolate the latter for this test's own assertions.
+        assertThat(findings).hasSize(2);
+        assertThat(findings).allMatch(f -> f.ruleId().equals("SCG001") && f.severity() == Severity.HIGH);
+        Finding showValuesFinding = findings.stream()
+                .filter(f -> f.message().contains("management.endpoint.<id>.show-values"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(showValuesFinding.message()).contains("env");
     }
 
     @ParameterizedTest
@@ -338,12 +426,15 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        // Sensitive-endpoints-reachable finding (env, explicit and unrestricted) plus the
+        // show-values finding this test targets.
+        assertThat(findings).hasSize(2);
+        assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
+        assertThat(findings).anyMatch(f -> f.message().contains("management.endpoint.<id>.show-values"));
     }
 
     @Test
-    @DisplayName("Should report one single HIGH finding when both env and configprops have risky show-values")
+    @DisplayName("Should report one single show-values finding listing both endpoints when both have risky show-values")
     void shouldReportSingleHighFindingListingBothEndpointsWhenBothHaveRiskyShowValues() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "health,env,configprops",
@@ -353,14 +444,20 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message())
+        // Plus the sensitive-endpoints-reachable finding (env and configprops, both explicit
+        // and unrestricted) -- this test isolates the show-values-specific one.
+        assertThat(findings).hasSize(2);
+        Finding showValuesFinding = findings.stream()
+                .filter(f -> f.message().contains("management.endpoint.<id>.show-values"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(showValuesFinding.message())
                 .contains("env")
                 .contains("configprops");
     }
 
     @Test
-    @DisplayName("Should NOT report finding when show-values is safe (never)")
+    @DisplayName("Should NOT report a show-values finding when show-values is safe (never)")
     void shouldNotReportFindingWhenShowValuesIsNever() {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "env,configprops",
@@ -368,7 +465,13 @@ class ActuatorExposureRuleTest {
                 "management.endpoint.configprops.show-values", "NEVER"
         ));
 
-        assertThat(rule.check(config)).isEmpty();
+        List<Finding> findings = rule.check(config);
+
+        // env/configprops are still explicitly listed and unrestricted, so the separate
+        // sensitive-endpoints-reachable finding correctly still fires -- show-values=never only
+        // means no *show-values* finding is added on top of it.
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @Test
@@ -404,9 +507,13 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.severity()).isEqualTo(Severity.INFO);
+        // Plus the sensitive-endpoints-reachable HIGH finding (env, explicit and unrestricted) --
+        // isolate the INFO placeholder finding this test targets.
+        assertThat(findings).hasSize(2);
+        Finding finding = findings.stream()
+                .filter(f -> f.severity() == Severity.INFO)
+                .findFirst()
+                .orElseThrow();
         assertThat(finding.message())
                 .contains("management.endpoint.env.show-values")
                 .contains("unresolved environment placeholder");
@@ -435,8 +542,9 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("configprops");
+        // Plus the sensitive-endpoints-reachable finding (configprops, explicit and unrestricted).
+        assertThat(findings).hasSize(2);
+        assertThat(findings).allMatch(f -> f.message().contains("configprops"));
     }
 
     @Test
@@ -449,21 +557,24 @@ class ActuatorExposureRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        // Plus the sensitive-endpoints-reachable finding (env, explicit and unrestricted).
+        assertThat(findings).hasSize(2);
+        assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
+        assertThat(findings).anyMatch(f -> f.message().contains("management.endpoint.<id>.show-values"));
     }
 
     @Test
     @DisplayName("Should report both the wildcard-exposure finding and the show-values finding independently")
     void shouldReportBothWildcardAndShowValuesFindingsIndependently() {
-        // heapdump and shutdown stay restricted by their own Spring default; threaddump and beans
-        // are explicitly disabled here, leaving env and configprops as the wildcard finding's
-        // stillEnabled list. env also has a risky show-values, so both blocks in check() must
-        // fire independently in the same run.
+        // heapdump, shutdown, and restart stay restricted by their own Spring default; threaddump,
+        // beans, and loggers are explicitly disabled here, leaving env and configprops as the
+        // wildcard finding's stillEnabled list. env also has a risky show-values, so both blocks
+        // in check() must fire independently in the same run.
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "*",
                 "management.endpoint.threaddump.enabled", "false",
                 "management.endpoint.beans.enabled", "false",
+                "management.endpoint.loggers.enabled", "false",
                 "management.endpoint.env.show-values", "always"
         ));
 
@@ -471,20 +582,26 @@ class ActuatorExposureRuleTest {
 
         assertThat(findings).hasSize(2);
         assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
-        assertThat(findings).anyMatch(f -> f.message().contains("contains * and exposes all endpoints"));
+        assertThat(findings).anyMatch(f -> f.message().contains("contains '*' and exposes all endpoints"));
         assertThat(findings).anyMatch(f -> f.message().contains("management.endpoint.<id>.show-values"));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"invalid", "sometimes", "true"})
-    @DisplayName("Should stay silent for unrecognized show-values values (never/always/when-authorized only)")
+    @DisplayName("Should NOT report a show-values finding for unrecognized show-values values (never/always/when-authorized only)")
     void shouldStaySilentForUnrecognizedShowValues(String unrecognizedValue) {
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "env",
                 "management.endpoint.env.show-values", unrecognizedValue
         ));
 
-        assertThat(rule.check(config)).isEmpty();
+        List<Finding> findings = rule.check(config);
+
+        // env is still explicitly listed and unrestricted, so the sensitive-endpoints-reachable
+        // finding correctly still fires -- an unrecognized show-values value just means no
+        // *show-values* finding is added on top of it.
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @Test
@@ -494,7 +611,10 @@ class ActuatorExposureRuleTest {
         properties.put("management.endpoints.web.exposure.include", "env");
         properties.put("management.endpoint.env.show-values", null);
 
-        assertThat(rule.check(configWith(properties))).isEmpty();
+        List<Finding> findings = rule.check(configWith(properties));
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @ParameterizedTest
@@ -506,6 +626,9 @@ class ActuatorExposureRuleTest {
                 "management.endpoint.env.show-values", "always"
         ));
 
-        assertThat(rule.check(config)).hasSize(1);
+        // Plus the sensitive-endpoints-reachable finding (env, explicit and unrestricted).
+        List<Finding> findings = rule.check(config);
+        assertThat(findings).hasSize(2);
+        assertThat(findings).anyMatch(f -> f.message().contains("management.endpoint.<id>.show-values"));
     }
 }

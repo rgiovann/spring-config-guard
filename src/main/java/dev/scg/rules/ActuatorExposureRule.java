@@ -50,7 +50,7 @@ public final class ActuatorExposureRule implements Rule {
     private static final String EXPOSURE_KEY = "management.endpoints.web.exposure.include";
 
     private static final Set<String> SENSITIVE_ENDPOINTS = Set.of(
-            "env", "heapdump", "threaddump", "shutdown", "configprops", "beans"
+            "env", "heapdump", "threaddump", "shutdown", "configprops", "beans", "loggers", "restart"
     );
 
     //Confirmed: management.endpoint.shutdown.access and management.endpoint.heapdump.access
@@ -58,7 +58,14 @@ public final class ActuatorExposureRule implements Rule {
     // (default "unrestricted").
     //Without this distinction, the rule generates false positives for these two endpoints when
     // no explicit configuration exists (BL-11).
-    private static final Set<String> RESTRICTED_BY_DEFAULT = Set.of("shutdown", "heapdump");
+    // "restart" joins them for the same reason, confirmed against its own source rather than
+    // assumed from the Boot 3.4/3.5 changelog above (which only covers Actuator-core defaults):
+    // RestartEndpoint (Spring Cloud Context, org.springframework.cloud.context.restart) is
+    // annotated @Endpoint(id="restart", enableByDefault=false) -- disabled unless explicitly
+    // opted into, same shape as shutdown/heapdump. Without this, exposure.include=* would flag
+    // "restart" as unrestricted on every plain Spring Boot app, including ones with no
+    // spring-cloud-context on the classpath at all, where the property is a pure no-op.
+    private static final Set<String> RESTRICTED_BY_DEFAULT = Set.of("shutdown", "heapdump", "restart");
 
     private static final String RESTRICTED_ACCESS_VALUE = "none";
 
