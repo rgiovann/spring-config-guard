@@ -76,4 +76,20 @@ class CliArgumentParserTest {
                 .isInstanceOf(CliUsageException.class)
                 .hasMessageContaining("CRITICAL");
     }
+
+    @Test
+    @DisplayName("Should default to an empty Optional when --policy is omitted")
+    void shouldDefaultToEmptyPolicyFileWhenFlagIsOmitted() {
+        CliOptions options = parser.parse(new String[]{"/tmp/config"});
+
+        assertThat(options.policyFile()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should extract the policy file path from --policy")
+    void shouldExtractPolicyFilePath() {
+        CliOptions options = parser.parse(new String[]{"/tmp/config", "--policy=scg-policy.yml"});
+
+        assertThat(options.policyFile()).contains(Path.of("scg-policy.yml"));
+    }
 }

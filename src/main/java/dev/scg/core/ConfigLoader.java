@@ -259,7 +259,7 @@ public final class ConfigLoader {
         // readable message) — without having to catch generic RuntimeException there,
         // which would hide real bugs behind the same usage-error message.
 
-        throw new IOException("YAML inválido em '%s': %s".formatted(p, e.getMessage()), e);
+        throw new IOException("Invalid YAML in '%s': %s".formatted(p, e.getMessage()), e);
     }
     }
 

@@ -1,0 +1,4 @@
+# Dummy policy for demo-project/application-prod.yml.
+# Run with: java -jar target/spring-config-guard.jar demo-project --policy=demo-project/scg-policy.yml
+SCG006:
+  - prod
