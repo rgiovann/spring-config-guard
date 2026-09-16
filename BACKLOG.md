@@ -23,18 +23,9 @@ foi implementado nesta sessão como SCG017
 fraco/inadequado) foi descartado após verificação contra o código-fonte
 real — ver "Descartado / fora de escopo" abaixo. O antigo item 3 (AWS
 S3/SQS/SNS/DynamoDB/RDS/SES) foi implementado nesta mesma sessão direto
-na SCG012 — ver nota abaixo. Lista renumerada.
-
-1. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
-   (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
-   sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
-   um vetor real e documentado (inclusive campanhas de ransomware via
-   Redis exposto publicamente). Mas é um design "ausência = inseguro"
-   como Kafka/RabbitMQ (SCG014/SCG015), e Redis é comumente protegido só
-   por isolamento de rede (containers, VPC), não por senha de aplicação
-   — mesmo tipo de ruído que já levou Eureka/Consul/Zipkin/OTEL pra
-   "Pós-1.0" abaixo. Não é auto-evidente que o custo/benefício feche;
-   fica registrado pra avaliação, não como decisão tomada.
+na SCG012 — ver nota abaixo. O antigo item 4 (Redis sem senha) foi
+descartado (mesma seção) após reavaliação. **Lista vazia** — nenhuma
+regra candidata pendente no momento (sessão 2026-09-16).
 
 Saíram dessa lista, implementadas com esforço mínimo direto na SCG012
 (chave nova em `uri-based` no `SCG012.yml`, `http://` já cadastrado em
@@ -87,21 +78,47 @@ padrão, não aqui, a menos que passem no critério de triagem descrito lá.
 
 ## Débito técnico e features de plataforma
 
-### Camada de Policy: supressão binária de findings por regra + profile
+### Camada de Policy: supressão binária de findings por regra + profile — implementada (sessão 2026-09-16)
 
-Feature nova — não existe hoje. Registra um design já discutido e
-decidido, não apenas uma ideia solta.
+Implementada como `dev.scg.policy.Policy` (`load`/`none`/`apply`), fechando
+a lista de regras candidatas conforme decisão registrada acima. Design
+final bate com o confirmado abaixo, com dois refinamentos definidos
+durante a implementação:
 
-**Motivação:** as regras do projeto são — e devem continuar sendo —
-agnósticas a profile: recebem uma `EffectiveConfig`, avaliam, emitem
-`Finding` com severidade fixa definida pela própria regra, sem embutir
-política de "profile X merece menos rigor" (ver
+* **Wildcard de profile (`"*"`)**: suprime uma regra em qualquer profile
+  sem precisar listar cada um. Não fere a granularidade por regra — só
+  afeta a regra em que foi declarado.
+* **Transparência da supressão**: `Main` imprime
+  `"N finding(s) suppressed by policy"` em `System.err` quando
+  `suppressedCount > 0` — contagem apenas, sem conteúdo, sem tocar no
+  contrato de `Reporter` (nem `ConsoleReporter` nem `JsonReporter` sabem
+  que a Policy existe, decisão original preservada; a impressão acontece
+  em `Main`, comparando `allFindings.size()` antes e depois do filtro).
+
+Arquivo de política é input do usuário (boundary real, diferente de
+`rules-metadata/*.yml`, que é interno ao projeto): `Policy.load()` falha
+rápido com mensagem clara pra YAML malformado, arquivo vazio, valor que
+não é uma lista, ou `ruleId` desconhecido (typo) — nunca um
+`ClassCastException` cru ou uma supressão que silenciosamente não
+funciona. Alias `"base"` resolve pro sentinel
+`ProfileMerger.BASE_PROFILE_LABEL`, mesmo rótulo humano que
+`Finding.toString()` já usa.
+
+Integração via nova flag `--policy=<path>` (`CliOptions`/
+`CliArgumentParser`), opcional — ausente é `Policy.none()`, comportamento
+idêntico ao anterior à Policy existir.
+
+**Motivação original** (por que a Policy existe em vez de embutir a
+supressão nas regras): as regras do projeto são — e devem continuar
+sendo — agnósticas a profile: recebem uma `EffectiveConfig`, avaliam,
+emitem `Finding` com severidade fixa definida pela própria regra, sem
+embutir política de "profile X merece menos rigor" (ver
 [[feedback_zero_trust_no_profile_exemption]]). Decisões desse tipo (ex:
 "aceitamos segredo hardcoded em dev") pertencem a cada time analisado,
 não à ferramenta — por isso saem da regra e viram uma camada separada,
 pós-avaliação.
 
-**Design confirmado:**
+**Design confirmado antes da implementação** (mantido como registro):
 
 1. **Posição no pipeline:** entre `RuleEngine.run()` (produz
    `List<Finding>`) e `Reporter`/`ExitCodeResolver` — confirmado contra
@@ -181,6 +198,26 @@ falso positivo que mina confiança logo nas primeiras execuções.
 
 ## Descartado / fora de escopo
 
+* **Redis sem senha (`spring.data.redis.host`/`spring.redis.host`
+  não-loopback presente, sem `spring.data.redis.password`)** —
+  descartado (sessão 2026-09-16), reclassificado de "avaliação pendente"
+  pra descarte estrutural, não por ruído/prioridade. Motivo: ao contrário
+  da SCG014 (Kafka), onde ausência de `security.protocol` no cliente
+  *determina* o protocolo de fio usado (decisão inteiramente client-side,
+  garantida pela biblioteca — daí "ausência = PLAINTEXT" ser um sinal
+  confiável), a ausência de `spring.data.redis.password` no cliente não
+  diz nada sobre se o servidor Redis exige autenticação: `requirepass` é
+  uma decisão inteiramente server-side, invisível a um linter estático de
+  `application.yml`. Se o Redis real exige senha e a app não configura
+  uma, a conexão falha (`NOAUTH Authentication required`) — já quebraria
+  em qualquer teste funcional básico, não precisa de lint estático. Se o
+  Redis não exige senha (isolamento de rede legítimo *ou* exposição
+  acidental), a config visível é idêntica nos dois casos — sem como
+  distinguir estaticamente. Diferente de Eureka/Zipkin/OTEL (seção
+  "Pós-1.0": sinal real, só que de baixo risco/prioridade), aqui o sinal
+  em si não se correlaciona com o risco real — mesma classe de motivo que
+  já descartou CSRF (sem superfície de propriedade confiável), não um
+  "talvez mais tarde".
 * **Algoritmo JWT fraco/inadequado no OAuth2 Resource Server
   (`spring.security.oauth2.resourceserver.jwt.jws-algorithms`)** —
   descartado por premissa factualmente incorreta (sessão 2026-09-16),
