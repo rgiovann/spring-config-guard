@@ -14,3 +14,4 @@ dev.scg.rules.HealthDetailsExposureRule
 dev.scg.rules.KafkaInsecureProtocolRule
 dev.scg.rules.RabbitMqInsecureTransportRule
 dev.scg.rules.VaultInsecureTransportRule
+dev.scg.rules.JwtResourceServerInsecureTransportRule
