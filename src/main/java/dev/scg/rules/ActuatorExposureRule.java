@@ -8,11 +8,35 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * SCG001 — detects management.endpoints.web.exposure.include=* when sensitive endpoints
- * are not explicitly restricted.
- * Sensitive endpoints according to the Spring Boot documentation: env, heapdump, threaddump, shutdown,
- * configprops, beans.
-*  DELIBERATE DECISION (session on 2026-08-21): this rule does NOT exempt safe profiles (dev/test/local),
+ * SCG001 — detects sensitive Actuator endpoints reachable via
+ * management.endpoints.web.exposure.include and not explicitly restricted, whether reachability
+ * comes from a wildcard ({@code *}) or an explicit list entry (e.g. {@code include=threaddump,beans}
+ * with no wildcard at all — {@link #isEndpointReachable(EffectiveConfig, String)} treats both
+ * forms identically, so this check is not conditioned on a wildcard being present).
+ * Sensitive endpoints tracked: {@code env}, {@code heapdump}, {@code threaddump}, {@code shutdown},
+ * {@code configprops}, {@code beans}, {@code loggers} (Spring Boot Actuator core), and
+ * {@code restart} (Spring Cloud Context — see {@code RESTRICTED_BY_DEFAULT} below for why it needs
+ * different treatment than the others).
+ * <p>
+ * Deliberately does NOT track {@code refresh}, {@code sessions}, or {@code jolokia}, despite all
+ * three being cited as sensitive in general Actuator-hardening guidance:
+ * <ul>
+ *     <li>{@code refresh} (Spring Cloud Context, {@code @Endpoint(id="refresh")}, enabled by
+ *     default — confirmed against its source) and {@code sessions} (Actuator core, but
+ *     {@code SessionsEndpointAutoConfiguration} is
+ *     {@code @ConditionalOnBean(FindByIndexNameSessionRepository.class)} — only present when the
+ *     app uses Spring Session's indexed repository, e.g. Redis/JDBC) are each conditionally
+ *     auto-configured on an optional bean/dependency this static-analysis tool has no visibility
+ *     into. Unlike {@code restart}, neither is disabled by default when actually present, so
+ *     tracking them plainly would advise restricting an endpoint that, in most real apps, does
+ *     not even exist — a more corrosive false positive than "this finding may not apply to your
+ *     deployment topology" (the kind of trade-off this project otherwise accepts, e.g.
+ *     {@code InsecureDatabaseTransportRule}'s deliberate lack of a loopback exemption).</li>
+ *     <li>{@code jolokia} has no Spring Boot 3 auto-configuration left to flag: Spring Boot 3
+ *     dropped Jolokia's actuator auto-configuration entirely, and this project targets Java
+ *     21/Spring Boot 3 (see CLAUDE.md).</li>
+ * </ul>
+ * DELIBERATE DECISION (session on 2026-08-21): this rule does NOT exempt safe profiles (dev/test/local),
  *  unlike H2ConsoleExposedRule. This is not a gap to be fixed — it was explicitly evaluated and the
  *  decision was made to keep it this way. Reasons: (1) the nature of the exposure is different —
  *  the H2 console exposes a database access tool, while Actuator (env, configprops, heapdump) can
