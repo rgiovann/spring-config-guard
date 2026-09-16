@@ -403,6 +403,45 @@ class InsecureDatabaseTransportRuleTest {
             assertThat(rule.check(config)).isEmpty();
         }
 
+        @ParameterizedTest
+        @ValueSource(strings = {
+                "spring.cloud.aws.s3.endpoint",
+                "spring.cloud.aws.sqs.endpoint",
+                "spring.cloud.aws.sns.endpoint",
+                "spring.cloud.aws.dynamodb.endpoint",
+                "spring.cloud.aws.ses.endpoint"
+        })
+        @DisplayName("Detects http:// on a Spring Cloud AWS per-service endpoint override")
+        void shouldDetectHttpSchemeOnAwsServiceEndpoint(String key) {
+            Map<String, String> properties = Map.of(
+                    key, "http://localhost:4566"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+                "spring.cloud.aws.s3.endpoint",
+                "spring.cloud.aws.sqs.endpoint",
+                "spring.cloud.aws.sns.endpoint",
+                "spring.cloud.aws.dynamodb.endpoint",
+                "spring.cloud.aws.ses.endpoint"
+        })
+        @DisplayName("Stays silent when a Spring Cloud AWS per-service endpoint override uses https://")
+        void shouldStaySilentOnHttpsAwsServiceEndpoint(String key) {
+            Map<String, String> properties = Map.of(
+                    key, "https://s3.eu-west-1.amazonaws.com"
+            );
+            EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
         @Test
         @DisplayName("Reports INFO for an unresolved placeholder on a scheme-based key, same as query-param keys")
         void shouldReportInfoOnUnresolvedPlaceholderForSchemeBasedKey() {

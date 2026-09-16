@@ -39,6 +39,18 @@ uri-based:
   - "spring.cloud.aws.endpoint"
   - "spring.cloud.aws.secretsmanager.endpoint"
   - "spring.cloud.aws.parameterstore.endpoint"
+  # Same Spring Cloud AWS 3.x module family, confirmed against each module's own
+  # *Properties.java (session 2026-09-16): S3/SQS/SNS/DynamoDB/SES all extend the shared
+  # AwsClientProperties base (which declares "endpoint"), under their own prefix. Unlike the
+  # bootstrap-secret keys above, these carry business payload (queue/topic messages, table
+  # items, objects, outbound mail) rather than credentials -- still CWE-319 in HTTP, just a
+  # different impact class. No "rds.endpoint" here: Spring Cloud AWS has no such property --
+  # RDS access goes through the regular "spring.datasource.url" (JDBC), already covered above.
+  - "spring.cloud.aws.s3.endpoint"
+  - "spring.cloud.aws.sqs.endpoint"
+  - "spring.cloud.aws.sns.endpoint"
+  - "spring.cloud.aws.dynamodb.endpoint"
+  - "spring.cloud.aws.ses.endpoint"
 
 # Parameter=value pairs (lowercased) meaning TLS/SSL is disabled or may be silently
 # downgraded to cleartext (CWE-319).

@@ -17,67 +17,15 @@ do Spring Boot/Security/Cloud ainda não coberta pelas 16 regras
 existentes (ver `src/main/resources/META-INF/services/dev.scg.core.Rule`
 pra lista atual).
 
-1. **Transporte inseguro em OAuth2 Resource Server JWT
-   (`spring.security.oauth2.resourceserver.jwt.issuer-uri` /
-   `.jwk-set-uri`)** — regra dedicada (motivou a remoção da
-   `InsecureTransportProtocolRule` genérica do backlog, ver "Descartado /
-   fora de escopo"). Qualquer uma das duas propriedades em HTTP permite a
-   um atacante na rede servir uma JWKS forjada e a aplicação aceitar
-   tokens assinados por ele — bypass de autenticação, não só vazamento de
-   dado. As duas propriedades são alternativas pro mesmo propósito (JWKS
-   direto vs. descoberta OIDC via issuer), então a regra deve cobrir
-   ambas, não só `issuer-uri`.
-2. **Algoritmo JWT fraco/inadequado no OAuth2 Resource Server
-   (`spring.security.oauth2.resourceserver.jwt.jws-algorithms`)** —
-   mesma família de hardening do item 1, mas mecanismo diferente:
-   confirmado que a propriedade existe de verdade (Spring Security 5.2+,
-   consumida pelo `NimbusJwtDecoder` quando `jwk-set-uri`/`issuer-uri`
-   está configurado). Vetor real e histórico — *algorithm confusion*: se
-   a lista inclui um algoritmo simétrico (`HS256`/`HS384`/`HS512`) num
-   cenário onde o JWKS serve chaves assimétricas (RSA/EC), um atacante
-   pode assinar um token usando a chave pública (conhecida) como
-   "segredo" HMAC, forjando autenticação. Sugerido originalmente pelo
-   Gemini num brainstorm externo sem visibilidade do projeto — avaliado
-   e filtrado nesta sessão (2026-09-15): dos 5 itens que ele propôs, 2
-   eram duplicatas de regras já implementadas (Actuator wildcard = SCG001,
-   H2 console = SCG002), 1 já estava descartado no backlog com razão
-   documentada (CSRF — sem superfície de propriedade), 1 era factualmente
-   incorreto (desserialização polimórfica do Jackson não é controlável
-   via `spring.jackson.*` — o vetor real de RCE, `default typing`, não é
-   uma propriedade bindável do Spring Boot), e este foi o único que se
-   sustentou. Falta confirmar antes do design: o que o `NimbusJwtDecoder`
-   aceita quando a propriedade não é setada (default real), e se o
-   literal `none` é sequer um valor que o binding aceita.
-3. **(Prioridade mais baixa — ressalva de ruído) Transporte inseguro em
-   AWS S3 / SQS / SNS / DynamoDB / RDS / SES
-   (`spring.cloud.aws.s3.endpoint`, `.sqs.endpoint`, `.sns.endpoint`,
-   `.dynamodb.endpoint`, `.rds.endpoint`, `.ses.endpoint`)** — mesmo
-   mecanismo de baixo custo do endpoint global/Secrets Manager/Parameter
-   Store (já implementado, ver nota abaixo), mas carrega dado de negócio
-   (payload de fila/objeto/item de tabela), não segredo de bootstrap —
-   por isso prioridade menor, não descartado. Ressalva de ruído mais
-   forte que qualquer chave já na SCG012 (inclusive as recém-
-   implementadas): o uso mais comum dessas propriedades na prática **é
-   LocalStack** (`http://localhost:4566`) pra teste local — ainda mais
-   universal que "JDBC em localhost". Como a SCG012 deliberadamente não
-   tem exceção de loopback (decisão já tomada e travada pela suíte de
-   testes), essa família provavelmente seria a que mais gera finding
-   esperado/intencional em configs de dev/teste entre todas as chaves do
-   `uri-based`. Não é motivo pra não adicionar — a Policy layer (ver
-   "Débito técnico" abaixo) é a resposta arquitetural certa pra esse
-   ruído — mas é a maior faca de dois gumes já candidatada. **Antes de
-   implementar:** a propriedade de e-mail divergiu entre as duas fontes
-   consultadas — apareceu como `spring.cloud.aws.ses.endpoint` numa
-   busca e `spring.cloud.aws.mail.endpoint` na outra (o módulo de envio
-   de e-mail do Spring Cloud AWS pode nomear o prefixo pela capacidade
-   "mail", não pela sigla AWS "ses") — e `rds.endpoint` só foi
-   confirmado numa única fonte, confiança mais baixa que as demais desta
-   lista. Confirmar todas as 6 grafias contra o `*Properties.java` fonte
-   de cada módulo antes de escrever o YAML (mesmo cuidado que já rendeu
-   uma correção real no item do endpoint global/Secrets Manager/
-   Parameter Store — `parameterstore` não `paramstore` — antes dele ser
-   implementado).
-4. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
+Item 1 desta lista (transporte inseguro em OAuth2 Resource Server JWT)
+foi implementado nesta sessão como SCG017
+(`JwtResourceServerInsecureTransportRule`). Item 2 (algoritmo JWT
+fraco/inadequado) foi descartado após verificação contra o código-fonte
+real — ver "Descartado / fora de escopo" abaixo. O antigo item 3 (AWS
+S3/SQS/SNS/DynamoDB/RDS/SES) foi implementado nesta mesma sessão direto
+na SCG012 — ver nota abaixo. Lista renumerada.
+
+1. **(Prioridade a avaliar — ressalva de ruído) Redis sem senha
    (`spring.data.redis.host`/`spring.redis.host` não-loopback presente,
    sem `spring.data.redis.password`)** — Redis aberto sem autenticação é
    um vetor real e documentado (inclusive campanhas de ransomware via
@@ -104,14 +52,36 @@ existente da SCG012):
   ser confundida com `spring.cloud.config.server.awsparamstore.endpoint`,
   propriedade de um componente diferente — o backend AWS Parameter
   Store do Spring Cloud Config Server).
+* AWS S3 / SQS / SNS / DynamoDB / SES (`spring.cloud.aws.s3.endpoint`,
+  `.sqs.endpoint`, `.sns.endpoint`, `.dynamodb.endpoint`, `.ses.endpoint`
+  em HTTP) — sessão 2026-09-16. As 5 grafias confirmadas contra o
+  `*Properties.java` de cada módulo no repositório
+  `awspring/spring-cloud-aws` (todas estendem a base comum
+  `AwsClientProperties`, que declara o campo `endpoint`, sob o prefixo
+  próprio de cada módulo). `rds.endpoint` descartado da lista original:
+  não existe — busca por `RdsProperties`/`"rds"` no diretório
+  `autoconfigure` do repositório não retornou nenhum resultado; acesso a
+  RDS passa pelo `spring.datasource.url` (JDBC) já coberto acima, não por
+  um endpoint override dedicado. `spring.cloud.aws.ses.endpoint` também
+  confirmado (não `.mail.endpoint`, hipótese de uma das duas fontes
+  originais). Diferente das duas entradas anteriores, essas 5 chaves
+  carregam dado de negócio (payload de fila/tópico/item de
+  tabela/objeto/e-mail de saída), não segredo de bootstrap — mesmo CWE-319
+  em HTTP, classe de impacto diferente. Adicionadas mesmo sabendo que o
+  uso mais comum na prática é apontar pra LocalStack em dev/teste: é o
+  mesmo trade-off de ruído já aceito pras duas entradas acima (nenhuma
+  delas tem exceção de loopback), não um caso novo que justificasse
+  adiar pra depois da Policy layer — a Policy layer já está deliberadamente
+  atrás do fechamento desta lista (ver "Débito técnico" abaixo), então
+  bloquear uma regra esperando a outra criaria uma dependência circular.
 
 Com SCG016 (Vault), a família "transporte inseguro" original (JDBC/
 Mongo/Redis/RabbitMQ/ActiveMQ/LDAP/Kafka/Vault) está fechada pra v1.0
 (SCG011/SCG012/SCG014/SCG015/SCG016 já implementadas); o item de
-issuer-uri/jwk-set-uri e o item de AWS S3/SQS/SNS/DynamoDB/RDS/SES acima
-são propriedades novas descobertas depois desse fechamento, não uma
-reabertura dele — o item de algoritmo JWT fraco não é sequer da família
-"transporte", é um mecanismo de assinatura diferente. Novos candidatos
+issuer-uri/jwk-set-uri (SCG017) e o item de AWS S3/SQS/SNS/DynamoDB/SES
+acima são propriedades novas descobertas depois desse fechamento, não
+uma reabertura dele — o item de algoritmo JWT fraco não é sequer da
+família "transporte", é um mecanismo de assinatura diferente. Novos candidatos
 de descoberta/observabilidade entram na seção "Pós-1.0" abaixo por
 padrão, não aqui, a menos que passem no critério de triagem descrito lá.
 
@@ -211,6 +181,28 @@ falso positivo que mina confiança logo nas primeiras execuções.
 
 ## Descartado / fora de escopo
 
+* **Algoritmo JWT fraco/inadequado no OAuth2 Resource Server
+  (`spring.security.oauth2.resourceserver.jwt.jws-algorithms`)** —
+  descartado por premissa factualmente incorreta (sessão 2026-09-16),
+  confirmado contra o código-fonte real do Spring Boot/Security (não só
+  documentação): `JwtDecoderConfiguration`/`ReactiveJwtDecoderConfiguration`
+  convertem cada string configurada via
+  `org.springframework.security.oauth2.jose.jws.SignatureAlgorithm.from(String)`,
+  cujo enum só tem 9 membros — `RS256/384/512`, `ES256/384/512`,
+  `PS256/384/512` — nenhum algoritmo simétrico (`HS256`/`HS384`/`HS512`)
+  existe nesse enum, e `from()` retorna `null` pra qualquer nome não
+  reconhecido, o que a própria configuração transforma em
+  `InvalidConfigurationPropertyValueException` — falha no startup da
+  aplicação, não uma configuração aceita silenciosamente. O vetor de
+  *algorithm confusion* que motivou o item (HS256 aceito ao lado de um
+  JWKS assimétrico) não é exprimível através dessa propriedade: o
+  binding do próprio Spring Boot já rejeita o valor antes da app subir.
+  Adicionalmente, o caminho via `issuer-uri`
+  (`supplyJwtDecoderByIssuerUri()`) nem consome `jws-algorithms` — a
+  propriedade só é aplicada no caminho `jwk-set-uri`/chave pública. Mesma
+  classe de erro já filtrada no brainstorm original do item (Jackson
+  default typing): uma sugestão de segurança plausível na superfície, mas
+  que não sobrevive à leitura do código-fonte real da propriedade.
 * **CSRF desabilitado** — normalmente feito via `http.csrf().disable()`
   em um bean `SecurityFilterChain` Java, não em
   `application.yml`/`.properties`. O projeto só faz parsing estático de
