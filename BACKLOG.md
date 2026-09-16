@@ -167,14 +167,48 @@ existente, achada na sessão 2026-09-15 ao ler `check()` com cuidado
    nenhuma configuração adicional.
 2. **`SENSITIVE_ENDPOINTS` está desatualizado frente à superfície real
    do Actuator:** hoje é `{env, heapdump, threaddump, shutdown,
-   configprops, beans}`. Faltam pelo menos `restart`, `refresh`,
-   `jolokia`, `loggers`, `sessions` — todos citados em fontes de
-   hardening do Actuator como sensíveis (ex: a combinação
-   `env` POST + `restart`/`refresh` é um vetor conhecido de RCE via
-   injeção de propriedade em runtime). Antes de adicionar cada um, exige
-   o mesmo rigor já aplicado a `shutdown`/`heapdump`: confirmar o
-   `access` default real de cada endpoint (alguns podem exigir entrada
-   em `RESTRICTED_BY_DEFAULT`, outros não).
+   configprops, beans}`. Revisado na sessão 2026-09-16 (segunda opinião
+   externa — Gemini — corrigiu duas imprecisões da nota original; ambas
+   verificadas contra fonte antes de aceitar, não tomadas de graça):
+   * **`restart`/`refresh`** — não são endpoints nativos do
+     `spring-boot-actuator`, são do **Spring Cloud Context**
+     (`org.springframework.cloud.context.restart.RestartEndpoint`,
+     `org.springframework.cloud.endpoint.RefreshEndpoint`, confirmado
+     via source no repositório `spring-cloud/spring-cloud-commons`).
+     Isso não os desqualifica pro escopo deste projeto — SCG016 (Vault),
+     a extensão do SCG012 pro Config Server e AWS Secrets Manager/
+     Parameter Store já tratam `spring.cloud.*` como escopo válido — mas
+     a nota original os descrevia incorretamente como se fossem Actuator
+     core; corrigido aqui. **Defaults confirmados contra o source
+     (sessão 2026-09-16):** `RestartEndpoint` é
+     `@Endpoint(id="restart", enableByDefault=false)` — desabilitado por
+     padrão, igual `shutdown`/`heapdump` — entra em
+     `RESTRICTED_BY_DEFAULT`, não só em `SENSITIVE_ENDPOINTS`.
+     `RefreshEndpoint` é `@Endpoint(id="refresh")` sem override — ou
+     seja, habilitado por padrão — entra em `SENSITIVE_ENDPOINTS` puro,
+     mesma categoria de `threaddump`/`beans`/`env`/`configprops`.
+   * **`jolokia`** — **removido da lista de candidatos.** Confirmado que
+     o Spring Boot 3 parou de incluir auto-configuração do Jolokia
+     ("Spring Boot 3 removed support for Jolokia in the sense that it no
+     longer included auto-configuration for Jolokia"). O projeto declara
+     Java 21/Spring Boot 3 como alvo (CLAUDE.md) — incluir `jolokia`
+     seria ruído morto pro público real da ferramenta, não um gap.
+   * **`loggers`/`sessions`** — Actuator core, ambos confirmados contra
+     o source (`LoggersEndpoint`/`SessionsEndpoint`, sessão 2026-09-16):
+     `@Endpoint(id="loggers")` e `@Endpoint(id="sessions")`, nenhum dos
+     dois com `enableByDefault` — habilitados por padrão, mesma
+     categoria de `SENSITIVE_ENDPOINTS` puro que `refresh`. O ponto do
+     Gemini sobre `loggers` ser "frequentemente exposto de propósito"
+     não é uma questão de pesquisa, é uma calibração de severidade —
+     recomendação (não fato verificado): não abrir exceção, mesmo
+     raciocínio Zero-Trust já usado pelo resto da SCG001 ("a config base
+     deve declarar só endpoints seguros, independente de contexto");
+     `sessions` inclusive expõe sessão de usuário real e tem operação
+     `DELETE` capaz de derrubar sessão alheia — se algo, mais sensível
+     que `loggers`, não menos.
+   **Pronto pra implementar:** `restart` (com `RESTRICTED_BY_DEFAULT`),
+   `refresh`, `loggers`, `sessions` (os três últimos em
+   `SENSITIVE_ENDPOINTS` puro) — `jolokia` fora da lista.
 
 ## Pós-1.0 (catalogado, não descartado)
 
