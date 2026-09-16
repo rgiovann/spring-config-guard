@@ -57,8 +57,8 @@ out of sync with rule behavior as rules evolve.
 
 ## Contributing
 
-Each new rule is a class implementing `dev.scg.core.Rule` — see
-`ActuatorExposureRule` as a reference. PRs for new rules are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) — build/test setup, how to add a
+new rule, commit and PR conventions.
 
 ## License
 
