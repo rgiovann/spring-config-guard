@@ -163,6 +163,35 @@ raciocínio completo documentado no Javadoc da própria
 `ActuatorExposureRule`. `jolokia` continua fora (sem auto-configuração no
 Spring Boot 3+). 694 testes passando, sem pendência.
 
+### `--config-name=<prefixo>`: suporte a `spring.config.name` customizado
+
+Levantado na sessão 2026-09-16 ao investigar por que um arquivo com nome
+atípico (`abdigneer__e-library__...`, parece path achatado/exportado, não
+uma config real do Spring Boot) não era reconhecido em `demo-project/`.
+`ConfigLoader.isConfigFile()` só aceita nomes que começam com
+`"application"` (`ConfigLoader.java:100`) — mesmo default que o próprio
+Spring Boot usa (`spring.config.name=application`).
+
+Caso real que essa flag cobriria: um projeto que roda com
+`-Dspring.config.name=myapp` (ou `SPRING_CONFIG_NAME=myapp`), portanto com
+`myapp.yml`/`myapp-{profile}.yml` em vez de `application*.yml`. Hoje esse
+projeto seria escaneado e retornaria "nenhum arquivo de config encontrado"
+silenciosamente — falso negativo, não erro.
+
+**Design pretendido:** nova flag `--config-name=<prefixo>` (default
+`application`), parametrizando o mesmo `startsWith`/`endsWith` que
+`ConfigLoader` já usa — não um mecanismo novo, só generaliza o existente
+pra refletir 1:1 a propriedade real do Spring Boot.
+
+**Fora de escopo deliberado:** `spring.config.location`/
+`spring.config.import` apontando pra paths ou URLs arbitrários — isso é um
+grafo de import bem maior que "trocar o prefixo do nome do arquivo", fora
+do escopo de "escanear um diretório" que o projeto assume hoje.
+
+Sem prioridade definida — registrado pra quando alguém precisar de fato
+analisar um projeto com `spring.config.name` customizado, não uma
+necessidade confirmada ainda.
+
 ## Pós-1.0 (catalogado, não descartado)
 
 Diferente da seção "Descartado" abaixo: os itens aqui são tecnicamente
