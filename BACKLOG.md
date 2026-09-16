@@ -151,64 +151,30 @@ pós-avaliação.
    mesmo em profiles seguros (ex: SCG002 suprimida em `dev`, mas SCG006
    continua ativa em `dev`).
 
-### SCG001: cobertura incompleta de endpoints sensíveis do Actuator
+### SCG001: cobertura incompleta de endpoints sensíveis do Actuator — resolvido (sessão 2026-09-16)
 
-Não é uma regra nova — é uma lacuna real na `ActuatorExposureRule`
-existente, achada na sessão 2026-09-15 ao ler `check()` com cuidado
-(não só a Javadoc/descrição).
+Lacuna achada em 2026-09-15 na `ActuatorExposureRule` existente (não uma
+regra nova), fechada em três commits: (1) `check()` agora avalia
+reachability via `isEndpointReachable()` independente de wildcard — uma
+lista explícita como `exposure.include=threaddump,beans` já dispara o
+finding, não só `include=*`; (2) `loggers` e `restart` adicionados a
+`SENSITIVE_ENDPOINTS` (`restart` também em `RESTRICTED_BY_DEFAULT`,
+default `enableByDefault=false` confirmado no source do
+`RestartEndpoint`); (3) Javadoc da classe atualizada pra refletir o
+comportamento corrigido.
 
-1. **Caminho de inclusão explícita não é verificado:** o finding de
-   "endpoint sensível ainda irrestrito" (`stillEnabled`) só roda dentro
-   do `if (hasWildcardExposure)`. Se `exposure.include` lista endpoints
-   explicitamente sem `*` (ex: `exposure.include=threaddump,beans`), a
-   regra fica totalmente silenciosa — mesmo com `threaddump`/`beans`
-   tendo `access=unrestricted` por padrão (ao contrário de
-   `heapdump`/`shutdown`), então já ficam de fato alcançáveis sem
-   nenhuma configuração adicional.
-2. **`SENSITIVE_ENDPOINTS` está desatualizado frente à superfície real
-   do Actuator:** hoje é `{env, heapdump, threaddump, shutdown,
-   configprops, beans}`. Revisado na sessão 2026-09-16 (segunda opinião
-   externa — Gemini — corrigiu duas imprecisões da nota original; ambas
-   verificadas contra fonte antes de aceitar, não tomadas de graça):
-   * **`restart`/`refresh`** — não são endpoints nativos do
-     `spring-boot-actuator`, são do **Spring Cloud Context**
-     (`org.springframework.cloud.context.restart.RestartEndpoint`,
-     `org.springframework.cloud.endpoint.RefreshEndpoint`, confirmado
-     via source no repositório `spring-cloud/spring-cloud-commons`).
-     Isso não os desqualifica pro escopo deste projeto — SCG016 (Vault),
-     a extensão do SCG012 pro Config Server e AWS Secrets Manager/
-     Parameter Store já tratam `spring.cloud.*` como escopo válido — mas
-     a nota original os descrevia incorretamente como se fossem Actuator
-     core; corrigido aqui. **Defaults confirmados contra o source
-     (sessão 2026-09-16):** `RestartEndpoint` é
-     `@Endpoint(id="restart", enableByDefault=false)` — desabilitado por
-     padrão, igual `shutdown`/`heapdump` — entra em
-     `RESTRICTED_BY_DEFAULT`, não só em `SENSITIVE_ENDPOINTS`.
-     `RefreshEndpoint` é `@Endpoint(id="refresh")` sem override — ou
-     seja, habilitado por padrão — entra em `SENSITIVE_ENDPOINTS` puro,
-     mesma categoria de `threaddump`/`beans`/`env`/`configprops`.
-   * **`jolokia`** — **removido da lista de candidatos.** Confirmado que
-     o Spring Boot 3 parou de incluir auto-configuração do Jolokia
-     ("Spring Boot 3 removed support for Jolokia in the sense that it no
-     longer included auto-configuration for Jolokia"). O projeto declara
-     Java 21/Spring Boot 3 como alvo (CLAUDE.md) — incluir `jolokia`
-     seria ruído morto pro público real da ferramenta, não um gap.
-   * **`loggers`/`sessions`** — Actuator core, ambos confirmados contra
-     o source (`LoggersEndpoint`/`SessionsEndpoint`, sessão 2026-09-16):
-     `@Endpoint(id="loggers")` e `@Endpoint(id="sessions")`, nenhum dos
-     dois com `enableByDefault` — habilitados por padrão, mesma
-     categoria de `SENSITIVE_ENDPOINTS` puro que `refresh`. O ponto do
-     Gemini sobre `loggers` ser "frequentemente exposto de propósito"
-     não é uma questão de pesquisa, é uma calibração de severidade —
-     recomendação (não fato verificado): não abrir exceção, mesmo
-     raciocínio Zero-Trust já usado pelo resto da SCG001 ("a config base
-     deve declarar só endpoints seguros, independente de contexto");
-     `sessions` inclusive expõe sessão de usuário real e tem operação
-     `DELETE` capaz de derrubar sessão alheia — se algo, mais sensível
-     que `loggers`, não menos.
-   **Pronto pra implementar:** `restart` (com `RESTRICTED_BY_DEFAULT`),
-   `refresh`, `loggers`, `sessions` (os três últimos em
-   `SENSITIVE_ENDPOINTS` puro) — `jolokia` fora da lista.
+Decisão final divergiu do plano intermediário registrado antes da
+implementação: `refresh` e `sessions` foram deliberadamente **excluídos**
+(não implementados), apesar de ambos estarem habilitados por padrão no
+próprio source — motivo é que os dois são auto-configurados
+condicionalmente a um bean/dependência opcional que esta ferramenta não
+enxerga (`spring-cloud-context` pro `refresh`;
+`FindByIndexNameSessionRepository` do Spring Session indexado pro
+`sessions`), então marcá-los sem essa distinção arriscaria recomendar
+restringir um endpoint que não existe de fato na maioria das apps reais —
+raciocínio completo documentado no Javadoc da própria
+`ActuatorExposureRule`. `jolokia` continua fora (sem auto-configuração no
+Spring Boot 3+). 694 testes passando, sem pendência.
 
 ## Pós-1.0 (catalogado, não descartado)
 
