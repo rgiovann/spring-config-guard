@@ -1,0 +1,4 @@
+# Suppresses only the LocalStack-driven SCG012 noise in dev; every other
+# finding in this fixture (base/dev/prod) stays visible.
+SCG012:
+  - dev

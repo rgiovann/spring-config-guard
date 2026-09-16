@@ -1,0 +1,42 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+jhipster:
+  security:
+    authentication:
+      jwt:
+        base64-secret: ZGVtby1zZWNyZXQtZG8tbm90LXVzZS1pbi1wcm9k
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  cloud:
+    aws:
+      s3:
+        endpoint: http://localhost:4566
+server:
+  servlet:
+    session:
+      cookie:
+        same-site: None
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://auth.example.com/realm
+  datasource:
+    url: jdbc:postgresql://db.internal:5432/app?sslmode=disable
+management:
+  endpoints:
+    web:
+      cors:
+        allowed-origins: "*"
+        allow-credentials: true

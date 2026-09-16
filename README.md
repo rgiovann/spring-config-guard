@@ -35,7 +35,25 @@ java -jar target/spring-config-guard.jar <project-path> [--json] [--fail-on=HIGH
 
 `demo-project/` carries deliberately misconfigured YAML fixtures and
 `demo-project-clean/` carries deliberately clean fixtures — useful for
-manually validating the CLI's end-to-end behavior.
+manually validating the CLI's end-to-end behavior. Two showcase
+subdirectories are a good starting tour:
+
+* `demo-project/multi-profile-showcase/` — a single multi-document
+  `application.yml` (`base`/`dev`/`prod` via `spring.config.activate.on-profile`)
+  triggering 6 different rules across profiles, plus a `policy-demo.yml`
+  example (`java -jar spring-config-guard.jar demo-project/multi-profile-showcase
+  --policy=demo-project/multi-profile-showcase/policy-demo.yml`).
+* `demo-project/properties-format-showcase/` — the same kind of findings
+  expressed in flat `.properties` syntax, including a relaxed-binding
+  (camelCase) key and an unresolved-placeholder finding.
+* `demo-project-clean/properties-format-showcase/` — the clean
+  counterpart of the fixture above: same keys, correct values (secrets
+  referenced via env placeholders instead of hardcoded). Reports 2 INFO
+  findings and still exits 0 even under the default `--fail-on=HIGH`,
+  showing that INFO alone never fails the build.
+
+All three are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
+out of sync with rule behavior as rules evolve.
 
 ## Contributing
 
