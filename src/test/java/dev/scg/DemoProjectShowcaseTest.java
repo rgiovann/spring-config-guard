@@ -1,11 +1,17 @@
 package dev.scg;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.scg.cli.ExitCodeResolver;
+import dev.scg.core.Finding;
+import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -92,16 +98,28 @@ class DemoProjectShowcaseTest {
         assertEquals(2, output.lines().filter(l -> l.startsWith("[INFO] SCG006")).count());
 
         // Confirms INFO alone never fails the build, even under the CLI's own default --fail-on=HIGH.
-        ByteArrayOutputStream discarded = new ByteArrayOutputStream();
-        PrintStream originalOut = System.out;
-        int exitCode;
-        try {
-            System.setOut(new PrintStream(discarded, true, StandardCharsets.UTF_8));
-            exitCode = Main.run(new String[]{CLEAN_PROPERTIES_DIR});
-        } finally {
-            System.setOut(originalOut);
-        }
-        assertEquals(dev.scg.cli.ExitCodeResolver.SUCCESS, exitCode);
+        assertEquals(ExitCodeResolver.SUCCESS, runReturningExitCode(new String[]{CLEAN_PROPERTIES_DIR}));
+    }
+
+    @Test
+    @DisplayName("--fail-on=LOW still succeeds against the clean fixture -- INFO is excluded at every threshold, not just the default HIGH")
+    void shouldSucceedAtLowestFailOnThresholdForCleanFixture() {
+        assertEquals(ExitCodeResolver.SUCCESS,
+                runReturningExitCode(new String[]{CLEAN_PROPERTIES_DIR, "--fail-on=LOW"}));
+    }
+
+    @Test
+    @DisplayName("--json produces valid, parseable JSON end-to-end through Main, with the expected findings")
+    void shouldProduceValidJsonOutputEndToEnd() throws Exception {
+        String output = run(new String[]{PROPERTIES_DIR, "--json", "--fail-on=NONE"});
+
+        List<Finding> findings = new ObjectMapper().readValue(output, new TypeReference<>() {});
+
+        assertEquals(3, findings.size());
+        assertTrue(findings.stream().allMatch(f -> "test".equals(f.profileLabel())));
+        assertTrue(findings.stream().anyMatch(f -> "SCG002".equals(f.ruleId()) && f.severity() == Severity.HIGH));
+        assertTrue(findings.stream().anyMatch(f -> "SCG006".equals(f.ruleId()) && f.severity() == Severity.HIGH));
+        assertTrue(findings.stream().anyMatch(f -> "SCG006".equals(f.ruleId()) && f.severity() == Severity.INFO));
     }
 
     private static boolean hasFinding(String output, String ruleId, String profileMarker) {
@@ -118,5 +136,16 @@ class DemoProjectShowcaseTest {
             System.setOut(originalOut);
         }
         return outContent.toString(StandardCharsets.UTF_8);
+    }
+
+    private static int runReturningExitCode(String[] args) {
+        ByteArrayOutputStream discarded = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(discarded, true, StandardCharsets.UTF_8));
+            return Main.run(args);
+        } finally {
+            System.setOut(originalOut);
+        }
     }
 }
