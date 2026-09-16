@@ -1,40 +1,47 @@
 # spring-config-guard
 
-Um linter de configuração para projetos Spring Boot que roda **no seu build**,
-não depois que o problema já vazou pra produção.
+[![CI](https://github.com/rgiovann/spring-config-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/rgiovann/spring-config-guard/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Ferramentas existentes de verificação de Actuator/config (ex: scanners de
-pentest) rodam de fora, contra uma URL já em produção — quando você descobre
-o problema, ele já está exposto. `spring-config-guard` lê `application.yml` /
-`application.properties` do seu próprio código-fonte e falha o build (exit
-code 1) antes do deploy.
+A configuration linter for Spring Boot projects that runs **in your build**,
+not after the problem has already leaked into production.
+
+Existing Actuator/config scanning tools (e.g. pentest scanners) run from the
+outside, against a URL that's already in production — by the time you find
+the problem, it's already exposed. `spring-config-guard` reads
+`application.yml` / `application.properties` from your own source code and
+fails the build (exit code 1) before deployment.
 
 
-## Uso
+## Usage
 
 ```bash
 mvn package
-java -jar target/spring-config-guard.jar <caminho-do-projeto> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<arquivo>]
+java -jar target/spring-config-guard.jar <project-path> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<file>]
 ```
 
-* `--json` — emite o relatório em JSON em vez do formato de console.
-* `--fail-on` — severidade mínima que faz o processo sair com código de erro
-  (útil para gate de CI). `NONE` nunca falha o build; por padrão, `HIGH`.
-* `--policy` — arquivo YAML de supressão binária de findings por regra +
-  profile (ex: `SCG002: [dev]` suprime achados da SCG002 no profile `dev`;
-  `"*"` suprime em todos os profiles; `base` suprime no profile comum/sem
-  nome). Um finding suprimido some do relatório e do exit code; a contagem
-  de suprimidos é impressa em stderr. Sem essa flag, nenhuma supressão é
-  aplicada.
-* `--help` / `-h` — mostra a mensagem de uso em inglês (flags, exemplos,
-  códigos de saída — mesmo idioma das mensagens de `Finding`) e sai com
-  código 0. Tem precedência sobre qualquer outro argumento.
+* `--json` — emits the report as JSON instead of the console format.
+* `--fail-on` — minimum severity that makes the process exit with an error
+  code (useful for a CI gate). `NONE` never fails the build; default is
+  `HIGH`.
+* `--policy` — YAML file for binary suppression of findings by rule +
+  profile (e.g. `SCG002: [dev]` suppresses SCG002 findings in the `dev`
+  profile; `"*"` suppresses across every profile; `base` suppresses in the
+  common/unnamed profile). A suppressed finding disappears from both the
+  report and the exit code; the suppressed count is printed to stderr.
+  Without this flag, no suppression is applied.
+* `--help` / `-h` — shows the usage message (flags, examples, exit codes)
+  and exits with code 0. Takes precedence over any other argument.
 
-`demo-project/` traz fixtures YAML deliberadamente mal configuradas e
-`demo-project-clean/` traz fixtures deliberadamente limpas — úteis para
-validar manualmente o comportamento da CLI ponta a ponta.
+`demo-project/` carries deliberately misconfigured YAML fixtures and
+`demo-project-clean/` carries deliberately clean fixtures — useful for
+manually validating the CLI's end-to-end behavior.
 
-## Contribuindo
+## Contributing
 
-Cada regra nova é uma classe que implementa `dev.scg.core.Rule` — veja
-`ActuatorExposureRule` como referência. PRs de novas regras são bem-vindos.
+Each new rule is a class implementing `dev.scg.core.Rule` — see
+`ActuatorExposureRule` as a reference. PRs for new rules are welcome.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).

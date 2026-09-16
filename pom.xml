@@ -9,6 +9,19 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
+    <name>spring-config-guard</name>
+    <description>Static-analysis CLI that lints Spring Boot application.{properties,yml,yaml}
+        files for security misconfigurations before deployment.</description>
+    <url>https://github.com/rgiovann/spring-config-guard</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
