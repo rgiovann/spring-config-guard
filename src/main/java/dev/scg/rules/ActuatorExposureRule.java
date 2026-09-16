@@ -9,65 +9,25 @@ import java.util.Set;
 
 /**
  * SCG001 — detects sensitive Actuator endpoints reachable via
- * management.endpoints.web.exposure.include and not explicitly restricted, whether reachability
- * comes from a wildcard ({@code *}) or an explicit list entry (e.g. {@code include=threaddump,beans}
- * with no wildcard at all — {@link #isEndpointReachable(EffectiveConfig, String)} treats both
- * forms identically, so this check is not conditioned on a wildcard being present).
- * Sensitive endpoints tracked: {@code env}, {@code heapdump}, {@code threaddump}, {@code shutdown},
- * {@code configprops}, {@code beans}, {@code loggers} (Spring Boot Actuator core), and
- * {@code restart} (Spring Cloud Context — see {@code RESTRICTED_BY_DEFAULT} below for why it needs
- * different treatment than the others).
+ * {@code management.endpoints.web.exposure.include} and not explicitly restricted, whether via a
+ * wildcard ({@code *}) or an explicit list entry. Tracks {@code env}, {@code heapdump},
+ * {@code threaddump}, {@code shutdown}, {@code configprops}, {@code beans}, {@code loggers}
+ * (Actuator core), and {@code restart} (Spring Cloud Context; see {@code RESTRICTED_BY_DEFAULT}).
  * <p>
- * Deliberately does NOT track {@code refresh}, {@code sessions}, or {@code jolokia}, despite all
- * three being cited as sensitive in general Actuator-hardening guidance:
- * <ul>
- *     <li>{@code refresh} (Spring Cloud Context, {@code @Endpoint(id="refresh")}, enabled by
- *     default — confirmed against its source) and {@code sessions} (Actuator core, but
- *     {@code SessionsEndpointAutoConfiguration} is
- *     {@code @ConditionalOnBean(FindByIndexNameSessionRepository.class)} — only present when the
- *     app uses Spring Session's indexed repository, e.g. Redis/JDBC) are each conditionally
- *     auto-configured on an optional bean/dependency this static-analysis tool has no visibility
- *     into. Unlike {@code restart}, neither is disabled by default when actually present, so
- *     tracking them plainly would advise restricting an endpoint that, in most real apps, does
- *     not even exist — a more corrosive false positive than "this finding may not apply to your
- *     deployment topology" (the kind of trade-off this project otherwise accepts, e.g.
- *     {@code InsecureDatabaseTransportRule}'s deliberate lack of a loopback exemption).</li>
- *     <li>{@code jolokia} has no Spring Boot 3 auto-configuration left to flag: Spring Boot 3
- *     dropped Jolokia's actuator auto-configuration entirely, and this project targets Java
- *     21/Spring Boot 3 (see CLAUDE.md).</li>
- * </ul>
- * DELIBERATE DECISION (session on 2026-08-21): this rule does NOT exempt safe profiles (dev/test/local),
- *  unlike H2ConsoleExposedRule. This is not a gap to be fixed — it was explicitly evaluated and the
- *  decision was made to keep it this way. Reasons: (1) the nature of the exposure is different —
- *  the H2 console exposes a database access tool, while Actuator (env, configprops, heapdump) can
- *  expose actual secrets in memory (API tokens, passwords, environment variables) once show-values
- *  is also elevated (see the show-values check below) — and even at show-values' safe default, mere
- *  reachability still discloses property names and config structure, itself useful reconnaissance;
- *  (2) dev/local environments commonly share real or semi-real credentials from staging/external services,
- *  so an exposed /env endpoint in a dev environment connected to the corporate network is already a direct
- *  attack vector; (3) the correct Spring Boot practice is for the base configuration to declare only safe
- *  endpoints (health, info) — include=* in the base configuration is already an anti-pattern, regardless
- *  of the profile.
- * Starting with Spring Boot 3.4, endpoint access control migrated from management.endpoint.<id>.enabled
- * (boolean, deprecated) to management.endpoint.<id>.access (none | read-only | unrestricted).
- * Confirmed in the Spring Boot 3.4 Configuration Changelog (official wiki of the
- * spring-projects/spring-boot repository) that most endpoints have access=unrestricted by default —
- * BUT shutdown (default=none since 3.4) and heapdump (default=none since 3.5) are exceptions.
- * Also empirically confirmed against a real Spring Boot 4.1 application: heapdump only appears on
- * the discovery page after explicitly setting access=unrestricted, even with exposure.include=*.
+ * Does NOT track {@code refresh} or {@code sessions}: both are conditionally auto-configured on an
+ * optional bean/dependency this static-analysis tool can't see (Spring Cloud Context;
+ * {@code FindByIndexNameSessionRepository} for {@code sessions} specifically), so flagging them
+ * would risk advising restriction on an endpoint that doesn't exist in most real apps. Does NOT
+ * track {@code jolokia}: Spring Boot 3 dropped its auto-configuration entirely.
  * <p>
- * Also detects {@code management.endpoint.env.show-values} / {@code management.endpoint.configprops.show-values}
- * set to {@code always} or {@code when-authorized} on a reachable, unrestricted env/configprops
- * endpoint (HIGH) — independent of the wildcard-exposure check above, since {@code exposure.include}
- * can list these endpoints explicitly without a wildcard. Confirmed against the actual Spring Boot
- * {@code Sanitizer} source: {@code show-values} is a master switch — at the safe default
- * ({@code never}), every value is masked regardless of key name; once elevated, only keys matching
- * known-sensitive patterns (password, secret, token, ...) stay masked, so this property is what
- * actually decides whether raw values are exposed, not endpoint reachability by itself.
- * {@code when-authorized} is treated as equally risky as {@code always}, not a lesser opt-out: its
- * actual safety depends on a runtime {@code SecurityContext} this tool has no visibility into, so
- * the mere opt-out from the safe {@code never} default is the signal, same posture as the rest of
- * this project's Zero-Trust checks.
+ * Also flags {@code management.endpoint.env/configprops.show-values=always|when-authorized} on a
+ * reachable, unrestricted endpoint (HIGH) — {@code show-values} is the actual switch for raw-value
+ * exposure, not reachability by itself; {@code when-authorized} is treated as equally risky since
+ * its real safety depends on a runtime {@code SecurityContext} this tool can't see.
+ * <p>
+ * No profile exemption (Zero-Trust), unlike {@link H2ConsoleExposedRule}: {@code include=*} is
+ * already an anti-pattern in base config regardless of profile, and dev/local environments often
+ * carry real credentials anyway.
  */
 public final class ActuatorExposureRule implements Rule {
 
