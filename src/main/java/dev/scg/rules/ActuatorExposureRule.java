@@ -92,31 +92,29 @@ public final class ActuatorExposureRule implements Rule {
                 .stream()
                 .anyMatch(this::mayContainWildcard);
 
-        if (hasWildcardExposure) {
-            List<String> stillEnabled = new ArrayList<>();
-            for (String endpoint : SENSITIVE_ENDPOINTS) {
-                if (!isRestricted(config, endpoint)) {
-                    stillEnabled.add(endpoint);
-                }
-            }
-
-            if (!stillEnabled.isEmpty()) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.HIGH,
-                        "%s contains * and exposes all endpoints via HTTP, and the following remain unrestricted: %s. "
-                                .formatted(EXPOSURE_KEY, String.join(", ", stillEnabled))
-                                + "Endpoint structure and property names are disclosed regardless of show-values; "
-                                + "raw values stay masked unless show-values is also elevated (see SCG001's separate "
-                                + "show-values finding, if any). "
-                                + "Consider setting management.endpoint.<name>.access=none for each one, or replacing '*' with an explicit list.",
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
+        // Deliberately NOT gated on hasWildcardExposure: exposure.include can list sensitive
+        // endpoints explicitly without a wildcard (e.g. "threaddump,beans"), and isEndpointReachable()
+        // already covers both forms -- gating here would leave that explicit-list path unchecked,
+        // even though endpoints unrestricted by default (threaddump/beans/env/configprops) are just
+        // as reachable that way as under a wildcard.
+        List<String> stillEnabled = new ArrayList<>();
+        for (String endpoint : SENSITIVE_ENDPOINTS) {
+            if (isEndpointReachable(config, endpoint) && !isRestricted(config, endpoint)) {
+                stillEnabled.add(endpoint);
             }
         }
 
-        // Independent of hasWildcardExposure above: exposure.include can list env/configprops
+        if (!stillEnabled.isEmpty()) {
+            findings.add(new Finding(
+                    id(),
+                    Severity.HIGH,
+                    buildSensitiveEndpointsMessage(hasWildcardExposure, stillEnabled),
+                    config.sourceFile().toString(),
+                    config.profileLabel()
+            ));
+        }
+
+        // Independent of the stillEnabled finding above: exposure.include can list env/configprops
         // explicitly without a wildcard, and that path must still be evaluated for show-values.
         List<String> leakingValues = new ArrayList<>();
         for (String endpoint : SHOW_VALUES_ENDPOINTS) {
@@ -139,6 +137,20 @@ public final class ActuatorExposureRule implements Rule {
         }
 
         return findings;
+    }
+
+    private String buildSensitiveEndpointsMessage(boolean hasWildcardExposure, List<String> stillEnabled) {
+        String exposureDescription = hasWildcardExposure
+                ? "%s contains '*' and exposes all endpoints via HTTP".formatted(EXPOSURE_KEY)
+                : "%s explicitly lists sensitive endpoints".formatted(EXPOSURE_KEY);
+
+        return exposureDescription + ", and the following remain unrestricted: %s. "
+                .formatted(String.join(", ", stillEnabled))
+                + "Endpoint structure and property names are disclosed regardless of show-values; "
+                + "raw values stay masked unless show-values is also elevated (see SCG001's separate "
+                + "show-values finding, if any). "
+                + "Consider setting management.endpoint.<name>.access=none for each one"
+                + (hasWildcardExposure ? ", or replacing '*' with an explicit list." : ".");
     }
 
     private boolean mayContainWildcard(String value) {

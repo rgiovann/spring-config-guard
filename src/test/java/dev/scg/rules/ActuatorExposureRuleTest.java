@@ -43,6 +43,58 @@ class ActuatorExposureRuleTest {
     }
 
     @Test
+    @DisplayName("Should generate a HIGH finding when sensitive endpoints are listed explicitly, without a wildcard")
+    void shouldGenerateFindingWhenSensitiveEndpointsAreListedExplicitlyWithoutWildcard() {
+        // Regression test: before the isEndpointReachable() fix, the stillEnabled check only ran
+        // under hasWildcardExposure, so an explicit list like this stayed completely silent even
+        // though threaddump/beans are unrestricted by default and genuinely reachable this way.
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "threaddump,beans"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        Finding finding = findings.getFirst();
+        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+        assertThat(finding.message())
+                .contains("threaddump")
+                .contains("beans")
+                .doesNotContain("env")
+                .doesNotContain("configprops");
+    }
+
+    @Test
+    @DisplayName("Should word the message around an explicit list, not falsely claim a wildcard was used")
+    void shouldWordMessageForExplicitListWithoutWildcard() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "beans"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message())
+                .contains("explicitly lists sensitive endpoints")
+                .doesNotContain("contains '*'");
+    }
+
+    @Test
+    @DisplayName("Should word the message around a wildcard when one is actually used")
+    void shouldWordMessageForWildcard() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "*"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message())
+                .contains("contains '*' and exposes all endpoints via HTTP")
+                .contains("or replacing '*' with an explicit list");
+    }
+
+    @Test
     @DisplayName("Should generate a HIGH finding with endpoints unrestricted by default " +
                  "when a wildcard is used without additional configuration")
     void shouldGenerateHighFindingWithEndpointsUnrestrictedByDefaultWhenWildcardIsUsedWithoutAdditionalConfig() {
