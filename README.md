@@ -55,6 +55,130 @@ subdirectories are a good starting tour:
 All three are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
 out of sync with rule behavior as rules evolve.
 
+## Output Format
+
+Both report formats carry the same five
+[`Finding`](src/main/java/dev/scg/core/Finding.java) fields — `ruleId`,
+`severity`, `message`, `sourceFile`, `profileLabel` — they only differ in how
+`profileLabel` is rendered.
+
+### Console output (default)
+
+One line per finding:
+
+```
+[HIGH] SCG002 (application.yml) [profile: dev] - H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
+```
+
+Format: `[severity] ruleId (sourceFile) [profileDisplay] - message`
+
+* `profileDisplay` is `base` for the configuration that applies with no
+  active profile (the common section every profile inherits from — no
+  Spring profile actually named `base` needs to exist for this to show up),
+  or `profile: <name>` for a named profile, using the exact name from
+  `spring.config.activate.on-profile` (or the `application-<name>.yml`
+  filename).
+
+Followed by a summary line:
+
+```
+Summary: 3 violation(s) - HIGH: 3, MEDIUM: 0, LOW: 0, INFO: 0
+```
+
+### JSON output (`--json`)
+
+Each finding is serialized as-is from the `Finding` record, with no
+human-friendly substitution:
+
+```json
+[
+  {
+    "ruleId": "SCG001",
+    "severity": "HIGH",
+    "message": "...",
+    "sourceFile": "application.yml",
+    "profileLabel": "__spring_config_guard_base__"
+  }
+]
+```
+
+`profileLabel` here is SCG's internal value, not the console's display
+string:
+
+* for a named profile, it's the profile name exactly as declared
+  (`"dev"`, `"prod"`, ...).
+* for the "no active profile" configuration, it's the internal sentinel
+  `"__spring_config_guard_base__"`
+  ([`ProfileMerger.BASE_PROFILE_LABEL`](src/main/java/dev/scg/core/ProfileMerger.java)) —
+  not the word `"base"`. This is intentional: JSON output is meant for
+  machine consumption (CI pipelines, other tooling re-parsing the report),
+  and using `"base"` there would be ambiguous with an actual Spring profile
+  literally named `base` (syntactically valid, if unusual). The sentinel
+  keeps `profileLabel` unambiguous and round-trips through
+  serialize/deserialize regardless of what profiles the scanned project
+  defines.
+
+### Multi-profile example, including a profile literally named `base`
+
+```yaml
+management.endpoints.web.exposure.include: "*"
+---
+spring.config.activate.on-profile: dev
+management.endpoints.web.exposure.include: health
+spring.h2.console.enabled: true
+---
+spring.config.activate.on-profile: base
+management.endpoints.web.exposure.include: health
+spring.h2.console.enabled: true
+```
+
+This one file produces three effective configurations: the unnamed base
+(only `exposure.include: "*"` applies), `dev` (overrides the wildcard,
+enables H2), and a profile that happens to be literally named `base` (same
+override, same H2). Console output tells the sentinel-backed "no active
+profile" case apart from the real `base` profile purely through the
+`profile:` prefix:
+
+```
+[HIGH] SCG001 (application.yml) [base] - management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...
+[HIGH] SCG002 (application.yml) [profile: base] - H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...
+[HIGH] SCG002 (application.yml) [profile: dev] - H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...
+```
+
+The equivalent `--json` output makes the same distinction through the raw
+`profileLabel` value instead of a prefix:
+
+```json
+[
+  {
+    "ruleId": "SCG001",
+    "severity": "HIGH",
+    "message": "management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...",
+    "sourceFile": "application.yml",
+    "profileLabel": "__spring_config_guard_base__"
+  },
+  {
+    "ruleId": "SCG002",
+    "severity": "HIGH",
+    "message": "H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...",
+    "sourceFile": "application.yml",
+    "profileLabel": "base"
+  },
+  {
+    "ruleId": "SCG002",
+    "severity": "HIGH",
+    "message": "H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...",
+    "sourceFile": "application.yml",
+    "profileLabel": "dev"
+  }
+]
+```
+
+Note `"profileLabel": "__spring_config_guard_base__"` (the sentinel, unnamed
+base) versus `"profileLabel": "base"` (the real profile that happens to
+share the word "base") — two distinct strings. Using `"base"` for both is
+exactly the collision the sentinel exists to avoid.
+
 ## Rules
 
 17 rules, `SCG001`–`SCG017`. Each reports [`Finding`](src/main/java/dev/scg/core/Finding.java)s
