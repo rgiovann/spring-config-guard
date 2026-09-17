@@ -92,4 +92,20 @@ class CliArgumentParserTest {
 
         assertThat(options.policyFile()).contains(Path.of("scg-policy.yml"));
     }
+
+    @Test
+    @DisplayName("Should default configServerMode to false when --config-server is omitted")
+    void shouldDefaultConfigServerModeToFalseWhenFlagIsOmitted() {
+        CliOptions options = parser.parse(new String[]{"/tmp/config"});
+
+        assertThat(options.configServerMode()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Should recognize the --config-server flag in any position")
+    void shouldRecognizeConfigServerFlagInAnyPosition() {
+        CliOptions options = parser.parse(new String[]{"/tmp/config", "--config-server", "--json"});
+
+        assertThat(options.configServerMode()).isTrue();
+    }
 }

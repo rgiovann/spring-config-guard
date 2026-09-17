@@ -15,6 +15,7 @@ import java.util.Optional;
 public record CliOptions(
         Path directory,
         boolean jsonOutput,
+        boolean configServerMode,
         Optional<Severity> failOnSeverity,
         Optional<Path> policyFile
 ) {

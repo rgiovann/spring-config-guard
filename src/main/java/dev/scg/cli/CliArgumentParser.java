@@ -11,6 +11,7 @@ public final class CliArgumentParser {
     private static final String FAIL_ON_PREFIX = "--fail-on=";
     private static final String JSON_FLAG = "--json";
     private static final String POLICY_PREFIX = "--policy=";
+    private static final String CONFIG_SERVER_FLAG = "--config-server";
     private static final String NONE = "NONE";
 
     public static final String HELP_FLAG = "--help";
@@ -27,6 +28,12 @@ public final class CliArgumentParser {
 
             Options:
               --json               Emit the report as JSON instead of the console format.
+              --config-server      Treat <directory> as a Spring Cloud Config Server
+                                   repository instead of a single Spring Boot project:
+                                   application*.{yml,yaml,properties} is the Global config
+                                   shared by every client, and every other .yml/.yaml/
+                                   .properties file directly in <directory> (not recursive)
+                                   is one service's own config, named after the file.
               --fail-on=<level>    Minimum severity that makes the process exit with an
                                    error code: HIGH, MEDIUM, LOW, or NONE. Default: HIGH.
                                    NONE never fails the build, regardless of findings.
@@ -39,6 +46,7 @@ public final class CliArgumentParser {
               java -jar spring-config-guard.jar ./my-project
               java -jar spring-config-guard.jar ./my-project --fail-on=MEDIUM
               java -jar spring-config-guard.jar ./my-project --json --policy=scg-policy.yml
+              java -jar spring-config-guard.jar ./my-config-repo --config-server
 
             Exit codes:
               0   Success - no finding at or above --fail-on's severity (or --fail-on=NONE).
@@ -50,12 +58,14 @@ public final class CliArgumentParser {
     public CliOptions parse(String[] args) {
         if (args.length == 0) {
             throw new CliUsageException(
-                    "Usage: spring-config-guard <directory> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<path>]"
+                    "Usage: spring-config-guard <directory> [--json] [--config-server] " +
+                            "[--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<path>]"
             );
         }
 
         Path directory = Path.of(args[0]);
         boolean jsonOutput = false;
+        boolean configServerMode = false;
         Optional<Severity> failOnSeverity = Optional.of(Severity.HIGH); // default
         Optional<Path> policyFile = Optional.empty();
 
@@ -63,6 +73,8 @@ public final class CliArgumentParser {
             String arg = args[i];
             if (JSON_FLAG.equals(arg)) {
                 jsonOutput = true;
+            } else if (CONFIG_SERVER_FLAG.equals(arg)) {
+                configServerMode = true;
             } else if (arg.startsWith(FAIL_ON_PREFIX)) {
                 failOnSeverity = parseFailOn(arg.substring(FAIL_ON_PREFIX.length()));
             } else if (arg.startsWith(POLICY_PREFIX)) {
@@ -72,7 +84,7 @@ public final class CliArgumentParser {
             }
         }
 
-        return new CliOptions(directory, jsonOutput, failOnSeverity, policyFile);
+        return new CliOptions(directory, jsonOutput, configServerMode, failOnSeverity, policyFile);
     }
 
     private Optional<Severity> parseFailOn(String rawValue) {

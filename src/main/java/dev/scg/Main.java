@@ -45,7 +45,9 @@ public final class Main {
 
         List<EffectiveConfig> effectiveConfigs;
         try {
-            effectiveConfigs = loadEffectiveConfigs(options.directory());
+            effectiveConfigs = options.configServerMode()
+                    ? new ConfigServerAssembler().assemble(options.directory())
+                    : loadEffectiveConfigs(options.directory());
         } catch (IOException e) {
             System.err.println("Error reading configuration: " + e.getMessage());
             return ExitCodeResolver.USAGE_ERROR;
