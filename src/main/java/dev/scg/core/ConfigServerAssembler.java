@@ -5,8 +5,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -50,10 +53,55 @@ public final class ConfigServerAssembler {
         List<EffectiveConfig> result = new ArrayList<>();
         for (ConfigFile serviceFile : byService.values()) {
             Map<String, String> serviceBase = profileMerger.findBaseProperties(serviceFile);
-            Map<String, String> effective = profileMerger.mergeProperties(globalBase, serviceBase);
-            result.add(new EffectiveConfig(serviceFile.path(), ProfileMerger.BASE_PROFILE_LABEL, effective));
+            result.add(new EffectiveConfig(
+                    serviceFile.path(),
+                    ProfileMerger.BASE_PROFILE_LABEL,
+                    profileMerger.mergeProperties(globalBase, serviceBase)
+            ));
+
+            Set<String> profiles = new LinkedHashSet<>(namedProfiles(global));
+            profiles.addAll(namedProfiles(serviceFile));
+
+            for (String profile : profiles) {
+                // Cascade precedence, lowest to highest (confirmed against the Spring Cloud Config
+                // reference doc: "the server creates an Environment from application.yml (shared)
+                // and foo.yml (with foo.yml taking precedence)... these same rules apply in a
+                // standalone Spring Boot application" -- i.e. spring.config.name=application,{app}):
+                // Global-base < Global-profile < Service-base < Service-profile.
+                Map<String, String> effective = Stream.of(
+                        globalBase,
+                        profileProperties(global, profile),
+                        serviceBase,
+                        profileProperties(serviceFile, profile)
+                ).reduce(Map.of(), profileMerger::mergeProperties);
+
+                result.add(new EffectiveConfig(serviceFile.path(), profile, effective));
+            }
         }
         return result;
+    }
+
+    private static Set<String> namedProfiles(ConfigFile file) {
+        if (file == null) {
+            return Set.of();
+        }
+        Set<String> profiles = new LinkedHashSet<>();
+        for (ConfigDocument document : file.documents()) {
+            document.profile().ifPresent(profiles::add);
+        }
+        return profiles;
+    }
+
+    /** ConfigLoader already merges same-labeled documents within one file, so at most one matches. */
+    private static Map<String, String> profileProperties(ConfigFile file, String profile) {
+        if (file == null) {
+            return Map.of();
+        }
+        return file.documents().stream()
+                .filter(document -> document.profile().equals(Optional.of(profile)))
+                .findFirst()
+                .map(ConfigDocument::properties)
+                .orElse(Map.of());
     }
 
     private List<ConfigFile> loadTopLevelFiles(Path repoDir) throws IOException {

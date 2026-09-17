@@ -93,4 +93,104 @@ class ConfigServerAssemblerTest {
 
         assertThat(result).isEmpty();
     }
+
+    @Test
+    @DisplayName("Should apply a Global-only profile to a service that doesn't redefine it")
+    void shouldApplyGlobalOnlyProfileToService(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                server.port: 8080
+                ---
+                spring.config.activate.on-profile: docker
+                eureka.client.serviceUrl.defaultZone: http://discovery-server:8761/eureka/
+                """);
+        Files.writeString(dir.resolve("customers-service.yml"), "spring.application.name: customers-service");
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        var docker = findByProfile(result, "docker");
+        assertThat(docker.properties())
+                .containsEntry("eureka.client.serviceUrl.defaultZone", "http://discovery-server:8761/eureka/")
+                .containsEntry("spring.application.name", "customers-service"); // service base still applies
+    }
+
+    @Test
+    @DisplayName("Should apply a Service-only profile on top of the Global and Service bases")
+    void shouldApplyServiceOnlyProfileOverBothBases(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "server.port: 8080");
+        Files.writeString(dir.resolve("customers-service.yml"), """
+                server.port: 8081
+                ---
+                spring.config.activate.on-profile: mysql
+                spring.datasource.url: jdbc:mysql://localhost/petclinic
+                """);
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        var mysql = findByProfile(result, "mysql");
+        assertThat(mysql.properties())
+                .containsEntry("spring.datasource.url", "jdbc:mysql://localhost/petclinic")
+                .containsEntry("server.port", "8081"); // service base, not global base
+    }
+
+    @Test
+    @DisplayName("Should apply cascade precedence Global-base < Global-profile < Service-base < Service-profile")
+    void shouldRespectFullCascadePrecedence(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                key: global-base
+                ---
+                spring.config.activate.on-profile: mysql
+                key: global-profile
+                """);
+        Files.writeString(dir.resolve("customers-service.yml"), """
+                key: service-base
+                ---
+                spring.config.activate.on-profile: mysql
+                key: service-profile
+                """);
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        assertThat(findByProfile(result, "mysql").properties()).containsEntry("key", "service-profile");
+    }
+
+    @Test
+    @DisplayName("A profile only defined by one service must not leak into another service's EffectiveConfigs")
+    void shouldNotLeakServiceOnlyProfileAcrossServices(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                key: base
+                ---
+                spring.config.activate.on-profile: docker
+                key: docker
+                """);
+        Files.writeString(dir.resolve("customers-service.yml"), """
+                spring.application.name: customers-service
+                ---
+                spring.config.activate.on-profile: mysql
+                spring.datasource.url: jdbc:mysql://localhost/customers
+                """);
+        Files.writeString(dir.resolve("vets-service.yml"), "spring.application.name: vets-service");
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        List<EffectiveConfig> customersConfigs = byService(result, "customers-service.yml");
+        List<EffectiveConfig> vetsConfigs = byService(result, "vets-service.yml");
+
+        assertThat(customersConfigs).extracting(EffectiveConfig::profileLabel)
+                .containsExactlyInAnyOrder(ProfileMerger.BASE_PROFILE_LABEL, "docker", "mysql");
+        assertThat(vetsConfigs).extracting(EffectiveConfig::profileLabel)
+                .containsExactlyInAnyOrder(ProfileMerger.BASE_PROFILE_LABEL, "docker"); // no "mysql" here
+    }
+
+    private static EffectiveConfig findByProfile(List<EffectiveConfig> configs, String profileLabel) {
+        return configs.stream()
+                .filter(c -> c.profileLabel().equals(profileLabel))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No EffectiveConfig found for profile '" + profileLabel + "'"));
+    }
+
+    private static List<EffectiveConfig> byService(List<EffectiveConfig> configs, String fileName) {
+        return configs.stream()
+                .filter(c -> c.sourceFile().getFileName().toString().equals(fileName))
+                .toList();
+    }
 }
