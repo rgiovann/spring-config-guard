@@ -17,10 +17,15 @@ fails the build (exit code 1) before deployment.
 
 ```bash
 mvn package
-java -jar target/spring-config-guard.jar <project-path> [--json] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<file>]
+java -jar target/spring-config-guard.jar <project-path> [--json] [--config-server] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<file>]
 ```
 
 * `--json` — emits the report as JSON instead of the console format.
+* `--config-server` — treats `<project-path>` as a Spring Cloud Config
+  Server repository instead of a single Spring Boot project. See
+  [Config Server Mode](#config-server-mode) below. Without this flag, SCG
+  analyzes `<project-path>` the regular way (one or more
+  `application*.{yml,yaml,properties}` files, recursively).
 * `--fail-on` — minimum severity that makes the process exit with an error
   code (useful for a CI gate). `NONE` never fails the build; default is
   `HIGH`.
@@ -51,6 +56,11 @@ subdirectories are a good starting tour:
 
 All three are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
 out of sync with rule behavior as rules evolve.
+
+`demo-project/config-server-showcase/` is the equivalent tour for
+[Config Server Mode](#config-server-mode) — run it with
+`java -jar spring-config-guard.jar demo-project/config-server-showcase --config-server --fail-on=NONE`.
+Pinned by `ConfigServerShowcaseTest`.
 
 ## Output Format
 
@@ -236,6 +246,75 @@ SCG008:
 [`demo-project/multi-profile-showcase/policy-demo.yml`](demo-project/multi-profile-showcase/policy-demo.yml)
 is a working example you can point `--policy` at directly.
 
+## Config Server Mode
+
+`--config-server` scans a [Spring Cloud Config Server](https://docs.spring.io/spring-cloud-config/docs/current/reference/html/)
+backing repository instead of a single Spring Boot project's own
+`src/main/resources`. Without this flag, a repository shaped like this — files
+named after each client service (`spring.application.name`), not
+`application*` — mostly goes unanalyzed: SCG's regular file discovery only
+recognizes `application*.{yml,yaml,properties}`, so every per-service file
+would be silently skipped.
+
+```text
+config-repo/
+├── application.yml          # Global — shared by every service
+├── customers-service.yml    # one service
+├── api-gateway.yml          # another service
+└── vets-service.yml         # another service
+```
+
+`application*` is the **Global** config, shared by every client. Every other
+`.yml`/`.yaml`/`.properties` file directly in the given directory (not
+recursive — see below) is treated as one **service**, named after the file
+itself. For each service, SCG produces one `EffectiveConfig` per profile —
+the union of profiles declared via `spring.config.activate.on-profile` in
+*either* the Global file or that service's own file — by cascading four
+layers, lowest to highest precedence:
+
+```text
+Global-base  <  Global-profile  <  Service-base  <  Service-profile
+```
+
+This precedence was confirmed against the Spring Cloud Config reference doc
+before implementing it: *"the server creates an Environment from
+application.yml (shared) and foo.yml (with foo.yml taking precedence) ...
+these same rules apply in a standalone Spring Boot application"* — i.e. it's
+exactly what a client named `foo` would resolve locally with
+`spring.config.name=application,foo`. A profile a given service never
+mentions, and that Global doesn't define either, simply produces no
+`EffectiveConfig` for that service — profiles are never invented, only
+inherited or overridden. In the report, `sourceFile` is always the
+**service's** file (never `application.yml` itself, which only ever appears
+merged into every service — the same way an unnamed base config never gets
+reported standalone today) — this is enough to identify which service a
+finding belongs to, so `Finding`'s fields are unchanged from the regular
+mode.
+
+Two deliberate scope decisions, not oversights:
+
+* **Not recursive.** A Config Server repository is conventionally one flat
+  directory. Recursing (like the regular mode does, to find
+  `application.yml` inside each module of a multi-module build) risks
+  reading unrelated YAML — CI workflows, `docker-compose.yml` — as if it
+  were Spring configuration.
+* **No `{service}-{profile}.yml` file convention.** Unlike the fixed
+  `"application"` prefix, a service name is arbitrary and routinely
+  contains hyphens itself (`customers-service`, `api-gateway`), so a file
+  like `customers-service-mysql.yml` can't be reliably split into service +
+  profile without already knowing the set of valid service names. Profiles
+  for a service are read only from `on-profile` documents inside that
+  service's own file, exactly as shown above — the same mechanism SCG
+  already uses everywhere else.
+
+[`demo-project/config-server-showcase/`](demo-project/config-server-showcase/)
+is a working example (Global + two services, one of which adds its own
+profile), pinned by `ConfigServerShowcaseTest`.
+
+Validated against a real Spring Cloud Config Server repository, not just this
+fixture — see the first entry under
+[Validated against real-world code](#validated-against-real-world-code).
+
 ## Rules
 
 17 rules, `SCG001`–`SCG017`. Each reports [`Finding`](src/main/java/dev/scg/core/Finding.java)s
@@ -269,17 +348,55 @@ should be updated in the same PR that adds or removes a rule.
 ## Validated against real-world code
 
 Each run below is included as a **precision check on the linter** — every
-finding is technically accurate for the property values on disk — not as a
-security assessment of the scanned project. None of these codebases run
-these configs in production the way they're written here; what the runs
-actually demonstrate is that the linter behaves the same regardless of
-*why* a config file exists or which profile a finding lands in. SCG has no
-notion of "this is just a demo/test profile, skip it" — a rule either
-triggers on the effective properties or it doesn't, base config and named
-profiles alike (several rules document this explicitly as a deliberate
-"no profile exemption" decision, e.g.
+finding is technically accurate for the property values on disk. What every
+run demonstrates is that the linter behaves the same regardless of *why* a
+config file exists or which profile (or, in Config Server Mode, which
+service) a finding lands in. SCG has no notion of "this is just a demo/test
+profile, skip it" — a rule either triggers on the effective properties or it
+doesn't, base config and named profiles alike (several rules document this
+explicitly as a deliberate "no profile exemption" decision, e.g.
 [`H2ConsoleExposedRule`](src/main/java/dev/scg/rules/H2ConsoleExposedRule.java)).
-That's what these numbers are actually validating.
+
+**The first entry below is the one worth paying attention to.**
+`spring-petclinic-microservices-config` is a real, actively-used Spring
+Cloud Config Server backing repository — scanned exactly as it's meant to
+be consumed, not a demo module living inside a larger codebase. It's also
+the scenario that motivated [Config Server Mode](#config-server-mode) in
+the first place: without `--config-server`, every one of its 8 service
+files is invisible to SCG, since none of them match the `application*`
+naming its regular mode looks for. The other three runs (Spring Boot,
+Spring Boot Admin, PetClinic) are sample/demo code, included to stress-test
+precision rather than as a security assessment of those specific projects —
+see each entry's own caveat below.
+
+### spring-petclinic/spring-petclinic-microservices-config
+
+Run against [spring-petclinic/spring-petclinic-microservices-config](https://github.com/spring-petclinic/spring-petclinic-microservices-config)
+via `--config-server` (9 files — 1 Global `application.yml` + 8 services):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 37 | — | — | 37 |
+| SCG006 | 8 | — | — | 8 |
+| SCG012 | 8 | — | — | 8 |
+| **Total** | **53** | **0** | **0** | **53** |
+
+All 53 findings trace back to the Global `application.yml`: an unrestricted
+`management.endpoints.web.exposure.include: "*"` in its base section
+(SCG001, inherited by every service and profile), and its `mysql` profile
+hardcoding `username: root` / `password: petclinic` with `useSSL=false` on
+the JDBC URL (SCG006 + SCG012) — inherited by all 8 services, none of which
+override the datasource themselves. The 8 services found (`admin-server`,
+`api-gateway`, `customers-service`, `discovery-server`, `genai-service`,
+`tracing-server`, `vets-service`, `visits-service`) match the repository's
+file listing one-to-one, and `application.yml` itself never appears as a
+`sourceFile` — confirming it was folded into every service as the Global
+layer, exactly as documented above, rather than skipped or double-counted.
+
+```bash
+git clone https://github.com/spring-petclinic/spring-petclinic-microservices-config.git
+java -jar target/spring-config-guard.jar spring-petclinic-microservices-config --config-server --json --fail-on=NONE
+```
 
 ### spring-projects/spring-boot
 
