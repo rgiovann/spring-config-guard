@@ -211,6 +211,21 @@ should be updated in the same PR that adds or removes a rule.
 
 ## Validated against real-world code
 
+Each run below is included as a **precision check on the linter** — every
+finding is technically accurate for the property values on disk — not as a
+security assessment of the scanned project. None of these codebases run
+these configs in production the way they're written here; what the runs
+actually demonstrate is that the linter behaves the same regardless of
+*why* a config file exists or which profile a finding lands in. SCG has no
+notion of "this is just a demo/test profile, skip it" — a rule either
+triggers on the effective properties or it doesn't, base config and named
+profiles alike (several rules document this explicitly as a deliberate
+"no profile exemption" decision, e.g.
+[`H2ConsoleExposedRule`](src/main/java/dev/scg/rules/H2ConsoleExposedRule.java)).
+That's what these numbers are actually validating.
+
+### spring-projects/spring-boot
+
 Run against [spring-projects/spring-boot](https://github.com/spring-projects/spring-boot)'s
 own source (98 `application.{yml,yaml,properties}` files across its smoke-test
 and integration-test modules, `--json --fail-on=NONE`):
@@ -227,19 +242,76 @@ and integration-test modules, `--json --fail-on=NONE`):
 | SCG017 | 1 | — | — | 1 |
 | **Total** | **52** | **7** | **7** | **66** |
 
-**This is not a vulnerability report against Spring Boot.** All 66 findings
-resolve to files under `smoke-test/`/`integration-test/` module directories —
-code that exists specifically to exercise one feature (Actuator, H2 console,
-OAuth2, Kafka, etc.) with the simplest config that does it, never to simulate
-production. A hardcoded `spring.security.user.password` in a smoke test is
-expected, not a leak. Zero findings outside those directories, across the
-entire repository — this run is included here as a precision check on the
-linter (every match is technically accurate; none represents real risk in
-context), not as a security assessment of the framework.
+All 66 findings resolve to files under `smoke-test/`/`integration-test/`
+module directories — code that exists specifically to exercise one feature
+(Actuator, H2 console, OAuth2, Kafka, etc.) with the simplest config that
+does it, never to simulate production. A hardcoded
+`spring.security.user.password` in a smoke test is expected, not a leak.
+Zero findings outside those directories, across the entire repository.
 
 ```bash
 git clone https://github.com/spring-projects/spring-boot.git
 java -jar target/spring-config-guard.jar spring-boot --json --fail-on=NONE
+```
+
+### codecentric/spring-boot-admin
+
+Run against [codecentric/spring-boot-admin](https://github.com/codecentric/spring-boot-admin)'s
+sample suite (29 `application*.yml` files with findings, across 9 of its
+`spring-boot-admin-samples` modules — consul, eureka, hazelcast, mcp,
+reactive, servlet, servlet-graalvm, war, zookeeper — `--json --fail-on=NONE`):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 31 | — | — | 31 |
+| SCG006 | 24 | — | — | 24 |
+| SCG013 | — | 30 | — | 30 |
+| **Total** | **55** | **30** | **0** | **85** |
+
+Same story as Spring Boot: every finding is under
+`spring-boot-admin-samples/`, whose entire purpose is to showcase one
+integration (Consul, Eureka, Hazelcast, Zookeeper, ...) with the most
+minimal config that works, `secure`/`insecure` profiles included on
+purpose to demonstrate the difference. The
+`spring-boot-admin-sample-zookeeper/application.yml` case is a good
+illustration of the profile-agnostic point above: its `insecure` profile is
+an empty override (it only activates the profile, no properties of its own),
+yet SCG still reports the same SCG001/SCG006/SCG013 findings there as on
+`[base]`, because they're genuinely present in that profile's effective
+config — inherited or not doesn't matter.
+
+```bash
+git clone https://github.com/codecentric/spring-boot-admin.git
+java -jar target/spring-config-guard.jar spring-boot-admin --json --fail-on=NONE
+```
+
+### spring-projects/spring-petclinic
+
+Run against [spring-projects/spring-petclinic](https://github.com/spring-projects/spring-petclinic)
+(3 `application*.properties` files, `--json --fail-on=NONE`):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 3 | — | — | 3 |
+| SCG006 | 2 | — | — | 2 |
+| **Total** | **5** | **0** | **0** | **5** |
+
+Unlike the two runs above, this isn't a demo subdirectory inside a larger
+real project — PetClinic's `src/main/resources/application.properties` *is*
+the whole application, and it exists purely as a well-known reference/teaching
+app, never as a deployed service. `management.endpoints.web.exposure.include=*`
+in the base config (flagged even though the file's own comment says "Don't
+do this in production, only for development and testing") and
+`spring.datasource.password=${MYSQL_PASS:petclinic}` /
+`${POSTGRES_PASS:petclinic}` in the `mysql`/`postgres` profiles (a plaintext
+fallback behind an env placeholder) are exactly the kind of properties SCG
+is built to catch — the profile-agnostic behavior just means the tool
+doesn't quietly trust "it's only a profile-gated default" as a reason to
+stay silent.
+
+```bash
+git clone https://github.com/spring-projects/spring-petclinic.git
+java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
 ```
 
 ## Contributing
