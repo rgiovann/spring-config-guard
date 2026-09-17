@@ -69,8 +69,13 @@ public final class ProfileMerger {
      * or "root[n].subkey") in the overlay cause the entire list for that root
      * to be REMOVED from the base before the overlay is applied — no orphaned
      * base index is left mixed with the new overlay index.
+     * <p>
+     * Package-visible (not private) so {@code ConfigServerAssembler} can reuse this exact
+     * pairwise merge semantics as the building block for its 4-layer cascade
+     * (Global-base/Global-profile/Service-base/Service-profile), instead of duplicating
+     * list-replacement/purge behavior in a second implementation.
      */
-    private Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
+    Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
         Map<String, String> merged = new LinkedHashMap<>(base);
 
         Set<String> canonicalListRootsInOverlay = new LinkedHashSet<>();
