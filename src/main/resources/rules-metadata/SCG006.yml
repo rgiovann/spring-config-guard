@@ -51,15 +51,49 @@ secret-key-patterns:
   - auth-key
 
 # Value-level allowlist: if a sensitive property's value (raw, or after resolving a
-# ${VAR:default} placeholder) starts with one of these prefixes, it is skipped entirely —
-# it's already been through a proper encryption/secret-reference mechanism, not hardcoded
-# in plaintext. "{cipher}" and "{vault}" are Spring Cloud Config's own conventions for an
-# encrypted value and a Vault-backed reference, respectively. "ENC(" is Jasypt's convention
-# (the most common third-party property-encryption library for Spring Boot outside the
-# Spring Cloud Config ecosystem) for a value encrypted with EncryptablePropertyResolver.
+# ${VAR:default} placeholder) starts with one of these prefixes, it is skipped entirely.
+# Two distinct rationales share this one list:
+#   - "{cipher}", "{vault}", "ENC(": the value already went through a proper
+#     encryption/secret-reference mechanism, not hardcoded in plaintext. "{cipher}" and
+#     "{vault}" are Spring Cloud Config's own conventions for an encrypted value and a
+#     Vault-backed reference, respectively. "ENC(" is Jasypt's convention (the most common
+#     third-party property-encryption library for Spring Boot outside the Spring Cloud
+#     Config ecosystem) for a value encrypted with EncryptablePropertyResolver.
+#   - "classpath:", "classpath*:", "file:": the value is a reference to WHERE secret
+#     material lives (a PEM/keystore/certificate file on the classpath or filesystem), not
+#     the secret material itself -- confirmed via a real-world corpus run (session
+#     2026-09-16) against spring-projects/spring-boot's own smoke tests: SAML's
+#     "private-key-location"/"certificate-location" and the PEM SSL bundle's bare
+#     "private-key" property both conventionally hold a "classpath:..." path, and were
+#     false-positiving as if that path string were the secret. Deliberately does NOT
+#     include "http://"/"https://": unlike a classpath/file reference, a URL CAN be the
+#     secret itself (e.g. a Slack/Discord webhook URL) -- see HardcodedSecretsRule's class
+#     Javadoc for the related, deliberately-unaddressed limitation.
 # Entries must not contain "${" — that syntax is reserved for EnvironmentPlaceholder
 # resolution, not this allowlist.
 ignored-value-prefixes:
   - "{cipher}"
   - "{vault}"
   - "ENC("
+  - "classpath:"
+  - "classpath*:"
+  - "file:"
+
+# Key-suffix allowlist: even when a key matches one of the secret-key-patterns above, the
+# finding is suppressed if the canonicalized key ends with one of these suffixes -- Spring's
+# own naming convention for "this property is a network location/endpoint", not a value that
+# could itself hold a secret. Confirmed via the same corpus run: "token-uri",
+# "token-revocation-uri", and "token-introspection-uri" (OAuth2 Authorization Server endpoint
+# paths, from spring-projects/spring-boot's own oauth2-authorization-server smoke test) all
+# matched the "token" pattern above despite holding a URI path, not a token value.
+#
+# Known, deliberately accepted limitation: a property whose key ends in one of these
+# suffixes AND whose value is itself a secret (e.g. a Slack/Discord webhook URL, which
+# embeds its credential as a path segment, not a query param or userinfo) is also silenced
+# by this list. Detecting a secret by entropy inside a URL path segment is the job of a
+# generic secret scanner (GitLeaks, TruffleHog), not this tool's declared scope (Spring Boot
+# property-key semantics) -- see HardcodedSecretsRule's class Javadoc.
+ignored-key-suffixes:
+  - uri
+  - url
+  - endpoint

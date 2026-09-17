@@ -5,11 +5,43 @@ import dev.scg.core.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * SCG006 — detects hardcoded credentials/secrets: an exact-match list of native Spring Boot
+ * infrastructure properties ({@code high-risk-keys}) plus a substring allowlist for
+ * custom/third-party keys that merely look secret-shaped ({@code secret-key-patterns}).
+ * Always {@link Severity#HIGH} for a concrete value; {@link Severity#INFO} for a blank
+ * high-risk key or an unresolved/blank-default placeholder.
+ * <p>
+ * Two suppression mechanisms, both added after a real-world corpus run (session 2026-09-16
+ * against spring-projects/spring-boot's own source) surfaced false positives that a
+ * synthetic test suite hadn't:
+ * <ul>
+ *     <li>{@code ignored-value-prefixes} (value-based): {@code classpath:}/{@code file:} mean
+ *     the value is a *reference* to where secret material lives, not the material itself
+ *     (SAML's {@code certificate-location}, the PEM SSL bundle's bare {@code private-key}).</li>
+ *     <li>{@code ignored-key-suffixes} (key-based): {@code -uri}/{@code -url}/{@code -endpoint}
+ *     mean the property is a network location, not a value (OAuth2 Authorization Server's
+ *     {@code token-uri}/{@code token-revocation-uri} matched the {@code token} pattern despite
+ *     holding a path, not a token).</li>
+ * </ul>
+ * <b>Known, deliberately accepted limitation</b> of the key-suffix mechanism: a property whose
+ * key ends in {@code -uri}/{@code -url}/{@code -endpoint} AND whose value is itself a secret
+ * (e.g. a Slack/Discord webhook URL, which embeds its credential as a path segment rather than
+ * a query param or userinfo) is also silenced. A value-based alternative (checking the value for
+ * "no {@code ?}, no {@code @}") was considered and rejected: it would apply to *every*
+ * secret-key-patterns match, not just {@code -uri}/{@code -url}/{@code -endpoint} ones, so a
+ * property literally named {@code ...secret} or {@code ...password} holding that same kind of
+ * webhook URL would also go silent — a broader and more dangerous blind spot than this rule
+ * accepts today. Detecting a secret by entropy inside a URL path segment is a generic
+ * secret-scanner's job (GitLeaks, TruffleHog), not this tool's declared scope (Spring Boot
+ * property-key semantics).
+ */
 public final class HardcodedSecretsRule implements ConfigurableRule {
 
     private Set<String> highRiskKeys;
     private List<String> secretKeyPatterns;
     private List<String> ignoredValuePrefixes;
+    private List<String> ignoredKeySuffixes;
     private static final String RULE_NAME = "SCG006";
 
     @Override
@@ -29,6 +61,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         List<String> rawHighRisk = metadata.get("high-risk-keys");
         List<String> rawPatterns = metadata.get("secret-key-patterns");
         List<String> rawIgnoredPrefixes = metadata.getOrDefault("ignored-value-prefixes", List.of());
+        List<String> rawIgnoredKeySuffixes = metadata.getOrDefault("ignored-key-suffixes", List.of());
 
         for (String prefix : rawIgnoredPrefixes) {
             if (prefix.contains("${")) {
@@ -57,6 +90,10 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         this.ignoredValuePrefixes = rawIgnoredPrefixes.stream()
                 .map(String::strip)
                 .toList();
+
+        this.ignoredKeySuffixes = rawIgnoredKeySuffixes.stream()
+                .map(RelaxedProperties::canonicalize)
+                .toList();
     }
 
     @Override
@@ -70,7 +107,9 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
             String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
             boolean isKnownHighRiskKey = highRiskKeys.contains(canonicalKey);
-            boolean isCustomSecretKey = !isKnownHighRiskKey && matchesSecretPattern(canonicalKey);
+            boolean isCustomSecretKey = !isKnownHighRiskKey
+                    && matchesSecretPattern(canonicalKey)
+                    && !hasIgnoredKeySuffix(canonicalKey);
 
             //Skips properties that don't match either native keys or secret patterns.
             if (!isKnownHighRiskKey && !isCustomSecretKey) {
@@ -172,7 +211,8 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     }
 
     private void ensureConfigured() {
-        if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null) {
+        if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null
+                || ignoredKeySuffixes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
     }
@@ -199,6 +239,15 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private boolean matchesSecretPattern(String canonicalKey) {
         for (String pattern : secretKeyPatterns) {
             if (canonicalKey.contains(pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasIgnoredKeySuffix(String canonicalKey) {
+        for (String suffix : ignoredKeySuffixes) {
+            if (canonicalKey.endsWith(suffix)) {
                 return true;
             }
         }

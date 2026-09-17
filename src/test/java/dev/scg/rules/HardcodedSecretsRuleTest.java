@@ -168,6 +168,42 @@ class HardcodedSecretsRuleTest {
                         assertThat(finding.message()).doesNotContain("core Spring Boot property");
                     });
         }
+
+        @ParameterizedTest(name = "Should ignore key ending in a location/endpoint suffix: {0}")
+        @ValueSource(strings = {
+                "spring.security.oauth2.authorizationserver.endpoint.token-uri",
+                "spring.security.oauth2.authorizationserver.endpoint.token-revocation-uri",
+                "spring.security.oauth2.authorizationserver.endpoint.token-introspection-uri",
+                "app.security.token-url",
+                "app.security.credential-endpoint"
+        })
+        @DisplayName("Ignores custom-pattern matches whose key ends in a location suffix (uri/url/endpoint) -- the property is a network address, not a value")
+        void shouldIgnoreKeysEndingInLocationSuffix(String key) {
+            // Real-world regression: spring-projects/spring-boot's own OAuth2 Authorization
+            // Server smoke test names these "token-uri"/"token-revocation-uri"/
+            // "token-introspection-uri", holding endpoint paths like "/token", not a token
+            // value -- found via a corpus run against the real repository (session 2026-09-16).
+            EffectiveConfig config = createConfig(Map.of(key, "/some/endpoint/path"));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Still detects a genuine custom-pattern key that does NOT end in a location suffix (positive control for the key-suffix guard)")
+        void shouldStillDetectCustomPatternKeyNotEndingInLocationSuffix() {
+            // "app.jwt.token" is the same case already covered by
+            // shouldDetectCustomPatternKeys above; repeated here, co-located with the
+            // suffix-exclusion tests, to make the contrast with shouldIgnoreKeysEndingInLocationSuffix
+            // explicit: only the location-suffixed keys are exempted, not "token" matches in general.
+            EffectiveConfig config = createConfig(Map.of("app.jwt.token", "raw-token-value-99"));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
     }
 
     @Nested
@@ -234,6 +270,39 @@ class HardcodedSecretsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertTrue(findings.isEmpty(), "Values with ignored prefixes inside placeholder fallbacks must not trigger findings");
+        }
+
+        @ParameterizedTest(name = "Should ignore a resource-location value: {0}")
+        @ValueSource(strings = {
+                "classpath:saml/privatekey.txt",
+                "classpath*:saml/certificate.txt",
+                "file:/etc/secrets/server.key"
+        })
+        @DisplayName("Ignores custom-pattern keys whose value is a classpath/file resource reference, not the secret itself")
+        void shouldIgnoreResourceLocationValues(String locationValue) {
+            // Real-world regression: Spring Boot's PEM SSL bundle names its own property
+            // "private-key" (no "-location" suffix at all) yet conventionally holds a
+            // "classpath:..."/"file:..." reference, e.g. spring.ssl.bundle.pem.default.keystore.private-key
+            // -- found via a corpus run against spring-projects/spring-boot (session 2026-09-16).
+            EffectiveConfig config = createConfig(Map.of("spring.ssl.bundle.pem.default.keystore.private-key", locationValue));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Still detects a genuine custom-pattern key whose value is NOT a resource reference (positive control)")
+        void shouldStillDetectNonLocationValueForResourceLikeKey() {
+            EffectiveConfig config = createConfig(
+                    Map.of("spring.ssl.bundle.pem.default.keystore.private-key",
+                            "-----BEGIN PRIVATE KEY-----\nMIIExampleKeyMaterial\n-----END PRIVATE KEY-----")
+            );
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
         }
     }
 
