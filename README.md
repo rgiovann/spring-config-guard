@@ -55,6 +55,64 @@ subdirectories are a good starting tour:
 All three are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
 out of sync with rule behavior as rules evolve.
 
+## Rules
+
+17 rules, `SCG001`–`SCG017`. Each reports [`Finding`](src/main/java/dev/scg/core/Finding.java)s
+at `HIGH`, `MEDIUM`, `LOW`, or `INFO` — `INFO` never fails the build on its own
+([`ExitCodeResolver`](src/main/java/dev/scg/cli/ExitCodeResolver.java) excludes it).
+Authoritative source:
+[`META-INF/services/dev.scg.core.Rule`](src/main/resources/META-INF/services/dev.scg.core.Rule),
+enforced by `RuleRegistryTest`'s exact-ID assertion — this table mirrors it and
+should be updated in the same PR that adds or removes a rule.
+
+| ID | Severity | Description |
+|---|---|---|
+| SCG001 | HIGH / INFO | Actuator exposed via `exposure.include=*` without restricting sensitive endpoints |
+| SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
+| SCG003 | HIGH / MEDIUM | CORS with global or pattern-based wildcard in `allowed-origins`/patterns combined with `allow-credentials=true` |
+| SCG004 | MEDIUM / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins |
+| SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
+| SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
+| SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
+| SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints in production |
+| SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
+| SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` properties |
+| SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
+| SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
+| SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |
+| SCG014 | HIGH / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
+| SCG015 | HIGH / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
+| SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
+| SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
+
+## Validated against real-world code
+
+Run against [spring-projects/spring-boot](https://github.com/spring-projects/spring-boot)'s
+own source (98 `application.{yml,yaml,properties}` files across its smoke-test
+and integration-test modules, `--json --fail-on=NONE`):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 21 | — | — | 21 |
+| SCG002 | 3 | — | — | 3 |
+| SCG006 | 24 | — | 7 | 31 |
+| SCG007 | 2 | — | — | 2 |
+| SCG009 | — | 1 | — | 1 |
+| SCG013 | — | 6 | — | 6 |
+| SCG014 | 1 | — | — | 1 |
+| SCG017 | 1 | — | — | 1 |
+| **Total** | **52** | **7** | **7** | **66** |
+
+All 66 findings resolve to files under `smoke-test/`/`integration-test/` module
+directories — code that exists to exercise a Spring Boot feature under test,
+never deployed. Zero findings outside those directories, across the entire
+repository.
+
+```bash
+git clone https://github.com/spring-projects/spring-boot.git
+java -jar target/spring-config-guard.jar spring-boot --json --fail-on=NONE
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) — build/test setup, how to add a
