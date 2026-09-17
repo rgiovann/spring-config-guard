@@ -25,10 +25,7 @@ java -jar target/spring-config-guard.jar <project-path> [--json] [--fail-on=HIGH
   code (useful for a CI gate). `NONE` never fails the build; default is
   `HIGH`.
 * `--policy` — YAML file for binary suppression of findings by rule +
-  profile (e.g. `SCG002: [dev]` suppresses SCG002 findings in the `dev`
-  profile; `"*"` suppresses across every profile; `base` suppresses in the
-  common/unnamed profile). A suppressed finding disappears from both the
-  report and the exit code; the suppressed count is printed to stderr.
+  profile. See [Policy](#policy) below for the file schema and examples.
   Without this flag, no suppression is applied.
 * `--help` / `-h` — shows the usage message (flags, examples, exit codes)
   and exits with code 0. Takes precedence over any other argument.
@@ -187,6 +184,57 @@ Note `"profileLabel": "__spring_config_guard_base__"` (the sentinel, unnamed
 base) versus `"profileLabel": "base"` (the real profile that happens to
 share the word "base") — two distinct strings. Using `"base"` for both is
 exactly the collision the sentinel exists to avoid.
+
+## Policy
+
+`--policy=<file>` suppresses findings by rule ID + profile, without
+changing what a rule detects — rules stay profile-agnostic by design (no
+rule decides *whether* to fire based on the profile), so suppression is
+strictly a separate, explicit risk-acceptance layer on top. A suppressed
+finding disappears from both the report and the exit-code calculation;
+SCG prints the suppressed count to stderr
+(`spring-config-guard: N finding(s) suppressed by policy.`), so it's never
+silent. Without `--policy`, no suppression is applied at all.
+
+The file is a YAML map: each key is a rule ID, each value a list of
+profiles to suppress that rule in.
+
+```yaml
+# policy.yml
+SCG002:
+  - dev          # H2 console is expected to be open locally
+
+SCG012:
+  - dev
+  - qa           # test brokers in dev/qa run without TLS on purpose
+
+SCG006:
+  - base         # one specific base-config finding, accepted as-is
+```
+
+* A real profile name (`dev`, `qa`, `prod`, ...) must match exactly what
+  shows up in the report's `[profile: <name>]` — matched case-sensitively,
+  the same way Spring itself treats profile names.
+* `base` (case-insensitive) is a tool-provided alias for the "no active
+  profile" configuration, the same human-facing label the console report
+  already uses for it — you never need to know or write the internal
+  sentinel (`__spring_config_guard_base__`).
+* `"*"` suppresses a rule across every profile at once, instead of listing
+  each one:
+
+```yaml
+# accept SCG008 (Swagger/OpenAPI exposure) project-wide
+SCG008:
+  - "*"
+```
+
+* An unknown rule ID, an empty file, or a rule mapped to an empty list of
+  profiles all fail fast with a specific error instead of silently
+  suppressing nothing — a typo in a rule ID is caught immediately rather
+  than looking like it worked.
+
+[`demo-project/multi-profile-showcase/policy-demo.yml`](demo-project/multi-profile-showcase/policy-demo.yml)
+is a working example you can point `--policy` at directly.
 
 ## Rules
 
