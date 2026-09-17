@@ -103,10 +103,15 @@ and integration-test modules, `--json --fail-on=NONE`):
 | SCG017 | 1 | — | — | 1 |
 | **Total** | **52** | **7** | **7** | **66** |
 
-All 66 findings resolve to files under `smoke-test/`/`integration-test/` module
-directories — code that exists to exercise a Spring Boot feature under test,
-never deployed. Zero findings outside those directories, across the entire
-repository.
+**This is not a vulnerability report against Spring Boot.** All 66 findings
+resolve to files under `smoke-test/`/`integration-test/` module directories —
+code that exists specifically to exercise one feature (Actuator, H2 console,
+OAuth2, Kafka, etc.) with the simplest config that does it, never to simulate
+production. A hardcoded `spring.security.user.password` in a smoke test is
+expected, not a leak. Zero findings outside those directories, across the
+entire repository — this run is included here as a precision check on the
+linter (every match is technically accurate; none represents real risk in
+context), not as a security assessment of the framework.
 
 ```bash
 git clone https://github.com/spring-projects/spring-boot.git
