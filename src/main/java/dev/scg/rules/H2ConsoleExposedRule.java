@@ -59,7 +59,7 @@ public final class H2ConsoleExposedRule implements Rule {
         );
 
         if (allowsRemoteAccess) {
-            message.append("AGGRAVATING FACTOR: %s=true — the console accepts remote connections, not just localhost. "
+            message.append("AGGRAVATING FACTOR: %s=true - the console accepts remote connections, not just localhost. "
                             .formatted(WEB_ALLOW_OTHERS_KEY))
                     .append("Critical risk of remote code execution (RCE) from any host that can reach the application over the network. ")
                     .append("Disable both properties outside local environments.");

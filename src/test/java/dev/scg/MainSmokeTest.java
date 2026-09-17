@@ -115,7 +115,7 @@ class MainSmokeTest {
         // SCG001: base + qa + dev = 3
         // SCG002: prod + qa + dev = 3
         // Total = 6 HIGH violations
-        assertTrue(output.contains("Summary: 6 violation(s) — HIGH: 6, MEDIUM: 0, LOW: 0"),
+        assertTrue(output.contains("Summary: 6 violation(s) - HIGH: 6, MEDIUM: 0, LOW: 0, INFO: 0"),
                 "The summary should account for exactly 6 HIGH violations");
     }
 }
