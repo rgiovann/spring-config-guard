@@ -35,6 +35,8 @@ public record Finding(
         String profileDisplay = ProfileMerger.BASE_PROFILE_LABEL.equals(profileLabel)
                 ? "base"
                 : "profile: " + profileLabel;
-        return "[%s] %s (%s) [%s] - %s".formatted(severity, ruleId, sourceFile, profileDisplay, message);
+        // Header line (severity/rule/file/profile) separate from the indented message line so
+        // long messages don't visually run into the next finding's header on the console.
+        return "[%s] %s - %s [%s]%n    %s".formatted(severity, ruleId, sourceFile, profileDisplay, message);
     }
 }

@@ -18,9 +18,13 @@ public final class ConsoleReporter implements Reporter {
             return;
         }
 
-        findings.stream()
-                .sorted(Finding.DEFAULT_ORDER)
-                .forEach(out::println);
+        List<Finding> sorted = findings.stream().sorted(Finding.DEFAULT_ORDER).toList();
+        for (int i = 0; i < sorted.size(); i++) {
+            if (i > 0) {
+                out.println();
+            }
+            out.println(sorted.get(i));
+        }
 
         Map<Severity, Long> counts = findings.stream()
                 .collect(Collectors.groupingBy(Finding::severity, Collectors.counting()));

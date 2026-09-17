@@ -83,7 +83,10 @@ class MainSmokeTest {
 
         // Rule SCG001 - Actuator Exposure (Zero-Trust)
         assertTrue(output.contains("SCG001"), "Should report Actuator violation");
-        long scg001Count = output.lines().filter(line -> line.contains("SCG001")).count();
+        // Match the header line only ("] SCG001 - "), not the message body — SCG001's own
+        // message text mentions "SCG001" again (its show-values cross-reference), which would
+        // double-count now that the header and message are on separate lines.
+        long scg001Count = output.lines().filter(line -> line.contains("] SCG001 - ")).count();
         assertEquals(3, scg001Count, "SCG001 should appear in base, qa, and dev (all inherit include=* without redefining it)");
 
         boolean devHasActuatorViolation = output.lines()

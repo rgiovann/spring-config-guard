@@ -64,13 +64,17 @@ Both report formats carry the same five
 
 ### Console output (default)
 
-One line per finding:
+A short header line per finding, followed by the message on its own
+indented line, with a blank line between findings so long messages don't
+visually run into the next one:
 
 ```
-[HIGH] SCG002 (application.yml) [profile: dev] - H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
+[HIGH] SCG002 - application.yml [profile: dev]
+    H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
 ```
 
-Format: `[severity] ruleId (sourceFile) [profileDisplay] - message`
+Format: `[severity] ruleId - sourceFile [profileDisplay]` header, then the
+message indented on the next line.
 
 * `profileDisplay` is `base` for the configuration that applies with no
   active profile (the common section every profile inherits from — no
@@ -140,9 +144,14 @@ profile" case apart from the real `base` profile purely through the
 `profile:` prefix:
 
 ```
-[HIGH] SCG001 (application.yml) [base] - management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...
-[HIGH] SCG002 (application.yml) [profile: base] - H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...
-[HIGH] SCG002 (application.yml) [profile: dev] - H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...
+[HIGH] SCG001 - application.yml [base]
+    management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...
+
+[HIGH] SCG002 - application.yml [profile: base]
+    H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...
+
+[HIGH] SCG002 - application.yml [profile: dev]
+    H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...
 ```
 
 The equivalent `--json` output makes the same distinction through the raw
