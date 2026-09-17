@@ -86,13 +86,23 @@ public final class ConfigLoader {
                     .toList();
 
             for (Path p : candidates) {
-                List<ConfigDocument> documents = p.toString().endsWith(".properties")
-                        ? loadProperties(p)
-                        : loadYaml(p);
-                result.add(new ConfigFile(p, documents));
+                result.add(loadFile(p));
             }
         }
         return result;
+    }
+
+    /**
+     * Parses a single file, already known to be YAML or properties, into a ConfigFile.
+     * Package-visible so ConfigServerAssembler can reuse this exact parsing (multi-document
+     * profile extraction, relaxed on-profile key lookup, sentinel handling) for files that
+     * don't match the "application" prefix loadDirectory requires.
+     */
+    ConfigFile loadFile(Path p) throws IOException {
+        List<ConfigDocument> documents = p.toString().endsWith(".properties")
+                ? loadProperties(p)
+                : loadYaml(p);
+        return new ConfigFile(p, documents);
     }
 
     private static boolean isSpringConfigFile(Path p) {

@@ -54,7 +54,8 @@ public final class ProfileMerger {
         return result;
     }
 
-    private Map<String, String> findBaseProperties(ConfigFile configFile) {
+    /** Package-visible so ConfigServerAssembler can reuse this for both the Global and each service file. */
+    Map<String, String> findBaseProperties(ConfigFile configFile) {
         for (ConfigDocument document : configFile.documents()) {
             if (document.profile().isEmpty()) {
                 return document.properties();
