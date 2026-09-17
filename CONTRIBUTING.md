@@ -27,7 +27,9 @@ mvn test -Dtest=HardcodedSecretsRuleTest#detectsPlaintextPassword
 Build the runnable fat jar with `mvn package`, then try it against the
 bundled fixtures — see the README's "Usage" section and the
 `demo-project/`/`demo-project-clean/` showcase subdirectories for real
-input/output examples, including the Policy layer's `--policy` flag.
+input/output examples, including the Policy layer's `--policy` flag and
+Config Server Mode's `--config-server` flag
+(`demo-project/config-server-showcase/`).
 
 ## Project structure and conventions
 
