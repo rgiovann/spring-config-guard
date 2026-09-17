@@ -1,0 +1,14 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: ALWAYS
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+logging.level.org.springframework: WARN

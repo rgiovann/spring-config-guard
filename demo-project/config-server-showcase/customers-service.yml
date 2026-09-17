@@ -1,0 +1,10 @@
+spring.application.name: customers-service
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://localhost:3306/customers?useSSL=false
+    username: root
+    password: petclinic
