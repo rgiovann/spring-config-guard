@@ -35,6 +35,15 @@ rules.
 
 ## Usage
 
+Download the latest release jar and run it directly — no build step required:
+
+```bash
+curl -LO https://github.com/rgiovann/spring-config-guard/releases/latest/download/spring-config-guard.jar
+java -jar spring-config-guard.jar <project-path> [--json] [--config-server] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<file>]
+```
+
+Or build it from source:
+
 ```bash
 mvn package
 java -jar target/spring-config-guard.jar <project-path> [--json] [--config-server] [--fail-on=HIGH|MEDIUM|LOW|NONE] [--policy=<file>]
@@ -81,6 +90,22 @@ out of sync with rule behavior as rules evolve.
 [Config Server Mode](#config-server-mode) — run it with
 `java -jar spring-config-guard.jar demo-project/config-server-showcase --config-server --fail-on=NONE`.
 Pinned by `ConfigServerShowcaseTest`.
+
+## CI/CD Integration
+
+A minimal GitHub Actions job that downloads the jar and fails the build on
+`HIGH` findings:
+
+```yaml
+# .github/workflows/scg.yml
+- name: Security config lint (spring-config-guard)
+  run: |
+    curl -LO https://github.com/rgiovann/spring-config-guard/releases/latest/download/spring-config-guard.jar
+    java -jar spring-config-guard.jar . --fail-on=HIGH
+```
+
+Any CI system that can run a JVM and a shell step works the same way —
+GitHub Actions is just the example above.
 
 ## Output Format
 
