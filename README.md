@@ -4,13 +4,30 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A configuration linter for Spring Boot projects that runs **in your build**,
-not after the problem has already leaked into production.
+not after the problem has already leaked into production. Built for Spring
+Boot teams that want this enforced automatically as a CI gate, not as a
+manual review step.
 
 Existing Actuator/config scanning tools (e.g. pentest scanners) run from the
 outside, against a URL that's already in production — by the time you find
 the problem, it's already exposed. `spring-config-guard` reads
 `application.yml` / `application.properties` from your own source code and
 fails the build (exit code 1) before deployment.
+
+A generic static/YAML scanner (e.g. Checkov, or a custom Semgrep rule) can
+flag a suspicious key in one file, but it doesn't model Spring Boot's own
+configuration semantics. It doesn't know that `foo-bar`, `fooBar`, and
+`foo_bar` are the same property
+([relaxed binding](src/main/java/dev/scg/core/RelaxedProperties.java)), and
+it evaluates each file in isolation instead of computing the *effective*
+configuration a running instance actually sees — the merge of
+`application.yml` with `application-{profile}.yml`
+([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)) that
+decides whether a base value survives or gets overridden per profile.
+`spring-config-guard` computes that effective configuration first, then runs
+its rules against it — the same kind of inspection a generic per-file
+scanner can't do without reimplementing Spring's own binding and merge
+rules.
 
 
 ## Usage
