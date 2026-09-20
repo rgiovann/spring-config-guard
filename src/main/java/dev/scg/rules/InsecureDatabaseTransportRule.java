@@ -93,7 +93,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    // Parse do formato "param=valor" mantendo 1 único nível no YAML
+    // Parses the "param=value" format, keeping a single flat level in the YAML
     private Map<String, Set<String>> parseQueryParamMap(List<String> rawPairs) {
         Map<String, Set<String>> parsedParams = new HashMap<>();
         for (String pair : rawPairs) {

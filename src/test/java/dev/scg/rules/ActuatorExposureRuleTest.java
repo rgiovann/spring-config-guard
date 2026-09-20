@@ -169,9 +169,9 @@ class ActuatorExposureRuleTest {
     @Test
     @DisplayName("Should generate a finding when heapdump is explicitly unrestricted via access")
     void shouldGenerateFindingWhenHeapdumpIsExplicitlyUnrestrictedViaAccess() {
-        // Cenário real testado empiricamente: access=unrestricted é o único jeito de expor
-        // heapdump — se alguém fizer isso, a regra precisa continuar acusando, não silenciar
-        // por causa do default restrito.
+        // Real scenario, verified empirically: access=unrestricted is the only way to expose
+        // heapdump — if someone does that, the rule must still flag it, not stay silent because
+        // of the restricted default.
         EffectiveConfig config = configWith(Map.ofEntries(
                 Map.entry("management.endpoints.web.exposure.include", "*"),
                 Map.entry("management.endpoint.env.enabled", "false"),
@@ -522,7 +522,7 @@ class ActuatorExposureRuleTest {
     @Test
     @DisplayName("Should NOT false-positive on endpoint sharing a prefix with target endpoint (exact token match)")
     void shouldNotFalsePositiveOnEndpointSharingPrefixWithTarget() {
-        // "environment" contém "env" como substring, mas não deve disparar o check do "env"
+        // "environment" contains "env" as a substring, but must not trigger the "env" check
         EffectiveConfig config = configWith(Map.of(
                 "management.endpoints.web.exposure.include", "health,environment",
                 "management.endpoint.env.show-values", "always"

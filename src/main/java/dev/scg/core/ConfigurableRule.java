@@ -3,17 +3,13 @@ package dev.scg.core;
 public interface ConfigurableRule extends Rule {
 
     /**
-     * Define a constante raiz para o diretório de metadados no classpath.
+     * Root constant for the metadata directory on the classpath.
      */
     String METADATA_BASE_PATH = "rules-metadata/";
 
     /**
-     * Retorna apenas o nome do arquivo da regra (ex: "SCG006.yml").
-     */
-
-    /**
-     * Resolve o caminho completo no classpath.
-     * Nenhuma regra concreta precisa sobrescrever este método!
+     * Resolves the full classpath location for the rule's metadata file
+     * (e.g. "SCG006.yml"). No concrete rule needs to override this method.
      */
     default String metadataResource() {
         return METADATA_BASE_PATH + id() +".yml";

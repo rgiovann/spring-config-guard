@@ -297,7 +297,7 @@ class EmbeddedConnectionCredentialsRuleTest {
 
             List<Finding> findings = rule.check(config);
 
-            // Injeção limpa gera INFO de observabilidade sobre placeholder irresolvível, não HIGH.
+            // A clean injection produces an observability INFO about an unresolvable placeholder, not HIGH.
             assertThat(findings).hasSize(1);
             assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
             assertThat(findings.getFirst().message()).contains("relies on an unresolved environment placeholder");

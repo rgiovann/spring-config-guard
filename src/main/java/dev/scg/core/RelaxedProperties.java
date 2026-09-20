@@ -48,9 +48,9 @@ public final class RelaxedProperties {
     }
 
     /**
-     * Valores de uma chave OU de seus filhos indexados (key[0], key[1]...),
-     * tolerante a relaxed binding. Usado por regras que precisam checar
-     * tanto a forma escalar quanto a forma de lista YAML de uma propriedade.
+     * Values of a key OR of its indexed children (key[0], key[1]...),
+     * tolerant of relaxed binding. Used by rules that need to check both
+     * the scalar and the YAML list form of a property.
      */
     public static List<String> valuesForKeyOrListChildren(Map<String, String> properties, String canonicalKey) {
         String target = canonicalize(canonicalKey);

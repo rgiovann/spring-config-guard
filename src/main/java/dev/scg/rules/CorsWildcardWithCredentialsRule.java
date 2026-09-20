@@ -125,30 +125,30 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
             return WildcardScope.NONE;
         }
 
-        // 1. Literal '*' puro
+        // 1. Pure literal '*'
         if ("*".equals(origin)) {
             return WildcardScope.GLOBAL;
         }
 
-        // Extrair apenas o host (removendo esquema HTTP/HTTPS/Wildcard-Scheme se presente)
+        // Extract just the host (stripping the HTTP/HTTPS/Wildcard-Scheme scheme, if present)
         String host = origin;
         int schemeIdx = host.indexOf("://");
         if (schemeIdx != -1) {
             host = host.substring(schemeIdx + 3);
         }
 
-        // Remover porta se presente
+        // Strip the port, if present
         int portIdx = host.indexOf(":");
         if (portIdx != -1) {
             host = host.substring(0, portIdx);
         }
 
-        // 2. Sem host literal presente (ex: https://*, http://*, *://*) -> GLOBAL
+        // 2. No literal host present (e.g. https://*, http://*, *://*) -> GLOBAL
         if ("*".equals(host)) {
             return WildcardScope.GLOBAL;
         }
 
-        // 3. Qualquer outro padrão que contenha '*' com host literal -> NON_GLOBAL (MEDIUM)
+        // 3. Any other pattern containing '*' with a literal host -> NON_GLOBAL (MEDIUM)
         return WildcardScope.NON_GLOBAL;
     }
 

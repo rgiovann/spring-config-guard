@@ -12,12 +12,12 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Testes do ProfileMerger — a peça que funde o documento base (sem profile)
- * de um ConfigFile com cada documento de profile nomeado, produzindo a
- * List<EffectiveConfig> que o RuleEngine efetivamente avalia.
-  * Diferente de ConfigLoaderTest, aqui construímos ConfigFile/ConfigDocument
- * diretamente em memória (sem passar por parsing de YAML/properties), para
- * isolar e testar só a lógica de merge, não a leitura de arquivo.
+ * Tests for ProfileMerger — the piece that merges a ConfigFile's base
+ * document (no profile) with each named profile document, producing the
+ * List<EffectiveConfig> the RuleEngine actually evaluates.
+ * Unlike ConfigLoaderTest, here we build ConfigFile/ConfigDocument directly
+ * in memory (without going through YAML/properties parsing), to isolate and
+ * test only the merge logic, not file reading.
  */
 class ProfileMergerTest {
 

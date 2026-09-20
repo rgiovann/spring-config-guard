@@ -35,7 +35,7 @@
             <version>2.2</version>
         </dependency>
 
-        <!-- Serialização do relatório JSON (JsonReporter) -->
+        <!-- JSON report serialization (JsonReporter) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -72,9 +72,9 @@
                 </configuration>
             </plugin>
 
-            <!-- Gera o fat-jar: snakeyaml e jackson-databind embutidos,
-                 permitindo "java -jar target/spring-config-guard.jar ..."
-                 sem precisar montar classpath manualmente. -->
+            <!-- Builds the fat jar: snakeyaml and jackson-databind embedded,
+                 allowing "java -jar target/spring-config-guard.jar ..."
+                 without having to assemble the classpath manually. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

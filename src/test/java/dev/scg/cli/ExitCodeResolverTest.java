@@ -16,7 +16,7 @@ class ExitCodeResolverTest {
     private final ExitCodeResolver resolver = new ExitCodeResolver();
 
     private Finding findingWith(Severity severity) {
-        return new Finding("SCGxxx", severity, "mensagem de teste", "application.yml", "prod");
+        return new Finding("SCGxxx", severity, "test message", "application.yml", "prod");
     }
 
     @Test

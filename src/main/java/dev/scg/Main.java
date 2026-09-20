@@ -23,7 +23,7 @@ public final class Main {
         System.exit(run(args));
     }
 
-    // Separado de main() para ser testável sem matar a JVM do processo de teste.
+    // Separate from main() so it's testable without killing the test process's JVM.
     static int run(String[] args) {
         if (requestsHelp(args)) {
             System.out.print(CliArgumentParser.HELP_TEXT);
@@ -68,7 +68,7 @@ public final class Main {
             engine = new RuleEngine(rules);
         } catch (IllegalStateException e) {
             System.err.println("Startup error: " + e.getMessage());
-            return ExitCodeResolver.USAGE_ERROR; // Ou o código de falha de configuração definido no seu projeto
+            return ExitCodeResolver.USAGE_ERROR;
         }
 
         Policy policy = Policy.none();

@@ -1,8 +1,8 @@
 package dev.scg.core;
 
 /**
- * Severidade de um achado (finding). Usada tanto para exibição no relatório
- * quanto para decidir o exit code do processo (útil em CI).
+ * Severity of a finding. Used both for display in the report and to
+ * decide the process's exit code (useful in CI).
  */
 public enum Severity {
     HIGH,

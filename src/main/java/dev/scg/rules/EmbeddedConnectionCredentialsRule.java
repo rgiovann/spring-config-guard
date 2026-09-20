@@ -104,10 +104,10 @@ public final class EmbeddedConnectionCredentialsRule implements ConfigurableRule
 
             String trimmedValue = rawValue.strip();
 
-            // 1. Resolve os placeholders com seus defaults estáticos
+            // 1. Resolve placeholders using their static defaults
             Optional<String> resolvedValue = EnvironmentPlaceholder.resolve(trimmedValue);
 
-            // Se o placeholder for completamente irresolvível e sem default -> INFO
+            // If the placeholder is fully unresolvable and has no default -> INFO
             if (resolvedValue.isEmpty()) {
                 findings.add(new Finding(
                         id(),
