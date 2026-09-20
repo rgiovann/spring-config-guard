@@ -1,12 +1,15 @@
 # spring-config-guard
 
 [![CI](https://github.com/rgiovann/spring-config-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/rgiovann/spring-config-guard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rgiovann/spring-config-guard)](https://github.com/rgiovann/spring-config-guard/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A configuration linter for Spring Boot projects that runs **in your build**,
-not after the problem has already leaked into production. Built for Spring
-Boot teams that want this enforced automatically as a CI gate, not as a
-manual review step.
+not after the problem has already leaked into production — catching things
+like exposed Actuator endpoints, hardcoded credentials, insecure TLS
+transport, and permissive CORS before they ship. Built for Spring Boot teams
+that want this enforced automatically as a CI gate, not as a manual review
+step.
 
 Existing Actuator/config scanning tools (e.g. pentest scanners) run from the
 outside, against a URL that's already in production — by the time you find
