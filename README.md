@@ -381,7 +381,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
 | SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints in production |
 | SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
-| SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` properties |
+| SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot 3.x) or `spring.web.error.include-*` (4.0) properties |
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
 | SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
 | SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |

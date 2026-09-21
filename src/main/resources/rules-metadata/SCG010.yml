@@ -1,0 +1,24 @@
+# SCG010 (VerboseErrorResponseRule) configuration.
+#
+# Each list is the set of key aliases for one logical error-response property. Spring Boot 4.0
+# renamed the whole server.error.* family to spring.web.error.* (confirmed against the official
+# OpenRewrite migration recipe, SpringBootProperties_4_0) -- both spellings are checked
+# independently so the rule keeps working across 3.x and 4.0 projects without needing to know
+# which major version a given project targets. include-path/path/whitelabel.enabled are not
+# included here: they don't control response verbosity, so they're out of SCG010's scope.
+
+include-stacktrace-keys:
+  - "server.error.include-stacktrace"
+  - "spring.web.error.include-stacktrace"
+
+include-exception-keys:
+  - "server.error.include-exception"
+  - "spring.web.error.include-exception"
+
+include-message-keys:
+  - "server.error.include-message"
+  - "spring.web.error.include-message"
+
+include-binding-errors-keys:
+  - "server.error.include-binding-errors"
+  - "spring.web.error.include-binding-errors"

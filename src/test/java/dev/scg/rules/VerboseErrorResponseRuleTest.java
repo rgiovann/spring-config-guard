@@ -3,22 +3,121 @@ package dev.scg.rules;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
 import dev.scg.core.Severity;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.yaml.snakeyaml.Yaml;
 
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class VerboseErrorResponseRuleTest {
 
-    private final VerboseErrorResponseRule rule = new VerboseErrorResponseRule();
+    private VerboseErrorResponseRule rule;
     private static final Path FAKE_PATH = Path.of("src/main/resources/application.yml");
+
+    @BeforeEach
+    void setUp() {
+        rule = new VerboseErrorResponseRule();
+
+        // Loads the SCG010.yml metadata directly from classpath resources, so the tests always
+        // reflect the real shipped metadata instead of a hand-copied approximation.
+        try (InputStream is = getClass().getResourceAsStream("/rules-metadata/SCG010.yml")) {
+            if (is == null) {
+                throw new IllegalStateException("Rule metadata file '/rules-metadata/SCG010.yml' not found in test classpath resources");
+            }
+
+            Yaml yaml = new Yaml();
+            Map<String, List<String>> metadata = yaml.load(is);
+
+            rule.configure(metadata);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load or parse SCG010.yml metadata", e);
+        }
+    }
+
+    @Nested
+    @DisplayName("Configuration Lifecycle and Validation")
+    class LifecycleAndConfigurationTests {
+
+        @Test
+        @DisplayName("It should fail to execute check() without having called configure()")
+        void shouldThrowExceptionWhenNotConfigured() {
+            VerboseErrorResponseRule unconfiguredRule = new VerboseErrorResponseRule();
+            EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "default", Map.of());
+
+            assertThatThrownBy(() -> unconfiguredRule.check(config))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("must be configured before execution");
+        }
+    }
+
+    @Nested
+    @DisplayName("Spring Boot 4.0 spring.web.error.* key aliases")
+    class SpringWebErrorAliasTests {
+
+        // Sourced dynamically from the shipped SCG010.yml rather than hand-copied, so this test
+        // keeps covering every alias even if more are added later (per this project's
+        // ConfigurableRule testing convention -- see EmbeddedConnectionCredentialsRuleTest).
+        // Loads the YAML itself instead of relying on the outer class's @BeforeEach: @MethodSource
+        // factories are invoked while resolving test invocations, which happens before per-test
+        // lifecycle callbacks run, so the shared `metadata` field can't be trusted to be populated
+        // yet at this point.
+        static Stream<String> newPrefixKeys() throws Exception {
+            Map<String, List<String>> yamlMetadata;
+            try (InputStream is = VerboseErrorResponseRuleTest.class.getResourceAsStream("/rules-metadata/SCG010.yml")) {
+                yamlMetadata = new Yaml().load(is);
+            }
+
+            return Stream.of(
+                    "include-stacktrace-keys",
+                    "include-exception-keys",
+                    "include-message-keys",
+                    "include-binding-errors-keys"
+            ).map(metadataKey -> yamlMetadata.get(metadataKey).stream()
+                    .filter(key -> key.startsWith("spring.web.error."))
+                    .findFirst()
+                    .orElseThrow());
+        }
+
+        @ParameterizedTest
+        @MethodSource("newPrefixKeys")
+        @DisplayName("Should report a finding when the spring.web.error.* alias is set to a risky value")
+        void shouldReportOnSpringWebErrorPrefix(String key) {
+            String riskyValue = key.endsWith("include-exception") ? "true" : "always";
+            EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(key, riskyValue));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().message()).contains(key + "=" + riskyValue);
+        }
+
+        @Test
+        @DisplayName("Should report two independent findings when both the old and new prefix are set on the same property")
+        void shouldReportBothPrefixesIndependently() {
+            EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                    "server.error.include-stacktrace", "always",
+                    "spring.web.error.include-stacktrace", "always"
+            ));
+
+            List<Finding> findings = rule.check(config);
+
+            assertThat(findings).hasSize(2);
+            assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
+        }
+    }
 
     @Test
     @DisplayName("Should stay silent when all server.error.* properties are safe or absent")

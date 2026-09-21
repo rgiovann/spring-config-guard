@@ -4,14 +4,22 @@ import dev.scg.core.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 
 /**
  * SCG010 — detects Spring Boot's HTTP error response verbosity switches left enabled:
- * {@code server.error.include-stacktrace}, {@code server.error.include-exception},
- * {@code server.error.include-message}, or {@code server.error.include-binding-errors}.
+ * {@code include-stacktrace}, {@code include-exception}, {@code include-message}, or
+ * {@code include-binding-errors}, under either the Spring Boot 3.x {@code server.error.*}
+ * prefix or the Spring Boot 4.0 {@code spring.web.error.*} prefix (confirmed against the
+ * official OpenRewrite migration recipe {@code SpringBootProperties_4_0}: the whole
+ * {@code server.error.*} family was renamed to {@code spring.web.error.*} in 4.0). Both
+ * prefixes are checked independently via {@link ConfigurableRule} metadata
+ * ({@code rules-metadata/SCG010.yml}) rather than hardcoded, since a Spring Boot major version
+ * bump already proved these key names aren't the fixed fact they were originally assumed to be.
  * <p>
  * Spring Boot's {@code BasicErrorController} constructs default JSON error payloads for
  * unhandled HTTP errors. Exposing stack traces, exception class names, internal messages,
@@ -47,17 +55,13 @@ import java.util.function.Predicate;
  * a full stack trace, but not an ineffective misconfiguration, so it belongs in the same tier
  * as {@code include-exception}/{@code include-message} rather than in {@code LOW}.
  * <p>
- * No profile exemption (Zero-Trust), consistent with {@link VerboseLoggingRule}. Plain {@link Rule},
- * not {@link ConfigurableRule}, as these key names are fixed Spring Boot facts.
+ * No profile exemption (Zero-Trust), consistent with {@link VerboseLoggingRule}.
+ *
+ * @see ConfigurableRule
  */
-public final class VerboseErrorResponseRule implements Rule {
+public final class VerboseErrorResponseRule implements ConfigurableRule {
 
     private static final String RULE_NAME = "SCG010";
-
-    private static final String INCLUDE_STACKTRACE_KEY = "server.error.include-stacktrace";
-    private static final String INCLUDE_EXCEPTION_KEY = "server.error.include-exception";
-    private static final String INCLUDE_MESSAGE_KEY = "server.error.include-message";
-    private static final String INCLUDE_BINDING_ERRORS_KEY = "server.error.include-binding-errors";
 
     // Matches Spring Boot's own lenient enum binding rather than enumerating separator variants
     // by hand: LenientObjectToEnumConverterFactory.getCanonicalName() (org.springframework.boot.convert)
@@ -68,6 +72,11 @@ public final class VerboseErrorResponseRule implements Rule {
     // entry written with one. Same fix already applied to ActuatorExposureRule (SCG001) and
     // HealthDetailsExposureRule (SCG013).
     private static final Set<String> RISKY_CANONICAL_ENUM_VALUES = Set.of("always", "onparam");
+
+    private List<String> includeStacktraceKeys;
+    private List<String> includeExceptionKeys;
+    private List<String> includeMessageKeys;
+    private List<String> includeBindingErrorsKeys;
 
     @Override
     public String id() {
@@ -80,28 +89,48 @@ public final class VerboseErrorResponseRule implements Rule {
     }
 
     @Override
+    public void configure(Map<String, List<String>> metadata) {
+        Objects.requireNonNull(metadata, RULE_NAME + " metadata map cannot be null");
+
+        includeStacktraceKeys = requireKeys(metadata, "include-stacktrace-keys");
+        includeExceptionKeys = requireKeys(metadata, "include-exception-keys");
+        includeMessageKeys = requireKeys(metadata, "include-message-keys");
+        includeBindingErrorsKeys = requireKeys(metadata, "include-binding-errors-keys");
+    }
+
+    private List<String> requireKeys(Map<String, List<String>> metadata, String metadataKey) {
+        List<String> keys = metadata.get(metadataKey);
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException(RULE_NAME + " initialization failed: '" + metadataKey + "' is missing or empty.");
+        }
+        return List.copyOf(keys);
+    }
+
+    @Override
     public List<Finding> check(EffectiveConfig config) {
+        ensureConfigured();
+
         List<Finding> findings = new ArrayList<>();
 
-        checkEnumProperty(config, INCLUDE_STACKTRACE_KEY, Severity.HIGH,
+        checkEnumProperty(config, includeStacktraceKeys, Severity.HIGH,
                 "Full stack traces are returned in HTTP error responses via '%s=%s' (or triggerable via query parameters). " +
                         "This exposes internal class names, line numbers, third-party library versions, and nested exception details to unauthenticated callers. " +
                         "Set this to 'never' in production environments.",
                 findings);
 
-        checkBooleanProperty(config, INCLUDE_EXCEPTION_KEY, Severity.MEDIUM,
+        checkBooleanProperty(config, includeExceptionKeys, Severity.MEDIUM,
                 "Java exception class names are exposed in HTTP error responses via '%s=%s'. " +
                         "This leaks internal architectural details and framework choices to callers. " +
                         "Disable this by setting the property to false.",
                 findings);
 
-        checkEnumProperty(config, INCLUDE_MESSAGE_KEY, Severity.MEDIUM,
+        checkEnumProperty(config, includeMessageKeys, Severity.MEDIUM,
                 "Internal exception messages are exposed in HTTP error responses via '%s=%s'. " +
                         "Unwrapped exception messages often contain SQL queries, failed validation details, or internal state. " +
                         "Set this to 'never' and handle user-facing error messages explicitly.",
                 findings);
 
-        checkEnumProperty(config, INCLUDE_BINDING_ERRORS_KEY, Severity.MEDIUM,
+        checkEnumProperty(config, includeBindingErrorsKeys, Severity.MEDIUM,
                 "Detailed field validation binding errors are exposed in HTTP error responses via '%s=%s'. " +
                         "This exposes internal DTO field names and validation rules to the caller. " +
                         "Set this to 'never' unless the API is explicitly designed to surface field-level errors.",
@@ -117,9 +146,9 @@ public final class VerboseErrorResponseRule implements Rule {
      * a value this property accepts; treating it as risky here would misreport a broken,
      * non-binding configuration as a confirmed information-disclosure finding.
      */
-    private void checkEnumProperty(EffectiveConfig config, String key, Severity severity,
+    private void checkEnumProperty(EffectiveConfig config, List<String> keys, Severity severity,
                                    String messageTemplate, List<Finding> findings) {
-        checkProperty(config, key, severity, messageTemplate,
+        checkProperty(config, keys, severity, messageTemplate,
                 value -> RISKY_CANONICAL_ENUM_VALUES.contains(canonicalize(value)),
                 findings);
     }
@@ -142,14 +171,29 @@ public final class VerboseErrorResponseRule implements Rule {
      * For {@code include-exception} only — the one property among the four that is a genuine
      * {@code boolean}, not the {@code IncludeAttribute} enum.
      */
-    private void checkBooleanProperty(EffectiveConfig config, String key, Severity severity,
+    private void checkBooleanProperty(EffectiveConfig config, List<String> keys, Severity severity,
                                       String messageTemplate, List<Finding> findings) {
-        checkProperty(config, key, severity, messageTemplate, RelaxedBoolean::isTruthy, findings);
+        checkProperty(config, keys, severity, messageTemplate, RelaxedBoolean::isTruthy, findings);
     }
 
-    private void checkProperty(EffectiveConfig config, String key, Severity severity,
+    /**
+     * Checks every key alias for one logical property independently (e.g. both the
+     * {@code server.error.*} and {@code spring.web.error.*} spellings) -- a project could only
+     * realistically have one of the two prefixes bound at runtime, but static analysis doesn't
+     * know which Spring Boot major version a given project targets, so both are evaluated the
+     * same way relaxed binding already handles casing variants of a single key.
+     */
+    private void checkProperty(EffectiveConfig config, List<String> keys, Severity severity,
                                String messageTemplate, Predicate<String> isRisky,
                                List<Finding> findings) {
+        for (String key : keys) {
+            checkSingleKey(config, key, severity, messageTemplate, isRisky, findings);
+        }
+    }
+
+    private void checkSingleKey(EffectiveConfig config, String key, Severity severity,
+                                String messageTemplate, Predicate<String> isRisky,
+                                List<Finding> findings) {
         String raw = RelaxedProperties.get(config.properties(), key);
         if (raw == null || raw.isBlank()) {
             return;
@@ -186,5 +230,12 @@ public final class VerboseErrorResponseRule implements Rule {
                 config.sourceFile().toString(),
                 config.profileLabel()
         );
+    }
+
+    private void ensureConfigured() {
+        if (includeStacktraceKeys == null || includeExceptionKeys == null
+                || includeMessageKeys == null || includeBindingErrorsKeys == null) {
+            throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
+        }
     }
 }
