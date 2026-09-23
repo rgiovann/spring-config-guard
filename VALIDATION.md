@@ -49,6 +49,18 @@ Everything above shows *what* SCG found. This section is about whether that's
 *correct* — checked independently, not by re-reading SCG's own explanation of
 its own output.
 
+| Repository | Total findings | Independently verified | False negative found |
+|---|---|---|---|
+| `spring-petclinic` | 5 | All 17 rules (full manual read, all 3 files) | No |
+| `spring-petclinic-microservices-config` | 53 | All 17 rules (full manual read, all 9 files) | No |
+| `spring-boot` | 66 | SCG001, SCG002, SCG006 (55 of 66 findings) | No, on the rules checked |
+| `spring-boot-admin` | 85 | SCG001, SCG006 (55 of 85 findings) | No, on the rules checked |
+
+Deliberately not a scalar "0 false positives / 0 false negatives" table:
+that would read as if all 17 rules were checked in all 4 repositories, which
+isn't true (see "Honest scope boundary" below) — the third column says
+*what* was actually checked, not just *whether* it passed.
+
 **Method, by repository size:**
 
 * **The two small repositories** (`spring-petclinic`, 3 files;
@@ -62,7 +74,29 @@ its own output.
   not SCG's own code — no shared logic, no shared bugs) scanned **every**
   `application*` file for the raw textual patterns behind the two or three
   most common rules in that repository's results, and the resulting file
-  list was diffed against SCG's actual per-file findings.
+  list was diffed against SCG's actual per-file findings. The exact commands
+  (run from the same directory as the cloned repo, e.g. `spring-boot/` or
+  `spring-boot-admin/`):
+
+  ```bash
+  # SCG001 (wildcard exposure.include), raw text match, not YAML-aware:
+  grep -rlE "exposure\.include\s*[:=]\s*[\"']?\*|include:\s*[\"']?\*" \
+    <repo-dir> --include="application*.yml" --include="application*.yaml" \
+    --include="application*.properties"
+
+  # SCG002 (H2 console enabled):
+  grep -rlEi "h2[._-]?console[._-]?enabled\s*[:=]\s*true" \
+    <repo-dir> --include="application*"
+
+  # SCG006 (hardcoded password/secret/credential, deliberately naive:
+  # excludes ${...} placeholders, which SCG itself does NOT treat as
+  # automatically safe -- see the spring-boot result below):
+  grep -rlEi "(password|secret|credential)\s*[:=]\s*['\"]?[A-Za-z0-9_!@#\$%^&*]+['\"]?\s*\$" \
+    <repo-dir> --include="application*" | grep -viE '\$\{'
+  ```
+
+  Then compare the resulting file list against the `sourceFile` values in
+  SCG's own `--json` output for the matching `ruleId`.
 
 **Results:**
 
