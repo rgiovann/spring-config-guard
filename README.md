@@ -432,9 +432,19 @@ deliberately outside that scope, for different reasons:
 None of this is a defect to report as a false negative against SCG's
 existing rules — it's the boundary of what a tool that only parses
 `application.{yml,yaml,properties}` files, with no Spring Boot dependency
-and no running application, can determine. Treat a clean SCG report as
-"no violation found in what SCG reads," not as "this configuration is safe
-under every possible runtime override."
+and no running application, can determine.
+
+That boundary also shapes how to read a `Finding`'s severity: it reflects
+the risk of the configuration property itself, on the assumption that no
+unverified runtime mitigation is in place — SCG has no visibility into a
+Spring Security filter chain, a WAF, a network policy, or any other
+Java-code or infrastructure-level control that might restrict access in
+practice. A `HIGH` finding means "this property is a genuine anti-pattern
+if nothing else is protecting it," not "this was confirmed exploitable in
+your specific deployment." The same reasoning applies from the other
+direction to a clean report: treat it as "no violation found in what SCG
+reads," not as "this configuration is safe under every possible runtime
+override."
 
 ## Validated against real-world code
 
