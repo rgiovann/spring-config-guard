@@ -458,6 +458,27 @@ doesn't, base config and named profiles alike (several rules document this
 explicitly as a deliberate "no profile exemption" decision, e.g.
 [`H2ConsoleExposedRule`](src/main/java/dev/scg/rules/H2ConsoleExposedRule.java)).
 
+**Reproducibility:** all four runs below were reproduced against SCG
+commit [`b0d15ec`](https://github.com/rgiovann/spring-config-guard/commit/b0d15ec25b85437b9579e9b76320482a3dc856eb)
+(this repository's `main` at the time of writing); each run's own command
+block below pins the exact commit of the *target* repository that produced
+the numbers shown, since all four are real, actively-changing repositories —
+without a pin, the same command run later against a newer commit could
+legitimately return different numbers, not because SCG changed, but because
+the target project did.
+
+**Read finding counts as occurrences, not independent problems.** A single
+misconfigured property in a shared/inherited file can multiply into many
+findings without representing that many distinct issues. The clearest case
+is the first run below: 53 findings trace back to 3 properties in one
+Global file, inherited by all 8 services. The other three runs are, by
+contrast, close to one finding per independently-authored file: Spring
+Boot's 66 findings span 41 distinct files, Spring Boot Admin's 85 span 29 —
+each smoke-test/sample module carries its own deliberately minimal config,
+not a shared root. Check how concentrated a run's findings are in
+shared/inherited files before treating a raw finding count, by itself, as a
+severity signal.
+
 **The first entry below is the one worth paying attention to.**
 `spring-petclinic-microservices-config` is a real, actively-used Spring
 Cloud Config Server backing repository — scanned exactly as it's meant to
@@ -496,6 +517,7 @@ layer, exactly as documented above, rather than skipped or double-counted.
 
 ```bash
 git clone https://github.com/spring-petclinic/spring-petclinic-microservices-config.git
+git -C spring-petclinic-microservices-config checkout 323993ce2519c6d02df63e08bf4458d123d3b611
 java -jar target/spring-config-guard.jar spring-petclinic-microservices-config --config-server --json --fail-on=NONE
 ```
 
@@ -526,6 +548,7 @@ Zero findings outside those directories, across the entire repository.
 
 ```bash
 git clone https://github.com/spring-projects/spring-boot.git
+git -C spring-boot checkout adbbf047320013ee42284d6957293aaf75a56ad7
 java -jar target/spring-config-guard.jar spring-boot --json --fail-on=NONE
 ```
 
@@ -557,6 +580,7 @@ config — inherited or not doesn't matter.
 
 ```bash
 git clone https://github.com/codecentric/spring-boot-admin.git
+git -C spring-boot-admin checkout 8699ebdfd3afa96f0fd2318addc7508f4be14def
 java -jar target/spring-config-guard.jar spring-boot-admin --json --fail-on=NONE
 ```
 
@@ -586,6 +610,7 @@ stay silent.
 
 ```bash
 git clone https://github.com/spring-projects/spring-petclinic.git
+git -C spring-petclinic checkout 818c4136ea971c21674525f9053de0d9c7ad8cfe
 java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
 ```
 
