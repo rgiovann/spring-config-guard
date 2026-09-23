@@ -46,16 +46,16 @@ public final class H2ConsoleExposedRule implements Rule {
         return List.of(new Finding(
                 id(),
                 Severity.HIGH,
-                buildMessage(enabledValue, config, allowsRemoteAccess),
+                buildMessage(enabledValue, allowsRemoteAccess),
                 config.sourceFile().toString(),
                 config.profileLabel()
         ));
     }
 
-    private String buildMessage(String enabledValue, EffectiveConfig config, boolean allowsRemoteAccess) {
+    private String buildMessage(String enabledValue, boolean allowsRemoteAccess) {
         StringBuilder message = new StringBuilder(
-                "H2 console enabled (%s=%s) in profile '%s'. "
-                        .formatted(H2_ENABLED_KEY, enabledValue, config.profileLabel())
+                "H2 console enabled (%s=%s). "
+                        .formatted(H2_ENABLED_KEY, enabledValue)
         );
 
         if (allowsRemoteAccess) {
