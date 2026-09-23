@@ -303,6 +303,15 @@ named after each client service (`spring.application.name`), not
 recognizes `application*.{yml,yaml,properties}`, so every per-service file
 would be silently skipped.
 
+**Quick reference — what's read, what isn't** (reasoning and full precedence
+rules below):
+
+| Reads | Does not read |
+|---|---|
+| `application*.{yml,yaml,properties}` directly in the given directory, as the shared Global config | The same directory's subdirectories — **not recursive** |
+| Every other `.yml`/`.yaml`/`.properties` file directly in that directory, as one service each | A **`{service}-{profile}.yml`** file per service+profile (e.g. `customers-service-mysql.yml`) — not a supported naming convention |
+| Profiles declared via `spring.config.activate.on-profile` inside the Global file or that service's own file | A service's profile expressed any other way |
+
 ```text
 config-repo/
 ├── application.yml          # Global — shared by every service
