@@ -53,13 +53,16 @@ its own output.
 |---|---|---|---|
 | `spring-petclinic` | 5 | All 17 rules (full manual read, all 3 files) | No |
 | `spring-petclinic-microservices-config` | 53 | All 17 rules (full manual read, all 9 files) | No |
-| `spring-boot` | 66 | SCG001, SCG002, SCG006 (55 of 66 findings) | No, on the rules checked |
-| `spring-boot-admin` | 85 | SCG001, SCG006 (55 of 85 findings) | No, on the rules checked |
+| `spring-boot` | 66 | All 8 rules that fired (SCG001, 002, 006, 007, 009, 013, 014, 017 — 66 of 66 findings) | No |
+| `spring-boot-admin` | 85 | All 3 rules that fired (SCG001, 006, 013 — 85 of 85 findings) | No |
 
-Deliberately not a scalar "0 false positives / 0 false negatives" table:
-that would read as if all 17 rules were checked in all 4 repositories, which
-isn't true (see "Honest scope boundary" below) — the third column says
-*what* was actually checked, not just *whether* it passed.
+Every rule that produced at least one finding in these 4 repositories has
+now been independently checked. Deliberately still not a scalar
+"0 false positives / 0 false negatives" table for the whole tool: 8 of the
+17 rules (SCG003, 004, 005, 008, 010, 011, 015, 016) never fired in any of
+these 4 repositories, so there was nothing here to independently verify for
+them — that says something about these 4 repositories, not about those
+rules' precision (see "Rules with nothing to check here" below).
 
 **Method, by repository size:**
 
@@ -93,6 +96,28 @@ isn't true (see "Honest scope boundary" below) — the third column says
   # automatically safe -- see the spring-boot result below):
   grep -rlEi "(password|secret|credential)\s*[:=]\s*['\"]?[A-Za-z0-9_!@#\$%^&*]+['\"]?\s*\$" \
     <repo-dir> --include="application*" | grep -viE '\$\{'
+
+  # SCG007 (credential embedded in a connection URI, e.g. user:pass@host):
+  grep -rlE "://[^:/[:space:]]+:[^@/[:space:]]+@" \
+    <repo-dir> --include="application*"
+
+  # SCG009 (debug/trace=true, or logging.level.root at DEBUG/TRACE):
+  grep -rlEi "^\s*(debug|trace)\s*[:=]\s*true|logging\.level\.root\s*[:=]\s*(DEBUG|TRACE)" \
+    <repo-dir> --include="application*"
+
+  # SCG013 (health show-details at always/when-authorized, relaxed-binding-tolerant):
+  grep -rlEi "show[._-]?details\s*[:=]\s*[\"']?(always|when-?authorized|when_authorized)" \
+    <repo-dir> --include="application*"
+
+  # SCG014 (Kafka configured, but security.protocol never set -- a 2-step
+  # check, not one pattern: first find every Kafka-configured file, then
+  # subtract the ones that DO set security.protocol explicitly):
+  grep -rlE "spring\.kafka" <repo-dir> --include="application*"
+  grep -rlE "spring\.kafka(\.[a-z]+)?\.security\.protocol" <repo-dir> --include="application*"
+
+  # SCG017 (OAuth2 Resource Server issuer-uri/jwk-set-uri over http://):
+  grep -rlEi "(issuer-uri|jwk-set-uri)\s*[:=]\s*[\"']?http://" \
+    <repo-dir> --include="application*"
   ```
 
   Then compare the resulting file list against the `sourceFile` values in
@@ -119,37 +144,50 @@ isn't true (see "Honest scope boundary" below) — the third column says
   in several services is correctly *not* flagged — Eureka service discovery
   is a deliberately deferred candidate (see `BACKLOG.md`, "Pós-1.0"), not an
   oversight.
-* **`spring-boot`** (SCG001 wildcard, SCG002, SCG006 — 55 of 66 findings;
-  SCG007/009/013/014/017 not independently re-checked this round): **zero
-  false negatives** — every file the independent grep flagged was already
-  in SCG's own list. Two files SCG caught that the naive grep missed turned
-  out to be a wildcard expressed as a YAML list (`include:` / `- "*"` on
-  separate lines, which a single-line grep pattern can't see but SCG's YAML
-  parser does); four files SCG caught for SCG006 that the grep missed were
-  `client-secret: ${APP-CLIENT-SECRET}` — a placeholder **without** a
-  default, which SCG correctly treats as unresolved/risky per its
-  documented placeholder policy. The naive grep had (wrongly) treated any
-  `${...}` as automatically safe and excluded it — a limitation of the
-  independent check, not of SCG.
-* **`spring-boot-admin`** (SCG001 wildcard, SCG006 — 55 of 85 findings;
-  SCG013 not independently re-checked this round, though its relaxed-binding
-  matching was already verified separately — see the README's
-  ["Why not a generic YAML/IaC scanner"](README.md#why-not-a-generic-yamliac-scanner-checkov-semgrep)
-  section): **zero false negatives**. 20 of the 29 SCG001 files the naive
-  grep missed are profile files (`application-dev.yml`,
-  `application-secure.yml`, etc.) that never mention `exposure` at all —
-  confirmed by inspection that they inherit the wildcard from the sibling
-  `application.yml` in the same module. This is the exact cross-file
-  inheritance behavior the tool exists to catch, caught here in a real
-  repository, not just the README's own constructed example.
+* **`spring-boot`** (all 8 rules that fired — SCG001, 002, 006, 007, 009,
+  013, 014, 017 — 66 of 66 findings): **zero false negatives** across all
+  of them. SCG001/002/006 findings are covered above. SCG007 (2 findings,
+  `spring.r2dbc.url` with an embedded `user:secret@` credential), SCG009
+  (1, bare `debug=true`), SCG014 (1, the *only* file in the whole repo
+  mentioning `spring.kafka` at all, and it never sets
+  `security.protocol`), and SCG017 (1, `jwk-set-uri: http://localhost:8080/oauth2/jwks`)
+  each matched their independent grep exactly, file for file — small
+  enough counts (1-2 each) that the raw file content was also read
+  directly, not just diffed by filename. SCG013 (6 findings) matched
+  exactly too. Two files SCG caught for SCG001 that the naive grep missed
+  turned out to be a wildcard expressed as a YAML list (`include:` /
+  `- "*"` on separate lines, which a single-line grep pattern can't see
+  but SCG's YAML parser does); four files SCG caught for SCG006 that the
+  grep missed were `client-secret: ${APP-CLIENT-SECRET}` — a placeholder
+  **without** a default, which SCG correctly treats as unresolved/risky
+  per its documented placeholder policy. The naive grep had (wrongly)
+  treated any `${...}` as automatically safe and excluded it — a
+  limitation of the independent check, not of SCG.
+* **`spring-boot-admin`** (all 3 rules that fired — SCG001, 006, 013 — 85
+  of 85 findings): **zero false negatives**. 20 of the 29 SCG001 files and
+  20 of the 28 distinct SCG013 files the naive grep missed are the same
+  profile files (`application-dev.yml`, `application-secure.yml`, etc.)
+  that never mention `exposure` or `show-details` at all — confirmed by
+  inspection (e.g. `spring-boot-admin-sample-consul/application-dev.yml`)
+  that they inherit both properties from the sibling `application.yml` in
+  the same module. This is the exact cross-file inheritance behavior the
+  tool exists to catch, caught here in a real repository, not just the
+  README's own constructed example. One file
+  (`spring-boot-admin-sample-zookeeper/application.yml`) accounts for 3 of
+  the 30 SCG013 findings by itself — it's a single multi-document YAML
+  file with several profiles inside it (same file, several
+  `EffectiveConfig`s, already noted for SCG001/006 earlier in this
+  document), not a miscount.
 
-**Honest scope boundary:** this is not exhaustive coverage of all 17 rules
-across all 4 repositories — it's the highest-volume rules per repository,
-which is where a false positive/negative would have the largest practical
-impact. SCG007, SCG009, SCG010, SCG013 (in `spring-boot`), SCG014, and
-SCG017 were not independently re-derived this round; their occurrence
-counts in the tables below are as reported by SCG itself, not
-cross-checked against a second, independent method.
+**Rules with nothing to check here:** SCG003, SCG004, SCG005, SCG008,
+SCG010, SCG011, SCG015, and SCG016 never fired in any of these 4
+repositories — confirmed by their absence from every table below, not
+assumed. That means these 4 real-world repositories simply don't happen to
+exercise those properties, not that those rules are unverified; the
+synthetic `demo-project`/`demo-project-clean` fixtures already carry
+positive/negative pairs for several of them (see the README's Usage
+section), and that pairing is a different, already-existing form of
+verification, not a gap being reported here.
 
 ## spring-petclinic/spring-petclinic-microservices-config
 
