@@ -29,6 +29,9 @@ class DemoProjectShowcaseTest {
     private static final String PROPERTIES_DIR = "demo-project/properties-format-showcase";
     private static final String POLICY_FILE = MULTI_PROFILE_DIR + "/policy-demo.yml";
     private static final String CLEAN_PROPERTIES_DIR = "demo-project-clean/properties-format-showcase";
+    private static final String CONFIG_IMPORT_DIR = "demo-project/config-import-showcase";
+    private static final String CONFIG_IMPORT_WARNING =
+            "spring-config-guard: 1 file(s) import external configuration via spring.config.import that was not scanned.";
 
     @Test
     @DisplayName("multi-profile-showcase reports the 11 expected findings across base/dev/prod")
@@ -120,6 +123,46 @@ class DemoProjectShowcaseTest {
         assertTrue(findings.stream().anyMatch(f -> "SCG002".equals(f.ruleId()) && f.severity() == Severity.HIGH));
         assertTrue(findings.stream().anyMatch(f -> "SCG006".equals(f.ruleId()) && f.severity() == Severity.HIGH));
         assertTrue(findings.stream().anyMatch(f -> "SCG006".equals(f.ruleId()) && f.severity() == Severity.INFO));
+    }
+
+    @Test
+    @DisplayName("config-import-showcase prints the coverage warning to stderr in console format, alongside the normal SCG002 finding")
+    void shouldPrintConfigImportCoverageWarningInConsoleFormat() {
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        String output;
+        try {
+            System.setErr(new PrintStream(errContent, true, StandardCharsets.UTF_8));
+            output = run(new String[]{CONFIG_IMPORT_DIR, "--fail-on=NONE"});
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertTrue(output.contains("Summary: 1 violation(s)"));
+        assertTrue(hasFinding(output, "SCG002", "[base]"));
+        assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_IMPORT_WARNING));
+    }
+
+    @Test
+    @DisplayName("config-import-showcase prints the same coverage warning to stderr in --json format, unaffected by output format")
+    void shouldPrintConfigImportCoverageWarningInJsonFormatToo() throws Exception {
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        String output;
+        try {
+            System.setErr(new PrintStream(errContent, true, StandardCharsets.UTF_8));
+            output = run(new String[]{CONFIG_IMPORT_DIR, "--json", "--fail-on=NONE"});
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        List<Finding> findings = new ObjectMapper().readValue(output, new TypeReference<>() {});
+        assertEquals(1, findings.size());
+        assertEquals("SCG002", findings.getFirst().ruleId());
+
+        assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_IMPORT_WARNING),
+                "The coverage warning is printed unconditionally by Main, independent of --json -- "
+                        + "it must show up here exactly like it does in console format");
     }
 
     private static boolean hasFinding(String output, String ruleId, String profileMarker) {

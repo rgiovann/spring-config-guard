@@ -234,8 +234,14 @@ subdirectories are a good starting tour:
   referenced via env placeholders instead of hardcoded). Reports 2 INFO
   findings and still exits 0 even under the default `--fail-on=HIGH`,
   showing that INFO alone never fails the build.
+* `demo-project/config-import-showcase/` — a `spring.config.import` that
+  SCG doesn't follow, alongside a normal SCG002 finding, showing the
+  coverage warning
+  (`spring-config-guard: N file(s) import external configuration via
+  spring.config.import that was not scanned.`) on stderr next to a regular
+  scan — identically in console and `--json` format.
 
-All three are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
+All four are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
 out of sync with rule behavior as rules evolve.
 
 `demo-project/config-server-showcase/` is the equivalent tour for

@@ -1,0 +1,13 @@
+# Demonstrates the spring.config.import coverage warning (Main prints it to
+# stderr, unconditionally, separate from findings and --fail-on): this file
+# imports another file that SCG does not follow or read -- see README's
+# Scope & Limitations and BACKLOG.md for why. The H2 console property below
+# is a real, ordinary finding (SCG002), included so this showcase also
+# proves the coverage warning coexists with a normal scan, on the same run,
+# without interfering with either output format.
+spring:
+  config:
+    import: file:./secrets.yml
+  h2:
+    console:
+      enabled: true
