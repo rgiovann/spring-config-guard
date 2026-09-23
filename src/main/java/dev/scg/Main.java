@@ -53,6 +53,13 @@ public final class Main {
             return ExitCodeResolver.USAGE_ERROR;
         }
 
+        int unfollowedImportCount = ConfigImportCoverage.filesWithUnfollowedImport(effectiveConfigs).size();
+        if (unfollowedImportCount > 0) {
+            System.err.printf(
+                    "spring-config-guard: %d file(s) import external configuration via spring.config.import that was not scanned.%n",
+                    unfollowedImportCount);
+        }
+
         List<Rule> rules = RuleRegistry.discoverRules();
         if (rules.isEmpty()) {
             System.err.println(
