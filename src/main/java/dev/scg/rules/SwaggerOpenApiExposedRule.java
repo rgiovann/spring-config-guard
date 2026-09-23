@@ -43,7 +43,7 @@ public final class SwaggerOpenApiExposedRule implements Rule {
 
     @Override
     public String description() {
-        return "Exposed Swagger/OpenAPI documentation or UI endpoints in production";
+        return "Exposed Swagger/OpenAPI documentation or UI endpoints";
     }
 
     @Override
@@ -76,7 +76,7 @@ public final class SwaggerOpenApiExposedRule implements Rule {
                     Severity.INFO,
                     ("SpringDoc property '%s' relies on an unresolved environment placeholder or empty fallback '%s'. " +
                             "Static analysis cannot verify if Swagger/OpenAPI endpoints are disabled at runtime; " +
-                            "ensure 'springdoc.api-docs.enabled' and 'springdoc.swagger-ui.enabled' are explicitly set to 'false' in production.")
+                            "ensure 'springdoc.api-docs.enabled' and 'springdoc.swagger-ui.enabled' are explicitly set to 'false' wherever exposure isn't intended.")
                             .formatted(uncertainKey, rawVal),
                     config.sourceFile().toString(),
                     config.profileLabel()
@@ -140,7 +140,7 @@ public final class SwaggerOpenApiExposedRule implements Rule {
 
     private String buildExposureMessage(boolean isApiDocsDisabled, boolean isSwaggerUiDisabled, boolean isActuatorExposed) {
         StringBuilder msg = new StringBuilder();
-        msg.append("SpringDoc OpenAPI is enabled by default in production. ");
+        msg.append("SpringDoc OpenAPI is enabled by default when present on the classpath, regardless of profile. ");
 
         if (!isApiDocsDisabled && !isSwaggerUiDisabled) {
             msg.append("Both OpenAPI docs ('springdoc.api-docs.enabled') and Swagger UI ('springdoc.swagger-ui.enabled') remain exposed. ");
@@ -150,13 +150,13 @@ public final class SwaggerOpenApiExposedRule implements Rule {
             msg.append("Swagger UI ('springdoc.swagger-ui.enabled') remains exposed. ");
         }
 
-        msg.append("Exposing API documentation in production increases the attack surface by revealing internal routes, schemas, and parameters. ");
+        msg.append("Exposing API documentation increases the attack surface by revealing internal routes, schemas, and parameters. ");
 
         if (isActuatorExposed) {
             msg.append("AGGRAVATING FACTOR: 'springdoc.show-actuator' is set to 'true', exposing sensitive Spring Actuator endpoints inside the OpenAPI documentation. ");
         }
 
-        msg.append("Explicitly set both 'springdoc.api-docs.enabled=false' and 'springdoc.swagger-ui.enabled=false' for production profiles.");
+        msg.append("Explicitly set both 'springdoc.api-docs.enabled=false' and 'springdoc.swagger-ui.enabled=false' unless exposing it in this profile is a deliberate, justified choice.");
 
         return msg.toString();
     }

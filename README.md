@@ -390,7 +390,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
 | SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
 | SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
-| SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints in production |
+| SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints |
 | SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
 | SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot 3.x) or `spring.web.error.include-*` (4.0) properties |
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
