@@ -43,6 +43,80 @@ Spring Boot Admin, PetClinic) are sample/demo code, included to stress-test
 precision rather than as a security assessment of those specific projects —
 see each entry's own caveat below.
 
+## Independent precision check (false positive / false negative review)
+
+Everything above shows *what* SCG found. This section is about whether that's
+*correct* — checked independently, not by re-reading SCG's own explanation of
+its own output.
+
+**Method, by repository size:**
+
+* **The two small repositories** (`spring-petclinic`, 3 files;
+  `spring-petclinic-microservices-config`, 9 files) were reviewed by reading
+  every file in full, deriving the expected finding count against all 17
+  rules from first principles, and only then comparing against SCG's actual
+  output.
+* **The two large repositories** (`spring-boot`, 98 files;
+  `spring-boot-admin`, dozens of files) are too large to hand-review file by
+  file with real rigor, so instead: an independent script (plain `grep`,
+  not SCG's own code — no shared logic, no shared bugs) scanned **every**
+  `application*` file for the raw textual patterns behind the two or three
+  most common rules in that repository's results, and the resulting file
+  list was diffed against SCG's actual per-file findings.
+
+**Results:**
+
+* **`spring-petclinic`**: expected 3× SCG001 (wildcard `exposure.include`
+  inherited from base by `base`/`mysql`/`postgres`, none of them override it)
+  + 2× SCG006 (`${MYSQL_PASS:petclinic}` / `${POSTGRES_PASS:petclinic}` —
+  placeholder *with* a hardcoded default, which resolves to that default) =
+  5. Matches exactly. Confirmed why SCG012 correctly stays silent: both JDBC
+  URLs (`jdbc:mysql://localhost/petclinic`, `jdbc:postgresql://localhost/petclinic`)
+  have no query string at all — no explicit `useSSL=false`/`sslmode=disable`
+  for the rule to match — consistent with the project's documented
+  explicit-value-only design (`SCG012.yml`), not a gap.
+* **`spring-petclinic-microservices-config`**: expected 37× SCG001 + 8×
+  SCG006 + 8× SCG012 = 53, reconciled exactly — including discovering that
+  5 of the 8 services (`customers-service`, `genai-service`,
+  `tracing-server`, `vets-service`, `visits-service`) declare their own
+  `default` profile that the Global file never mentions, which is why the
+  SCG001 count isn't a uniform 4-per-service (32) but 37. Also confirmed
+  `eureka.client.serviceUrl.defaultZone: http://discovery-server:8761/eureka/`
+  in several services is correctly *not* flagged — Eureka service discovery
+  is a deliberately deferred candidate (see `BACKLOG.md`, "Pós-1.0"), not an
+  oversight.
+* **`spring-boot`** (SCG001 wildcard, SCG002, SCG006 — 55 of 66 findings;
+  SCG007/009/013/014/017 not independently re-checked this round): **zero
+  false negatives** — every file the independent grep flagged was already
+  in SCG's own list. Two files SCG caught that the naive grep missed turned
+  out to be a wildcard expressed as a YAML list (`include:` / `- "*"` on
+  separate lines, which a single-line grep pattern can't see but SCG's YAML
+  parser does); four files SCG caught for SCG006 that the grep missed were
+  `client-secret: ${APP-CLIENT-SECRET}` — a placeholder **without** a
+  default, which SCG correctly treats as unresolved/risky per its
+  documented placeholder policy. The naive grep had (wrongly) treated any
+  `${...}` as automatically safe and excluded it — a limitation of the
+  independent check, not of SCG.
+* **`spring-boot-admin`** (SCG001 wildcard, SCG006 — 55 of 85 findings;
+  SCG013 not independently re-checked this round, though its relaxed-binding
+  matching was already verified separately — see the README's
+  ["Why not a generic YAML/IaC scanner"](README.md#why-not-a-generic-yamliac-scanner-checkov-semgrep)
+  section): **zero false negatives**. 20 of the 29 SCG001 files the naive
+  grep missed are profile files (`application-dev.yml`,
+  `application-secure.yml`, etc.) that never mention `exposure` at all —
+  confirmed by inspection that they inherit the wildcard from the sibling
+  `application.yml` in the same module. This is the exact cross-file
+  inheritance behavior the tool exists to catch, caught here in a real
+  repository, not just the README's own constructed example.
+
+**Honest scope boundary:** this is not exhaustive coverage of all 17 rules
+across all 4 repositories — it's the highest-volume rules per repository,
+which is where a false positive/negative would have the largest practical
+impact. SCG007, SCG009, SCG010, SCG013 (in `spring-boot`), SCG014, and
+SCG017 were not independently re-derived this round; their occurrence
+counts in the tables below are as reported by SCG itself, not
+cross-checked against a second, independent method.
+
 ## spring-petclinic/spring-petclinic-microservices-config
 
 Run against [spring-petclinic/spring-petclinic-microservices-config](https://github.com/spring-petclinic/spring-petclinic-microservices-config)

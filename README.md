@@ -154,16 +154,19 @@ deliberately outside that scope, for different reasons:
   can differ from either profile alone if they override the same key.
   Tracked for a later release, not v1.0.
 * **`spring.config.import`.** A file that imports another file/location
-  through this property is not followed — the imported content is invisible
-  to every rule, and today nothing in the report indicates that it was
-  skipped. A dedicated, always-visible coverage warning (surfacing *that*
-  an unfollowed import exists, without resolving it, and deliberately kept
-  separate from per-rule findings so it can't get lost among unrelated INFO
-  findings) is tracked in `BACKLOG.md`; actually resolving the import graph
-  is a deliberately larger scope change (it includes import locations, like
+  through this property is not followed — the imported content stays
+  invisible to every rule. What SCG does instead: it prints an
+  always-visible coverage warning to stderr
+  (`spring-config-guard: N file(s) import external configuration via
+  spring.config.import that was not scanned.`,
+  [`ConfigImportCoverage`](src/main/java/dev/scg/core/ConfigImportCoverage.java)),
+  deliberately kept separate from per-rule findings so it can't get lost
+  among unrelated INFO findings — the incompleteness is surfaced, not
+  resolved. Actually resolving the import graph is a deliberately larger
+  scope change (it includes import locations, like
   `spring.config.import=configserver:`, that are only resolvable by
   contacting a running server over the network — not statically, at any
-  effort level) and is not planned.
+  effort level) and is not planned; see `BACKLOG.md` for the full reasoning.
 
 None of this is a defect to report as a false negative against SCG's
 existing rules — it's the boundary of what a tool that only parses
