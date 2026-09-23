@@ -30,7 +30,9 @@ decides whether a base value survives or gets overridden per profile.
 `spring-config-guard` computes that effective configuration first, then runs
 its rules against it — the same kind of inspection a generic per-file
 scanner can't do without reimplementing Spring's own binding and merge
-rules.
+rules. See [Scope & Limitations](#scope--limitations) below for exactly
+which parts of Spring's own configuration resolution this covers, and which
+it deliberately doesn't.
 
 
 ## Usage
@@ -389,6 +391,50 @@ should be updated in the same PR that adds or removes a rule.
 | SCG015 | HIGH / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
 | SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
 | SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
+
+## Scope & Limitations
+
+"Effective configuration" here means: the base document merged with one
+named profile document, per `application.yml`/`application-{profile}.yml`
+pair ([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)), or,
+in [Config Server Mode](#config-server-mode), the 4-layer
+Global-base/Global-profile/Service-base/Service-profile cascade. That is the
+full extent of what "effective configuration" means in this project. Three
+mechanisms Spring Boot's own `Environment` resolves at runtime are
+deliberately outside that scope, for different reasons:
+
+* **Real environment variable values, JVM system properties, and CLI
+  arguments.** These only exist once the application actually starts — a
+  static analyzer that never runs the app cannot know them, by definition,
+  not by an implementation gap. A `${VAR:default}` placeholder resolves
+  statically to its default when one is given
+  ([`EnvironmentPlaceholder`](src/main/java/dev/scg/core/EnvironmentPlaceholder.java));
+  without a default, the property is treated as unknowable and rules flag it
+  rather than silently assuming it's safe.
+* **Multiple simultaneously active profiles** (e.g. `dev,cloud` both
+  active at once). Each named profile is evaluated today as its own
+  independent overlay on the base — SCG does not compute the combined
+  effective configuration of two or more profiles applied together, which
+  can differ from either profile alone if they override the same key.
+  Tracked for a later release, not v1.0.
+* **`spring.config.import`.** A file that imports another file/location
+  through this property is not followed — the imported content is invisible
+  to every rule, and today nothing in the report indicates that it was
+  skipped. A dedicated, always-visible coverage warning (surfacing *that*
+  an unfollowed import exists, without resolving it, and deliberately kept
+  separate from per-rule findings so it can't get lost among unrelated INFO
+  findings) is tracked in `BACKLOG.md`; actually resolving the import graph
+  is a deliberately larger scope change (it includes import locations, like
+  `spring.config.import=configserver:`, that are only resolvable by
+  contacting a running server over the network — not statically, at any
+  effort level) and is not planned.
+
+None of this is a defect to report as a false negative against SCG's
+existing rules — it's the boundary of what a tool that only parses
+`application.{yml,yaml,properties}` files, with no Spring Boot dependency
+and no running application, can determine. Treat a clean SCG report as
+"no violation found in what SCG reads," not as "this configuration is safe
+under every possible runtime override."
 
 ## Validated against real-world code
 
