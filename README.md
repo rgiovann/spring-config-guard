@@ -15,25 +15,172 @@ Existing Actuator/config scanning tools (e.g. pentest scanners) run from the
 outside, against a URL that's already in production — by the time you find
 the problem, it's already exposed. `spring-config-guard` reads
 `application.yml` / `application.properties` from your own source code and
-fails the build (exit code 1) before deployment.
+fails the build (exit code 1) before deployment. The next section shows
+exactly what that looks like, including a real, reproducible case where a
+generic YAML/IaC scanner (Checkov, Semgrep) misses something SCG catches.
 
-A generic static/YAML scanner (e.g. Checkov, or a custom Semgrep rule) can
-flag a suspicious key in one file, but it doesn't model Spring Boot's own
-configuration semantics. It doesn't know that `foo-bar`, `fooBar`, and
-`foo_bar` are the same property
-([relaxed binding](src/main/java/dev/scg/core/RelaxedProperties.java)), and
-it evaluates each file in isolation instead of computing the *effective*
-configuration a running instance actually sees — the merge of
-`application.yml` with `application-{profile}.yml`
-([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)) that
-decides whether a base value survives or gets overridden per profile.
-`spring-config-guard` computes that effective configuration first, then runs
-its rules against it — the same kind of inspection a generic per-file
-scanner can't do without reimplementing Spring's own binding and merge
-rules. See [Scope & Limitations](#scope--limitations) below for exactly
-which parts of Spring's own configuration resolution this covers, and which
-it deliberately doesn't.
+## See it in action
 
+```yaml
+# application.yml
+spring:
+  h2:
+    console:
+      enabled: true
+---
+spring.config.activate.on-profile: prod
+spring:
+  h2:
+    console:
+      enabled: false
+```
+
+```bash
+java -jar spring-config-guard.jar my-project --json --fail-on=NONE
+```
+
+```json
+[
+  {
+    "ruleId": "SCG002",
+    "severity": "HIGH",
+    "message": "H2 console enabled (spring.h2.console.enabled=true). High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.",
+    "sourceFile": "application.yml",
+    "profileLabel": "__spring_config_guard_base__"
+  }
+]
+```
+
+One finding, not two. The base config is genuinely insecure (H2 console
+open to anyone who can reach the app), but `prod`'s effective configuration
+explicitly overrides it to `false` — SCG computes that merge
+([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)) first,
+then runs its rules against the result, so the safe override in `prod`
+correctly produces *no* finding while the insecure base does. This is the
+actual output of running the two commands above against the YAML shown, not
+a hypothetical (see [Scope & Limitations](#scope--limitations) for exactly
+what "effective configuration" covers).
+
+### Why not a generic YAML/IaC scanner (Checkov, Semgrep)?
+
+A tool that pattern-matches one file at a time can catch a value like the
+one above, but two things break it in practice — demonstrated below, not
+just asserted:
+
+**1. Relaxed binding.** Spring treats `show-details`, `showDetails`, and
+`show_details` as the same property
+([`RelaxedProperties`](src/main/java/dev/scg/core/RelaxedProperties.java)).
+Given `application.yml` (base) with
+`management.endpoint.health.showDetails: always` and
+`application-prod.yml` with only `server.port: 8080` (no mention of health
+at all):
+
+```bash
+semgrep --config show-details.semgrep.yml application.yml application-prod.yml
+# -> Ran 1 rule on 2 files: 0 findings.
+# (the rule's pattern-regex targets the canonical spelling: 'show-details:\s*(always|ALWAYS)')
+
+java -jar spring-config-guard.jar . --json --fail-on=NONE
+# -> 2 findings: SCG013 (MEDIUM) on application.yml AND on application-prod.yml
+```
+
+**2. Cross-file inheritance.** `application-prod.yml` in that same run never
+mentions `health` or `show-details` — there is nothing in that file for a
+per-file scanner to match — yet SCG still reports a finding for it, with
+`profileLabel: "prod"`, because that property is genuinely part of `prod`'s
+effective configuration once merged with the base. A scanner that evaluates
+each file in isolation has no way to know that.
+
+Checkov doesn't offer a comparable way to even attempt this: its
+custom-check framework is scoped to specific IaC resource types (Terraform,
+CloudFormation, Kubernetes, Dockerfile, ...; run `checkov --help` and check
+the `--framework` list), not arbitrary YAML key paths the way Semgrep's
+`generic` language mode allows — so this comparison is written against
+Semgrep, where an equivalent ad hoc rule is actually possible to write.
+
+## Rules
+
+17 rules, `SCG001`–`SCG017`. Each reports [`Finding`](src/main/java/dev/scg/core/Finding.java)s
+at `HIGH`, `MEDIUM`, `LOW`, or `INFO` — `INFO` never fails the build on its own
+([`ExitCodeResolver`](src/main/java/dev/scg/cli/ExitCodeResolver.java) excludes it).
+Authoritative source:
+[`META-INF/services/dev.scg.core.Rule`](src/main/resources/META-INF/services/dev.scg.core.Rule),
+enforced by `RuleRegistryTest`'s exact-ID assertion — this table mirrors it and
+should be updated in the same PR that adds or removes a rule.
+
+| ID | Severity | Description |
+|---|---|---|
+| SCG001 | HIGH / INFO | Actuator exposed via `exposure.include=*` without restricting sensitive endpoints |
+| SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
+| SCG003 | HIGH / MEDIUM | CORS with global or pattern-based wildcard in `allowed-origins`/patterns combined with `allow-credentials=true` |
+| SCG004 | MEDIUM / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins |
+| SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
+| SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
+| SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
+| SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints |
+| SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
+| SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot 3.x) or `spring.web.error.include-*` (4.0) properties |
+| SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
+| SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
+| SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |
+| SCG014 | HIGH / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
+| SCG015 | HIGH / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
+| SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
+| SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
+
+## Scope & Limitations
+
+"Effective configuration" here means: the base document merged with one
+named profile document, per `application.yml`/`application-{profile}.yml`
+pair ([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)), or,
+in [Config Server Mode](#config-server-mode), the 4-layer
+Global-base/Global-profile/Service-base/Service-profile cascade. That is the
+full extent of what "effective configuration" means in this project. Three
+mechanisms Spring Boot's own `Environment` resolves at runtime are
+deliberately outside that scope, for different reasons:
+
+* **Real environment variable values, JVM system properties, and CLI
+  arguments.** These only exist once the application actually starts — a
+  static analyzer that never runs the app cannot know them, by definition,
+  not by an implementation gap. A `${VAR:default}` placeholder resolves
+  statically to its default when one is given
+  ([`EnvironmentPlaceholder`](src/main/java/dev/scg/core/EnvironmentPlaceholder.java));
+  without a default, the property is treated as unknowable and rules flag it
+  rather than silently assuming it's safe.
+* **Multiple simultaneously active profiles** (e.g. `dev,cloud` both
+  active at once). Each named profile is evaluated today as its own
+  independent overlay on the base — SCG does not compute the combined
+  effective configuration of two or more profiles applied together, which
+  can differ from either profile alone if they override the same key.
+  Tracked for a later release, not v1.0.
+* **`spring.config.import`.** A file that imports another file/location
+  through this property is not followed — the imported content is invisible
+  to every rule, and today nothing in the report indicates that it was
+  skipped. A dedicated, always-visible coverage warning (surfacing *that*
+  an unfollowed import exists, without resolving it, and deliberately kept
+  separate from per-rule findings so it can't get lost among unrelated INFO
+  findings) is tracked in `BACKLOG.md`; actually resolving the import graph
+  is a deliberately larger scope change (it includes import locations, like
+  `spring.config.import=configserver:`, that are only resolvable by
+  contacting a running server over the network — not statically, at any
+  effort level) and is not planned.
+
+None of this is a defect to report as a false negative against SCG's
+existing rules — it's the boundary of what a tool that only parses
+`application.{yml,yaml,properties}` files, with no Spring Boot dependency
+and no running application, can determine.
+
+That boundary also shapes how to read a `Finding`'s severity: it reflects
+the risk of the configuration property itself, on the assumption that no
+unverified runtime mitigation is in place — SCG has no visibility into a
+Spring Security filter chain, a WAF, a network policy, or any other
+Java-code or infrastructure-level control that might restrict access in
+practice. A `HIGH` finding means "this property is a genuine anti-pattern
+if nothing else is protecting it," not "this was confirmed exploitable in
+your specific deployment." The same reasoning applies from the other
+direction to a clean report: treat it as "no violation found in what SCG
+reads," not as "this configuration is safe under every possible runtime
+override."
 
 ## Usage
 
@@ -124,7 +271,7 @@ visually run into the next one:
 
 ```
 [HIGH] SCG002 - application.yml [profile: dev]
-    H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
+    H2 console enabled (spring.h2.console.enabled=true). High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
 ```
 
 Format: `[severity] ruleId - sourceFile [profileDisplay]` header, then the
@@ -202,10 +349,10 @@ profile" case apart from the real `base` profile purely through the
     management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...
 
 [HIGH] SCG002 - application.yml [profile: base]
-    H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...
+    H2 console enabled (spring.h2.console.enabled=true). ...
 
 [HIGH] SCG002 - application.yml [profile: dev]
-    H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...
+    H2 console enabled (spring.h2.console.enabled=true). ...
 ```
 
 The equivalent `--json` output makes the same distinction through the raw
@@ -223,14 +370,14 @@ The equivalent `--json` output makes the same distinction through the raw
   {
     "ruleId": "SCG002",
     "severity": "HIGH",
-    "message": "H2 console enabled (spring.h2.console.enabled=true) in profile 'base'. ...",
+    "message": "H2 console enabled (spring.h2.console.enabled=true). ...",
     "sourceFile": "application.yml",
     "profileLabel": "base"
   },
   {
     "ruleId": "SCG002",
     "severity": "HIGH",
-    "message": "H2 console enabled (spring.h2.console.enabled=true) in profile 'dev'. ...",
+    "message": "H2 console enabled (spring.h2.console.enabled=true). ...",
     "sourceFile": "application.yml",
     "profileLabel": "dev"
   }
@@ -275,7 +422,14 @@ SCG006:
 * `base` (case-insensitive) is a tool-provided alias for the "no active
   profile" configuration, the same human-facing label the console report
   already uses for it — you never need to know or write the internal
-  sentinel (`__spring_config_guard_base__`).
+  sentinel (`__spring_config_guard_base__`). **Known limitation:** if the
+  scanned project has a real Spring profile *literally* named `base`
+  (syntactically valid, though unusual — see the "Multi-profile example"
+  above), writing `base` in a policy always resolves to the sentinel, never
+  to that real profile — there is currently no way to suppress a rule for
+  that specific real profile by name; `"*"` (below) is the only suppression
+  that also reaches it, at the cost of suppressing every profile at once.
+  Tracked in `BACKLOG.md` as a pending design decision, not yet resolved.
 * `"*"` suppresses a rule across every profile at once, instead of listing
   each one:
 
@@ -322,7 +476,7 @@ config-repo/
 
 `application*` is the **Global** config, shared by every client. Every other
 `.yml`/`.yaml`/`.properties` file directly in the given directory (not
-recursive — see below) is treated as one **service**, named after the file
+recursive — see above) is treated as one **service**, named after the file
 itself. For each service, SCG produces one `EffectiveConfig` per profile —
 the union of profiles declared via `spring.config.activate.on-profile` in
 *either* the Global file or that service's own file — by cascading four
@@ -347,7 +501,7 @@ reported standalone today) — this is enough to identify which service a
 finding belongs to, so `Finding`'s fields are unchanged from the regular
 mode.
 
-Two deliberate scope decisions, not oversights:
+Two deliberate scope decisions behind the matrix above, not oversights:
 
 * **Not recursive.** A Config Server repository is conventionally one flat
   directory. Recursing (like the regular mode does, to find
@@ -368,260 +522,14 @@ is a working example (Global + two services, one of which adds its own
 profile), pinned by `ConfigServerShowcaseTest`.
 
 Validated against a real Spring Cloud Config Server repository, not just this
-fixture — see the first entry under
-[Validated against real-world code](#validated-against-real-world-code).
-
-## Rules
-
-17 rules, `SCG001`–`SCG017`. Each reports [`Finding`](src/main/java/dev/scg/core/Finding.java)s
-at `HIGH`, `MEDIUM`, `LOW`, or `INFO` — `INFO` never fails the build on its own
-([`ExitCodeResolver`](src/main/java/dev/scg/cli/ExitCodeResolver.java) excludes it).
-Authoritative source:
-[`META-INF/services/dev.scg.core.Rule`](src/main/resources/META-INF/services/dev.scg.core.Rule),
-enforced by `RuleRegistryTest`'s exact-ID assertion — this table mirrors it and
-should be updated in the same PR that adds or removes a rule.
-
-| ID | Severity | Description |
-|---|---|---|
-| SCG001 | HIGH / INFO | Actuator exposed via `exposure.include=*` without restricting sensitive endpoints |
-| SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
-| SCG003 | HIGH / MEDIUM | CORS with global or pattern-based wildcard in `allowed-origins`/patterns combined with `allow-credentials=true` |
-| SCG004 | MEDIUM / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins |
-| SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
-| SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
-| SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
-| SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints |
-| SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
-| SCG010 | HIGH / MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot 3.x) or `spring.web.error.include-*` (4.0) properties |
-| SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
-| SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
-| SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |
-| SCG014 | HIGH / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
-| SCG015 | HIGH / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
-| SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
-| SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
-
-## Scope & Limitations
-
-"Effective configuration" here means: the base document merged with one
-named profile document, per `application.yml`/`application-{profile}.yml`
-pair ([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)), or,
-in [Config Server Mode](#config-server-mode), the 4-layer
-Global-base/Global-profile/Service-base/Service-profile cascade. That is the
-full extent of what "effective configuration" means in this project. Three
-mechanisms Spring Boot's own `Environment` resolves at runtime are
-deliberately outside that scope, for different reasons:
-
-* **Real environment variable values, JVM system properties, and CLI
-  arguments.** These only exist once the application actually starts — a
-  static analyzer that never runs the app cannot know them, by definition,
-  not by an implementation gap. A `${VAR:default}` placeholder resolves
-  statically to its default when one is given
-  ([`EnvironmentPlaceholder`](src/main/java/dev/scg/core/EnvironmentPlaceholder.java));
-  without a default, the property is treated as unknowable and rules flag it
-  rather than silently assuming it's safe.
-* **Multiple simultaneously active profiles** (e.g. `dev,cloud` both
-  active at once). Each named profile is evaluated today as its own
-  independent overlay on the base — SCG does not compute the combined
-  effective configuration of two or more profiles applied together, which
-  can differ from either profile alone if they override the same key.
-  Tracked for a later release, not v1.0.
-* **`spring.config.import`.** A file that imports another file/location
-  through this property is not followed — the imported content is invisible
-  to every rule, and today nothing in the report indicates that it was
-  skipped. A dedicated, always-visible coverage warning (surfacing *that*
-  an unfollowed import exists, without resolving it, and deliberately kept
-  separate from per-rule findings so it can't get lost among unrelated INFO
-  findings) is tracked in `BACKLOG.md`; actually resolving the import graph
-  is a deliberately larger scope change (it includes import locations, like
-  `spring.config.import=configserver:`, that are only resolvable by
-  contacting a running server over the network — not statically, at any
-  effort level) and is not planned.
-
-None of this is a defect to report as a false negative against SCG's
-existing rules — it's the boundary of what a tool that only parses
-`application.{yml,yaml,properties}` files, with no Spring Boot dependency
-and no running application, can determine.
-
-That boundary also shapes how to read a `Finding`'s severity: it reflects
-the risk of the configuration property itself, on the assumption that no
-unverified runtime mitigation is in place — SCG has no visibility into a
-Spring Security filter chain, a WAF, a network policy, or any other
-Java-code or infrastructure-level control that might restrict access in
-practice. A `HIGH` finding means "this property is a genuine anti-pattern
-if nothing else is protecting it," not "this was confirmed exploitable in
-your specific deployment." The same reasoning applies from the other
-direction to a clean report: treat it as "no violation found in what SCG
-reads," not as "this configuration is safe under every possible runtime
-override."
+fixture — see the first entry in [VALIDATION.md](VALIDATION.md).
 
 ## Validated against real-world code
 
-Each run below is included as a **precision check on the linter** — every
-finding is technically accurate for the property values on disk. What every
-run demonstrates is that the linter behaves the same regardless of *why* a
-config file exists or which profile (or, in Config Server Mode, which
-service) a finding lands in. SCG has no notion of "this is just a demo/test
-profile, skip it" — a rule either triggers on the effective properties or it
-doesn't, base config and named profiles alike (several rules document this
-explicitly as a deliberate "no profile exemption" decision, e.g.
-[`H2ConsoleExposedRule`](src/main/java/dev/scg/rules/H2ConsoleExposedRule.java)).
-
-**Reproducibility:** all four runs below were reproduced against SCG
-commit [`b0d15ec`](https://github.com/rgiovann/spring-config-guard/commit/b0d15ec25b85437b9579e9b76320482a3dc856eb)
-(this repository's `main` at the time of writing); each run's own command
-block below pins the exact commit of the *target* repository that produced
-the numbers shown, since all four are real, actively-changing repositories —
-without a pin, the same command run later against a newer commit could
-legitimately return different numbers, not because SCG changed, but because
-the target project did.
-
-**Read finding counts as occurrences, not independent problems.** A single
-misconfigured property in a shared/inherited file can multiply into many
-findings without representing that many distinct issues. The clearest case
-is the first run below: 53 findings trace back to 3 properties in one
-Global file, inherited by all 8 services. The other three runs are, by
-contrast, close to one finding per independently-authored file: Spring
-Boot's 66 findings span 41 distinct files, Spring Boot Admin's 85 span 29 —
-each smoke-test/sample module carries its own deliberately minimal config,
-not a shared root. Check how concentrated a run's findings are in
-shared/inherited files before treating a raw finding count, by itself, as a
-severity signal.
-
-**The first entry below is the one worth paying attention to.**
-`spring-petclinic-microservices-config` is a real, actively-used Spring
-Cloud Config Server backing repository — scanned exactly as it's meant to
-be consumed, not a demo module living inside a larger codebase. It's also
-the scenario that motivated [Config Server Mode](#config-server-mode) in
-the first place: without `--config-server`, every one of its 8 service
-files is invisible to SCG, since none of them match the `application*`
-naming its regular mode looks for. The other three runs (Spring Boot,
-Spring Boot Admin, PetClinic) are sample/demo code, included to stress-test
-precision rather than as a security assessment of those specific projects —
-see each entry's own caveat below.
-
-### spring-petclinic/spring-petclinic-microservices-config
-
-Run against [spring-petclinic/spring-petclinic-microservices-config](https://github.com/spring-petclinic/spring-petclinic-microservices-config)
-via `--config-server` (9 files — 1 Global `application.yml` + 8 services):
-
-| Rule | HIGH | MEDIUM | INFO | Total |
-|---|---|---|---|---|
-| SCG001 | 37 | — | — | 37 |
-| SCG006 | 8 | — | — | 8 |
-| SCG012 | 8 | — | — | 8 |
-| **Total** | **53** | **0** | **0** | **53** |
-
-All 53 findings trace back to the Global `application.yml`: an unrestricted
-`management.endpoints.web.exposure.include: "*"` in its base section
-(SCG001, inherited by every service and profile), and its `mysql` profile
-hardcoding `username: root` / `password: petclinic` with `useSSL=false` on
-the JDBC URL (SCG006 + SCG012) — inherited by all 8 services, none of which
-override the datasource themselves. The 8 services found (`admin-server`,
-`api-gateway`, `customers-service`, `discovery-server`, `genai-service`,
-`tracing-server`, `vets-service`, `visits-service`) match the repository's
-file listing one-to-one, and `application.yml` itself never appears as a
-`sourceFile` — confirming it was folded into every service as the Global
-layer, exactly as documented above, rather than skipped or double-counted.
-
-```bash
-git clone https://github.com/spring-petclinic/spring-petclinic-microservices-config.git
-git -C spring-petclinic-microservices-config checkout 323993ce2519c6d02df63e08bf4458d123d3b611
-java -jar target/spring-config-guard.jar spring-petclinic-microservices-config --config-server --json --fail-on=NONE
-```
-
-### spring-projects/spring-boot
-
-Run against [spring-projects/spring-boot](https://github.com/spring-projects/spring-boot)'s
-own source (98 `application.{yml,yaml,properties}` files across its smoke-test
-and integration-test modules, `--json --fail-on=NONE`):
-
-| Rule | HIGH | MEDIUM | INFO | Total |
-|---|---|---|---|---|
-| SCG001 | 21 | — | — | 21 |
-| SCG002 | 3 | — | — | 3 |
-| SCG006 | 24 | — | 7 | 31 |
-| SCG007 | 2 | — | — | 2 |
-| SCG009 | — | 1 | — | 1 |
-| SCG013 | — | 6 | — | 6 |
-| SCG014 | 1 | — | — | 1 |
-| SCG017 | 1 | — | — | 1 |
-| **Total** | **52** | **7** | **7** | **66** |
-
-All 66 findings resolve to files under `smoke-test/`/`integration-test/`
-module directories — code that exists specifically to exercise one feature
-(Actuator, H2 console, OAuth2, Kafka, etc.) with the simplest config that
-does it, never to simulate production. A hardcoded
-`spring.security.user.password` in a smoke test is expected, not a leak.
-Zero findings outside those directories, across the entire repository.
-
-```bash
-git clone https://github.com/spring-projects/spring-boot.git
-git -C spring-boot checkout adbbf047320013ee42284d6957293aaf75a56ad7
-java -jar target/spring-config-guard.jar spring-boot --json --fail-on=NONE
-```
-
-### codecentric/spring-boot-admin
-
-Run against [codecentric/spring-boot-admin](https://github.com/codecentric/spring-boot-admin)'s
-sample suite (29 `application*.yml` files with findings, across 9 of its
-`spring-boot-admin-samples` modules — consul, eureka, hazelcast, mcp,
-reactive, servlet, servlet-graalvm, war, zookeeper — `--json --fail-on=NONE`):
-
-| Rule | HIGH | MEDIUM | INFO | Total |
-|---|---|---|---|---|
-| SCG001 | 31 | — | — | 31 |
-| SCG006 | 24 | — | — | 24 |
-| SCG013 | — | 30 | — | 30 |
-| **Total** | **55** | **30** | **0** | **85** |
-
-Same story as Spring Boot: every finding is under
-`spring-boot-admin-samples/`, whose entire purpose is to showcase one
-integration (Consul, Eureka, Hazelcast, Zookeeper, ...) with the most
-minimal config that works, `secure`/`insecure` profiles included on
-purpose to demonstrate the difference. The
-`spring-boot-admin-sample-zookeeper/application.yml` case is a good
-illustration of the profile-agnostic point above: its `insecure` profile is
-an empty override (it only activates the profile, no properties of its own),
-yet SCG still reports the same SCG001/SCG006/SCG013 findings there as on
-`[base]`, because they're genuinely present in that profile's effective
-config — inherited or not doesn't matter.
-
-```bash
-git clone https://github.com/codecentric/spring-boot-admin.git
-git -C spring-boot-admin checkout 8699ebdfd3afa96f0fd2318addc7508f4be14def
-java -jar target/spring-config-guard.jar spring-boot-admin --json --fail-on=NONE
-```
-
-### spring-projects/spring-petclinic
-
-Run against [spring-projects/spring-petclinic](https://github.com/spring-projects/spring-petclinic)
-(3 `application*.properties` files, `--json --fail-on=NONE`):
-
-| Rule | HIGH | MEDIUM | INFO | Total |
-|---|---|---|---|---|
-| SCG001 | 3 | — | — | 3 |
-| SCG006 | 2 | — | — | 2 |
-| **Total** | **5** | **0** | **0** | **5** |
-
-Unlike the two runs above, this isn't a demo subdirectory inside a larger
-real project — PetClinic's `src/main/resources/application.properties` *is*
-the whole application, and it exists purely as a well-known reference/teaching
-app, never as a deployed service. `management.endpoints.web.exposure.include=*`
-in the base config (flagged even though the file's own comment says "Don't
-do this in production, only for development and testing") and
-`spring.datasource.password=${MYSQL_PASS:petclinic}` /
-`${POSTGRES_PASS:petclinic}` in the `mysql`/`postgres` profiles (a plaintext
-fallback behind an env placeholder) are exactly the kind of properties SCG
-is built to catch — the profile-agnostic behavior just means the tool
-doesn't quietly trust "it's only a profile-gated default" as a reason to
-stay silent.
-
-```bash
-git clone https://github.com/spring-projects/spring-petclinic.git
-git -C spring-petclinic checkout 818c4136ea971c21674525f9053de0d9c7ad8cfe
-java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
-```
+Extended, run-by-run validation reports (exact repositories, pinned commits,
+finding tables, and how to reproduce each run) live in a separate document
+so this README stays focused on what the tool is and how to use it:
+see **[VALIDATION.md](VALIDATION.md)**.
 
 ## Contributing
 
