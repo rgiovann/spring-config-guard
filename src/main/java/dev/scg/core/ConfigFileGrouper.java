@@ -115,7 +115,7 @@ public final class ConfigFileGrouper {
             combinedDocuments.add(new ConfigDocument(Optional.empty(), foldedBase));
         }
 
-        Path representativePath = filesInDirectory.get(0).path();
+        Path representativePath = filesInDirectory.getFirst().path();
         return new GroupedConfigFile(
                 new ConfigFile(representativePath, combinedDocuments),
                 sourceByProfileLabel

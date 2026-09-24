@@ -3,7 +3,7 @@ package dev.scg.benchmark;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.scg.core.*;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -19,14 +19,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Validation harness for ProfileMerger against a real Spring Boot application
- * (separate project {@code spring-env-benchmark}, outside this repository --
- * SCG does not depend on Spring Boot, so this app never becomes a build
- * dependency; see BACKLOG.md and VALIDATION.md for the full rationale and
- * steps).
+ * ({@code spring-env-benchmark}, a plain sibling directory at the repository
+ * root -- not a Maven module of this build, the same way demo-project/ and
+ * demo-project-clean/ aren't: SCG's own build never resolves or depends on
+ * Spring Boot because of it. See BACKLOG.md and VALIDATION.md for the full
+ * rationale and steps).
  *
  * <p>Prerequisite: start the 'spring-env-benchmark' application on port 8081
  * with the 'prod' profile active
- * (e.g.: {@code mvn spring-boot:run "-Dspring-boot.run.profiles=prod"}).
+ * (e.g.: {@code cd spring-env-benchmark && mvn spring-boot:run "-Dspring-boot.run.profiles=prod"}).
  *
  * <p>The comparison can't be a raw key-by-key diff: real Spring keeps
  * {@code app.relaxed-binding-test} (from the base) and {@code app.relaxedBindingTest}
@@ -38,13 +39,30 @@ import static org.junit.jupiter.api.Assertions.*;
  * before comparing, and the value kept per canonical key is the one from the
  * HIGHEST-precedence source that declares it -- just taking the last raw
  * occurrence isn't enough.
+ *
+ * <p>Tagged {@code "benchmark"} instead of {@code @Disabled}: this class must
+ * never run as part of the regular build (it always fails without the app
+ * above running), but unlike {@code @Disabled}, a tag can be excluded or
+ * selected from the command line -- no source edit needed to turn it on or
+ * off.
+ * <ul>
+ *   <li>{@code mvn test} (or any plain build) -- this class does NOT run.
+ *       The root {@code pom.xml}'s {@code excludedGroups} property defaults
+ *       to {@code benchmark}, and surefire is wired to that property.</li>
+ *   <li>{@code mvn test -Dgroups=benchmark -DexcludedGroups=} -- runs ONLY
+ *       this class (with the app already up on port 8081). {@code groups}
+ *       selects the {@code benchmark} tag; {@code -DexcludedGroups=} (empty)
+ *       is required too, to override the pom's default exclusion of that
+ *       same tag -- without it, surefire ends up with "include benchmark AND
+ *       exclude benchmark", which runs nothing.</li>
+ * </ul>
  */
-@Disabled("Manual benchmark. Requires the spring-env-benchmark application running on port 8081.")
+@Tag("benchmark")
 class ActuatorEnvComparisonTest {
 
     private static final String ACTUATOR_URL = "http://localhost:8081/actuator/env";
     private static final Path BENCHMARK_RESOURCES_PATH =
-            Path.of("../spring-env-benchmark/src/main/resources");
+            Path.of("spring-env-benchmark/src/main/resources");
 
     @Test
     void compareProfileMergerWithActuatorEnv() throws Exception {

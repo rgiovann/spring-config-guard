@@ -317,12 +317,15 @@ java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
 The runs above check rule precision against real-world config. This
 benchmark checks a lower-level claim instead: that `ProfileMerger`'s
 effective configuration for a profile is equivalent to what a real, running
-Spring Boot application resolves through `/actuator/env`. It's external
-validation infrastructure, not part of this repository's regular `mvn test`
-run — the app it depends on lives outside this repository (`spring-env-benchmark`,
-so SCG's own build never depends on Spring Boot), and the JUnit test that
-drives the comparison (`ActuatorEnvComparisonTest`) stays `@Disabled` for
-the same reason.
+Spring Boot application resolves through `/actuator/env`. It's validation
+infrastructure, not part of this repository's regular `mvn test` run — the
+app it depends on (`spring-env-benchmark/`) lives in this repository as a
+plain directory, not a Maven module of this build (same convention as
+`demo-project/`/`demo-project-clean/`), so SCG's own build never resolves
+or depends on Spring Boot because of it. The JUnit test that drives the
+comparison (`ActuatorEnvComparisonTest`) is tagged `benchmark` and excluded
+by default from `mvn test` (via the root `pom.xml`'s `excludedGroups`
+property) for the same reason — it needs that app actually running.
 
 **Fixture:** `spring-env-benchmark`'s `application.yml` (base) +
 `application-prod.yml` (profile) + a residual `application.properties`
@@ -345,12 +348,13 @@ merge time.
 **Result:** all 5 assertions match the real Spring Boot 4.1.1 output.
 
 ```bash
-# 1. Start the benchmark app (separate repository, not part of this build)
-cd ../spring-env-benchmark
+# 1. Start the benchmark app (plain directory in this repo, not a Maven module)
+cd spring-env-benchmark
 mvn spring-boot:run "-Dspring-boot.run.profiles=prod"
 
-# 2. In this repository, temporarily remove @Disabled from
-#    ActuatorEnvComparisonTest, then:
-mvn test -Dtest=ActuatorEnvComparisonTest
-# restore @Disabled afterward -- this test must never run in normal CI/mvn test
+# 2. In a separate shell, back at the spring-config-guard root:
+mvn test -Dgroups=benchmark -DexcludedGroups=
+# -DexcludedGroups= (empty) overrides the pom's default exclusion of the
+# "benchmark" group; no source edit needed, and it's excluded again next
+# time you run a plain `mvn test`.
 ```

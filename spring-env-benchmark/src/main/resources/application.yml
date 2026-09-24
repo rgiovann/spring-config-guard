@@ -1,0 +1,21 @@
+server:
+  port: 8081 # Porta diferente para não conflitar com nada
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: env # Expõe o endpoint /actuator/env
+  endpoint:
+    env:
+      show-values: ALWAYS # CRÍTICO: Exibe os valores reais de senhas/secrets sem reter com '******'
+
+# --- CASOS DE TESTE / FIXTURES (BASE) ---
+app:
+  scalar-property: "base-value"
+  list-property:
+    - "base-item-1"
+    - "base-item-2"
+  relaxed-binding-test: "kebab-from-base"
+  nullable-override: "should-be-nullified-in-profile"
+  placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
