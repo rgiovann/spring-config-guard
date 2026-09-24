@@ -4,3 +4,4 @@ app:
     - "prod-single-item" # 2. Redefinição de lista (deve substituir a lista da base inteira)
   relaxedBindingTest: "camel-override" # 3. Relaxed binding (camelCase sobrecrevendo kebab-case)
   nullable-override: null # 4. Override para null explícito
+  file-vs-on-profile-conflict: "from-named-file" # 7. mesma chave que o bloco on-profile em application.yml -- quem vence?

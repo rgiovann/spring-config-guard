@@ -24,21 +24,34 @@ import java.util.stream.Collectors;
  * name (spring.config.name) and multiple directories with precedence are
  * out of scope — see BL-17.
  * <p>
- * When more than one physical file resolves to the same label (base, or the
- * same named profile) — e.g. application.yml + application.properties both
- * acting as base — their documents are folded into one via
- * {@link ProfileMerger#mergeProperties}, in ascending precedence order
- * ({@link #precedenceRank}): {@code .properties} wins a key conflict over
- * {@code .yml}/{@code .yaml}. The fold is scoped to a single pass: filename-profile
- * files fold only with other filename-profile files naming the same profile;
- * base files fold only with other base files. A document carrying a profile
- * from an internal on-profile block inside a base file is passed through
- * unchanged, never folded with a same-named profile-specific file — this
- * class does not resolve precedence between those two mechanisms.
+ * When more than one physical source resolves to the same label, their
+ * documents are folded into one via
+ * {@link ProfileMerger#mergeWithoutStrippingSentinels} (not
+ * {@code mergeProperties} — this fold is an intermediate step, not the
+ * final one, and stripping sentinels here would lose information the later,
+ * real {@link ProfileMerger#merge} pass still needs), in ascending
+ * precedence order. Two tiers of fold exist:
+ * <ul>
+ *   <li>Base documents (no profile at all) from multiple physical base
+ *       files — e.g. application.yml + application.properties both acting
+ *       as base — fold together ({@link #precedenceRank}): {@code .properties}
+ *       wins a key conflict over {@code .yml}/{@code .yaml}.</li>
+ *   <li>Documents for the same NAMED profile fold together regardless of
+ *       whether they come from a filename-profile file
+ *       (application-{profile}.ext) or from an on-profile block inside a
+ *       base file ({@link #namedSourceRank}): a filename-profile file
+ *       always outranks an on-profile block in a base file, confirmed
+ *       against a real Spring Boot app (see BACKLOG.md, "Caso 3"); within
+ *       either source, {@code .properties} still outranks
+ *       {@code .yml}/{@code .yaml}.</li>
+ * </ul>
  */
 public final class ConfigFileGrouper {
 
     private static final String PROFILE_SPECIFIC_PREFIX = "application-";
+
+    /** Precedence-rank offset that puts every filename-profile source above every on-profile-in-base source. */
+    private static final int NAMED_FILE_TIER = 3;
 
     private final ProfileMerger profileMerger = new ProfileMerger();
 
@@ -58,58 +71,60 @@ public final class ConfigFileGrouper {
     }
 
     private GroupedConfigFile mergeGroup(List<ConfigFile> filesInDirectory) {
-        // Ascending precedence: folded as base -> overlay, in this order, so the
-        // last (highest-precedence) file wins both key conflicts and the
-        // traceability pointer below.
-        List<ConfigFile> orderedFiles = filesInDirectory.stream()
-                .sorted(Comparator.comparingInt(file -> precedenceRank(file.path())))
-                .toList();
-
         Map<String, Path> sourceByProfileLabel = new LinkedHashMap<>();
 
-        // First pass: profile-specific files. Multiple physical files naming the
-        // SAME profile (e.g. application-prod.yml + application-prod.properties)
-        // are folded into a single document. The path recorded for traceability
-        // is the highest-precedence file — the one more likely to be "where to
-        // fix it".
-        Map<String, Map<String, String>> foldedByFilenameProfile = new LinkedHashMap<>();
-        for (ConfigFile file : orderedFiles) {
+        // Every document that resolves to a NAMED profile label -- whether from
+        // a filename-profile file or from an on-profile block inside a base
+        // file -- tagged with its combined precedence rank (namedSourceRank)
+        // and folded together, ascending, regardless of physical origin.
+        record NamedSource(String label, ConfigDocument document, Path path, int rank) {}
+        List<NamedSource> namedSources = new ArrayList<>();
+
+        // True base documents (no profile at all) from multiple physical base
+        // files, tagged with their own rank and folded separately.
+        record BaseSource(ConfigDocument document, Path path, int rank) {}
+        List<BaseSource> baseSources = new ArrayList<>();
+
+        for (ConfigFile file : filesInDirectory) {
             Optional<String> filenameProfile = extractProfileFromFilename(file.path());
-            if (filenameProfile.isEmpty()) {
+            if (filenameProfile.isPresent()) {
+                String label = filenameProfile.get();
+                int rank = namedSourceRank(file.path(), true);
+                for (ConfigDocument document : file.documents()) {
+                    namedSources.add(new NamedSource(label, document, file.path(), rank));
+                }
                 continue;
-            }
-            String label = filenameProfile.get();
-            for (ConfigDocument document : file.documents()) {
-                foldedByFilenameProfile.merge(label, document.properties(), profileMerger::mergeProperties);
-            }
-            sourceByProfileLabel.put(label, file.path());
-        }
-
-        List<ConfigDocument> combinedDocuments = new ArrayList<>();
-        foldedByFilenameProfile.forEach((label, properties) ->
-                combinedDocuments.add(new ConfigDocument(Optional.of(label), properties)));
-
-        // Second pass: base file(s). A document carrying a profile from an
-        // internal on-profile block is passed through unchanged — not folded
-        // with the first pass above (see class Javadoc). True base documents
-        // (no profile at all) from multiple physical base files ARE folded
-        // the same way as the first pass.
-        Map<String, String> foldedBase = null;
-        for (ConfigFile file : orderedFiles) {
-            if (extractProfileFromFilename(file.path()).isPresent()) {
-                continue; // already handled in the first pass
             }
             for (ConfigDocument document : file.documents()) {
                 if (document.profile().isPresent()) {
-                    combinedDocuments.add(document);
-                    sourceByProfileLabel.put(document.profile().get(), file.path());
-                    continue;
+                    namedSources.add(new NamedSource(
+                            document.profile().get(), document, file.path(), namedSourceRank(file.path(), false)));
+                } else {
+                    baseSources.add(new BaseSource(document, file.path(), precedenceRank(file.path())));
                 }
-                foldedBase = foldedBase == null
-                        ? document.properties()
-                        : profileMerger.mergeProperties(foldedBase, document.properties());
             }
-            sourceByProfileLabel.put(ProfileMerger.BASE_PROFILE_LABEL, file.path());
+        }
+
+        List<ConfigDocument> combinedDocuments = new ArrayList<>();
+
+        // Traceability path recorded per label is the highest-precedence
+        // source -- the one more likely to be "where to fix it".
+        namedSources.sort(Comparator.comparingInt(NamedSource::rank));
+        Map<String, Map<String, String>> foldedByLabel = new LinkedHashMap<>();
+        for (NamedSource source : namedSources) {
+            foldedByLabel.merge(source.label(), source.document().properties(), profileMerger::mergeWithoutStrippingSentinels);
+            sourceByProfileLabel.put(source.label(), source.path());
+        }
+        foldedByLabel.forEach((label, properties) ->
+                combinedDocuments.add(new ConfigDocument(Optional.of(label), properties)));
+
+        baseSources.sort(Comparator.comparingInt(BaseSource::rank));
+        Map<String, String> foldedBase = null;
+        for (BaseSource source : baseSources) {
+            foldedBase = foldedBase == null
+                    ? source.document().properties()
+                    : profileMerger.mergeWithoutStrippingSentinels(foldedBase, source.document().properties());
+            sourceByProfileLabel.put(ProfileMerger.BASE_PROFILE_LABEL, source.path());
         }
         if (foldedBase != null) {
             combinedDocuments.add(new ConfigDocument(Optional.empty(), foldedBase));
@@ -123,11 +138,11 @@ public final class ConfigFileGrouper {
     }
 
     /**
-     * Precedence rank used to fold multiple physical files resolving to the
-     * same label (base, or the same named profile) into one document.
-     * {@code .properties} outranks {@code .yml}/{@code .yaml} on a key
-     * conflict; {@code .yml} vs. {@code .yaml} between themselves is an
-     * arbitrary but deterministic tie-break.
+     * Precedence rank used to fold multiple physical base files (no profile
+     * at all) resolving to the same label into one document. {@code .properties}
+     * outranks {@code .yml}/{@code .yaml} on a key conflict; {@code .yml} vs.
+     * {@code .yaml} between themselves is an arbitrary but deterministic
+     * tie-break.
      */
     private static int precedenceRank(Path path) {
         String name = path.getFileName().toString();
@@ -138,6 +153,18 @@ public final class ConfigFileGrouper {
             return 1;
         }
         return 0; // .yml
+    }
+
+    /**
+     * Precedence rank used to fold multiple sources of the same NAMED profile
+     * into one document -- {@link #precedenceRank}'s format tie-break, offset
+     * by {@link #NAMED_FILE_TIER} when the source is a filename-profile file
+     * rather than an on-profile block inside a base file. A filename-profile
+     * file always outranks an on-profile block, confirmed against a real
+     * Spring Boot app (see BACKLOG.md, "Caso 3").
+     */
+    private static int namedSourceRank(Path path, boolean isFilenameProfileFile) {
+        return (isFilenameProfileFile ? NAMED_FILE_TIER : 0) + precedenceRank(path);
     }
 
     /**

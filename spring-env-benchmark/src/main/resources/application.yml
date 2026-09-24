@@ -19,3 +19,15 @@ app:
   relaxed-binding-test: "kebab-from-base"
   nullable-override: "should-be-nullified-in-profile"
   placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
+
+# --- CASO 3: bloco on-profile interno coexistindo com application-prod.yml,
+# ambos pro profile "prod" -- precedência entre os dois mecanismos nunca foi
+# confirmada contra o Spring real (ver BACKLOG.md, Caso 3) ---
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+app:
+  on-profile-only-property: "from-internal-on-profile" # 6. só existe aqui -- os dois convivem?
+  file-vs-on-profile-conflict: "from-internal-on-profile" # 7. mesma chave que application-prod.yml define -- quem vence?

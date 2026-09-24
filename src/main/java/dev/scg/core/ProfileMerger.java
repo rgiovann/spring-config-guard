@@ -77,6 +77,23 @@ public final class ProfileMerger {
      * list-replacement/purge behavior in a second implementation.
      */
     Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
+        return stripInternalSentinels(mergeWithoutStrippingSentinels(base, overlay));
+    }
+
+    /**
+     * Same merge/purge logic as {@link #mergeProperties}, but does not strip
+     * the internal sentinel keys from the result. Used by {@code ConfigFileGrouper}
+     * to fold multiple physical sources of the SAME precedence tier (e.g. two
+     * files naming the same profile) into one document, without losing
+     * sentinel information that the later, real {@link #merge} pass against
+     * the true base still needs: an empty-list sentinel folded away here
+     * would otherwise never trigger the purge of a conflicting base list at
+     * that later pass. An explicit-null override still resolves to a real
+     * Java {@code null} value immediately (that part isn't deferrable), so
+     * callers folding at this level must tolerate {@code null} values in the
+     * result -- see {@code ConfigDocument}.
+     */
+    Map<String, String> mergeWithoutStrippingSentinels(Map<String, String> base, Map<String, String> overlay) {
         Map<String, String> merged = new LinkedHashMap<>(base);
 
         Set<String> canonicalListRootsInOverlay = new LinkedHashSet<>();
@@ -119,7 +136,7 @@ public final class ProfileMerger {
 
         merged.putAll(overlay);
         merged.putAll(nullOverrides);
-        return stripInternalSentinels(merged);
+        return merged;
     }
     private String extractCanonicalRoot(String key) {
         String cleanKey = key;

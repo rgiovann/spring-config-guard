@@ -134,6 +134,16 @@ class ActuatorEnvComparisonTest {
                 "Without the env var defined, both sides must resolve to the same default value"
         );
 
+        // 6. Named profile file (application-prod.yml) vs. an on-profile block
+        // inside the base file, both targeting "prod". Both sources must
+        // contribute (the on-profile-only key must survive), and on a key
+        // conflict the named file must win over the on-profile block.
+        assertEquals("from-internal-on-profile",
+                RelaxedProperties.get(scg, "app.on-profile-only-property"),
+                "A key that only exists in the on-profile block must still survive the fold");
+        assertEquals("from-named-file", scg.get("app.file-vs-on-profile-conflict"),
+                "The named profile file must win a key conflict over an on-profile block in the base file");
+
         System.out.println("All ProfileMerger benchmark criteria matched real Spring Boot.");
     }
     @SuppressWarnings("SameParameterValue")

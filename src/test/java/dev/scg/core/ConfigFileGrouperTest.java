@@ -154,6 +154,95 @@ class ConfigFileGrouperTest {
         assertThat(prod.properties()).containsEntry("shared.key", "from-properties");
     }
 
+    @Test
+    @DisplayName("Should fold an on-profile block from a base file with a same-named profile file, keeping disjoint keys from both")
+    void shouldFoldOnProfileBlockWithNamedProfileFileKeepingBothDisjointKeys(@TempDir Path dir) throws IOException {
+        // This and the next test encode a precedence rule the official Spring
+        // Boot docs don't cover -- confirmed empirically against a real
+        // Spring Boot 4.1.1 app via /actuator/env (spring-env-benchmark; see
+        // BACKLOG.md, "Caso 3"), not assumed.
+        Files.writeString(dir.resolve("application.yml"), """
+                base.key: valor
+                ---
+                spring:
+                  config:
+                    activate:
+                      on-profile: prod
+                from:
+                  on-profile-block: valor-on-profile
+                """);
+        Files.writeString(dir.resolve("application-prod.yml"), "from.named-file: valor-named-file");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties())
+                .containsEntry("from.on-profile-block", "valor-on-profile")
+                .containsEntry("from.named-file", "valor-named-file");
+    }
+
+    @Test
+    @DisplayName("Should let a same-named profile file win a key conflict over an on-profile block in a base file")
+    void shouldLetNamedProfileFileWinKeyConflictOverOnProfileBlock(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                base.key: valor
+                ---
+                spring:
+                  config:
+                    activate:
+                      on-profile: prod
+                shared.key: from-on-profile-block
+                """);
+        Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-named-file");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties()).containsEntry("shared.key", "from-named-file");
+    }
+
+    @Test
+    @DisplayName("Should still produce a document for an on-profile block with no same-named profile file")
+    void shouldStillProduceDocumentForOnProfileBlockAlone(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                base.key: valor
+                ---
+                spring:
+                  config:
+                    activate:
+                      on-profile: prod
+                from.on-profile-block: valor-on-profile
+                """);
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties()).containsEntry("from.on-profile-block", "valor-on-profile");
+    }
+
+    @Test
+    @DisplayName("Should not throw and should preserve an explicit-null override when folding two same-profile files")
+    void shouldPreserveNullOverrideWhenFoldingSameProfileFiles(@TempDir Path dir) throws IOException {
+        // Regression test: folding a NAMED profile's sources reuses
+        // ProfileMerger's merge logic, which resolves an explicit-null
+        // override to a real Java null value as part of the fold itself
+        // (not deferrable). ConfigDocument must tolerate that -- it used to
+        // build its properties map via Map.copyOf, which throws on a null
+        // value. Found via the live /actuator/env benchmark above, not by
+        // inspection -- no purely local fixture had combined a multi-source
+        // fold with a null override before that run.
+        Files.writeString(dir.resolve("application.yml"), "base.key: valor");
+        Files.writeString(dir.resolve("application-prod.yml"), "app.other: value-a");
+        Files.writeString(dir.resolve("application-prod.yaml"), "app.nullable: null");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties())
+                .containsEntry("app.other", "value-a")
+                .containsEntry("app.nullable", null);
+    }
+
     private ConfigDocument onlyBaseDocument(GroupedConfigFile group) {
         return onlyDocumentMatching(group, doc -> doc.profile().isEmpty());
     }
