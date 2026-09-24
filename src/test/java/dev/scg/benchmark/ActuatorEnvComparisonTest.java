@@ -104,11 +104,15 @@ class ActuatorEnvComparisonTest {
                 "SCG deve resolver o override null como Java null de verdade, não string vazia");
 
         // 5. Placeholder com default, variável de ambiente não definida em
-        // nenhum dos dois lados -- Spring resolve em runtime, SCG resolve
-        // estaticamente; ambos devem bater no mesmo default.
+        // nenhum dos dois lados -- Spring resolve em runtime; o SCG mantém o
+        // placeholder cru no EffectiveConfig e só resolve sob demanda, via
+        // EnvironmentPlaceholder.resolve() (é cada Rule que chama isso, não o
+        // merge) -- então a comparação precisa resolver o lado do SCG
+        // explicitamente antes de comparar com o valor já resolvido pelo Spring.
+        String scgRawPlaceholder = RelaxedProperties.get(scg, "app.placeholder-with-default");
         assertEquals(
                 spring.get(RelaxedProperties.canonicalize("app.placeholder-with-default")),
-                RelaxedProperties.get(scg, "app.placeholder-with-default"),
+                EnvironmentPlaceholder.resolve(scgRawPlaceholder).orElseThrow(),
                 "Sem a env var definida, os dois devem resolver pro mesmo valor de default"
         );
 

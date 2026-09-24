@@ -37,7 +37,7 @@ class ConfigFileGrouperTest {
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
         assertThat(groups).hasSize(1);
-        assertThat(groups.get(0).mergedFile().documents()).hasSize(2);
+        assertThat(groups.getFirst().mergedFile().documents()).hasSize(2);
     }
 
     @Test
@@ -56,7 +56,7 @@ class ConfigFileGrouperTest {
                 """);
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigFile merged = groups.get(0).mergedFile();
+        ConfigFile merged = groups.getFirst().mergedFile();
 
         boolean hasStagingLabel = merged.documents().stream()
                 .anyMatch(doc -> doc.profile().equals(java.util.Optional.of("staging")));
@@ -87,12 +87,85 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application.yml"), "base.key: valor");
         Files.writeString(dir.resolve("application-dev.yml"), "dev.key: valor");
 
-        GroupedConfigFile group = grouper.group(loader.loadDirectory(dir)).get(0);
+        GroupedConfigFile group = grouper.group(loader.loadDirectory(dir)).getFirst();
 
         assertThat(group.sourceByProfileLabel().get(ProfileMerger.BASE_PROFILE_LABEL))
                 .isEqualTo(dir.resolve("application.yml"));
         assertThat(group.sourceByProfileLabel().get("dev"))
                 .isEqualTo(dir.resolve("application-dev.yml"));
+    }
+
+    @Test
+    @DisplayName("Should fold two base files with disjoint keys into one base document, keeping both")
+    void shouldFoldTwoBaseFilesWithDisjointKeysKeepingBoth(@TempDir Path dir) throws IOException {
+        // Reproduces the bug found via the /actuator/env benchmark (BACKLOG.md,
+        // 2026-09-23): application.yml + application.properties coexisting as
+        // base files used to silently lose one of the two files' properties
+        // entirely, since ProfileMerger.findBaseProperties() only ever looked
+        // at the first base document found.
+        Files.writeString(dir.resolve("application.yml"), "from.yaml: valor-yaml");
+        Files.writeString(dir.resolve("application.properties"), "from.properties=valor-properties");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument base = onlyBaseDocument(groups.get(0));
+
+        assertThat(base.properties())
+                .containsEntry("from.yaml", "valor-yaml")
+                .containsEntry("from.properties", "valor-properties");
+    }
+
+    @Test
+    @DisplayName("Should let .properties win a key conflict over .yml when folding two base files")
+    void shouldLetPropertiesWinKeyConflictWhenFoldingBaseFiles(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "shared.key: from-yaml");
+        Files.writeString(dir.resolve("application.properties"), "shared.key=from-properties");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument base = onlyBaseDocument(groups.getFirst());
+
+        assertThat(base.properties()).containsEntry("shared.key", "from-properties");
+    }
+
+    @Test
+    @DisplayName("Should fold two files naming the same profile with disjoint keys, keeping both")
+    void shouldFoldTwoFilesNamingSameProfileKeepingBothDisjointKeys(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "base.key: valor");
+        Files.writeString(dir.resolve("application-prod.yml"), "from.yaml: valor-yaml");
+        Files.writeString(dir.resolve("application-prod.properties"), "from.properties=valor-properties");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties())
+                .containsEntry("from.yaml", "valor-yaml")
+                .containsEntry("from.properties", "valor-properties");
+    }
+
+    @Test
+    @DisplayName("Should let .properties win a key conflict over .yml when folding two same-profile files")
+    void shouldLetPropertiesWinKeyConflictWhenFoldingSameProfileFiles(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "base.key: valor");
+        Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-yaml");
+        Files.writeString(dir.resolve("application-prod.properties"), "shared.key=from-properties");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties()).containsEntry("shared.key", "from-properties");
+    }
+
+    private ConfigDocument onlyBaseDocument(GroupedConfigFile group) {
+        return onlyDocumentMatching(group, doc -> doc.profile().isEmpty());
+    }
+
+    private ConfigDocument onlyDocumentForProfile(GroupedConfigFile group, String profile) {
+        return onlyDocumentMatching(group, doc -> doc.profile().equals(java.util.Optional.of(profile)));
+    }
+
+    private ConfigDocument onlyDocumentMatching(GroupedConfigFile group, java.util.function.Predicate<ConfigDocument> predicate) {
+        List<ConfigDocument> matches = group.mergedFile().documents().stream().filter(predicate).toList();
+        assertThat(matches).hasSize(1);
+        return matches.get(0);
     }
 
     @Test

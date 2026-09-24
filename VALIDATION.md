@@ -311,3 +311,46 @@ git clone https://github.com/spring-projects/spring-petclinic.git
 git -C spring-petclinic checkout 818c4136ea971c21674525f9053de0d9c7ad8cfe
 java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
 ```
+
+## ProfileMerger correctness benchmark (`/actuator/env` comparison)
+
+The runs above check rule precision against real-world config. This
+benchmark checks a lower-level claim instead: that `ProfileMerger`'s
+effective configuration for a profile is equivalent to what a real, running
+Spring Boot application resolves through `/actuator/env`. It's external
+validation infrastructure, not part of this repository's regular `mvn test`
+run — the app it depends on lives outside this repository (`spring-env-benchmark`,
+so SCG's own build never depends on Spring Boot), and the JUnit test that
+drives the comparison (`ActuatorEnvComparisonTest`) stays `@Disabled` for
+the same reason.
+
+**Fixture:** `spring-env-benchmark`'s `application.yml` (base) +
+`application-prod.yml` (profile) + a residual `application.properties`
+(just `spring.application.name`) exercise 5 `ProfileMerger` behaviors:
+scalar override, list replacement, relaxed binding across base/profile
+(kebab-case base key, camelCase profile key), explicit-null override, and
+placeholder-with-default resolution.
+
+**Comparison method:** `/actuator/env`'s PropertySources are filtered down
+to the file-based ones, resolved by canonical key
+(`RelaxedProperties.canonicalize`), keeping the value from the
+highest-precedence source per key — necessary because Spring keeps
+`app.relaxed-binding-test` (base) and `app.relaxedBindingTest` (profile) as
+two separate physical PropertySource entries; only `ProfileMerger` collapses
+them into one. `EnvironmentPlaceholder.resolve()` is applied to the SCG side
+before comparing the placeholder case, since `EffectiveConfig` stores the
+raw `${VAR:default}` text — resolution happens lazily, per `Rule`, not at
+merge time.
+
+**Result:** all 5 assertions match the real Spring Boot 4.1.1 output.
+
+```bash
+# 1. Start the benchmark app (separate repository, not part of this build)
+cd ../spring-env-benchmark
+mvn spring-boot:run "-Dspring-boot.run.profiles=prod"
+
+# 2. In this repository, temporarily remove @Disabled from
+#    ActuatorEnvComparisonTest, then:
+mvn test -Dtest=ActuatorEnvComparisonTest
+# restore @Disabled afterward -- this test must never run in normal CI/mvn test
+```
