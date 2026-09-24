@@ -18,27 +18,28 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Harness de validação do ProfileMerger contra uma aplicação Spring Boot real
- * (projeto separado {@code spring-env-benchmark}, fora deste repositório -- o
- * SCG não depende do Spring Boot, então essa app nunca vira dependência do
- * build; ver BACKLOG.md e VALIDATION.md para o motivo e os passos completos).
+ * Validation harness for ProfileMerger against a real Spring Boot application
+ * (separate project {@code spring-env-benchmark}, outside this repository --
+ * SCG does not depend on Spring Boot, so this app never becomes a build
+ * dependency; see BACKLOG.md and VALIDATION.md for the full rationale and
+ * steps).
  *
- * <p>Pré-requisito: subir a aplicação 'spring-env-benchmark' na porta 8081
- * com o perfil 'prod' ativo
- * (ex: {@code mvn spring-boot:run "-Dspring-boot.run.profiles=prod"}).
+ * <p>Prerequisite: start the 'spring-env-benchmark' application on port 8081
+ * with the 'prod' profile active
+ * (e.g.: {@code mvn spring-boot:run "-Dspring-boot.run.profiles=prod"}).
  *
- * <p>A comparação não pode ser um diff cru de chave a chave: o Spring real
- * mantém {@code app.relaxed-binding-test} (do base) e {@code app.relaxedBindingTest}
- * (do profile) como duas entradas físicas separadas em PropertySources
- * diferentes -- a resolução por relaxed binding só acontece na hora de
- * *ler* a propriedade, não fisicamente. O {@code ProfileMerger} do SCG já
- * resolve isso estaticamente (só sobra uma chave, a do profile). Por isso
- * o mapa extraído do Actuator é canonicalizado ({@link RelaxedProperties#canonicalize})
- * antes de comparar, e o valor mantido por chave canônica é o da fonte de
- * MAIOR precedência que a declara -- não basta pegar a última ocorrência
- * bruta.
+ * <p>The comparison can't be a raw key-by-key diff: real Spring keeps
+ * {@code app.relaxed-binding-test} (from the base) and {@code app.relaxedBindingTest}
+ * (from the profile) as two separate physical entries in different
+ * PropertySources -- relaxed-binding resolution only happens when the
+ * property is *read*, not physically. SCG's {@code ProfileMerger} already
+ * resolves this statically (only one key survives, the profile's). That's
+ * why the map extracted from Actuator is canonicalized ({@link RelaxedProperties#canonicalize})
+ * before comparing, and the value kept per canonical key is the one from the
+ * HIGHEST-precedence source that declares it -- just taking the last raw
+ * occurrence isn't enough.
  */
-@Disabled("Benchmark manual. Exige a aplicação spring-env-benchmark rodando na porta 8081.")
+@Disabled("Manual benchmark. Requires the spring-env-benchmark application running on port 8081.")
 class ActuatorEnvComparisonTest {
 
     private static final String ACTUATOR_URL = "http://localhost:8081/actuator/env";
@@ -66,57 +67,56 @@ class ActuatorEnvComparisonTest {
         String actuatorJson = fetchActuatorEnv();
         Map<String, String> spring = canonicalConfigResourceProperties(actuatorJson);
 
-        // 1. Override escalar simples
+        // 1. Simple scalar override
         assertEquals(
                 spring.get(RelaxedProperties.canonicalize("app.scalar-property")),
                 RelaxedProperties.get(scg, "app.scalar-property"),
-                "Override escalar simples deve ser idêntico"
+                "Simple scalar override must be identical"
         );
 
-        // 2. Redefinição de lista -- a base tinha 2 itens, o profile redefine pra 1;
-        // o resultado tem que ser exatamente o item novo, sem sobra do índice antigo.
+        // 2. List redefinition -- the base had 2 items, the profile redefines it to 1;
+        // the result must be exactly the new item, with no leftover from the old index.
         assertEquals("prod-single-item", scg.get("app.list-property[0]"),
-                "Primeiro item da lista deve ser o valor redefinido pelo profile");
+                "First list item must be the value redefined by the profile");
         assertNull(scg.get("app.list-property[1]"),
-                "SCG não deve manter o segundo elemento da lista base após o override");
+                "SCG must not keep the base list's second element after the override");
 
-        // 3. Relaxed binding: base escreve 'relaxed-binding-test' (kebab-case), o
-        // profile sobrescreve como 'relaxedBindingTest' (camelCase) -- têm que
-        // resolver pro MESMO valor (o do profile) nos dois lados, apesar da
-        // grafia diferente.
+        // 3. Relaxed binding: the base writes 'relaxed-binding-test' (kebab-case), the
+        // profile overrides it as 'relaxedBindingTest' (camelCase) -- both sides must
+        // resolve to the SAME value (the profile's), despite the different spelling.
         String canonicalRelaxedKey = RelaxedProperties.canonicalize("app.relaxed-binding-test");
         assertEquals("camel-override", spring.get(canonicalRelaxedKey),
-                "Spring real deve resolver a chave canônica pro valor do profile, não da base");
+                "Real Spring must resolve the canonical key to the profile's value, not the base's");
         assertEquals("camel-override", RelaxedProperties.get(scg, "app.relaxed-binding-test"),
-                "SCG deve resolver a mesma chave canônica, escrita em kebab-case, pro valor do profile");
+                "SCG must resolve the same canonical key, written in kebab-case, to the profile's value");
         assertEquals("camel-override", RelaxedProperties.get(scg, "app.relaxedBindingTest"),
-                "E também escrita em camelCase -- é a mesma propriedade");
+                "And also written in camelCase -- it's the same property");
 
-        // 4. Override para null explícito. O /actuator/env serializa um valor
-        // null como string vazia (limitação da própria técnica de comparação,
-        // não do SCG -- documentado no VALIDATION.md); no SCG, a chave
-        // permanece no mapa com valor Java null de verdade.
+        // 4. Override to an explicit null. /actuator/env serializes a null value
+        // as an empty string (a limitation of the comparison technique itself,
+        // not of SCG -- documented in VALIDATION.md); in SCG, the key remains
+        // in the map with a real Java null value.
         assertEquals("", spring.get(RelaxedProperties.canonicalize("app.nullable-override")),
-                "Spring real serializa o override null como string vazia no JSON do /actuator/env");
+                "Real Spring serializes the null override as an empty string in the /actuator/env JSON");
         assertTrue(scg.containsKey("app.nullable-override"),
-                "SCG deve manter a chave (não removê-la) quando o profile a sobrescreve com null");
+                "SCG must keep the key (not remove it) when the profile overrides it with null");
         assertNull(scg.get("app.nullable-override"),
-                "SCG deve resolver o override null como Java null de verdade, não string vazia");
+                "SCG must resolve the null override as a real Java null, not an empty string");
 
-        // 5. Placeholder com default, variável de ambiente não definida em
-        // nenhum dos dois lados -- Spring resolve em runtime; o SCG mantém o
-        // placeholder cru no EffectiveConfig e só resolve sob demanda, via
-        // EnvironmentPlaceholder.resolve() (é cada Rule que chama isso, não o
-        // merge) -- então a comparação precisa resolver o lado do SCG
-        // explicitamente antes de comparar com o valor já resolvido pelo Spring.
+        // 5. Placeholder with a default, environment variable undefined on
+        // both sides -- Spring resolves it at runtime; SCG keeps the raw
+        // placeholder in EffectiveConfig and only resolves it on demand, via
+        // EnvironmentPlaceholder.resolve() (each Rule calls that, not the
+        // merge) -- so the comparison needs to explicitly resolve the SCG
+        // side before comparing it to Spring's already-resolved value.
         String scgRawPlaceholder = RelaxedProperties.get(scg, "app.placeholder-with-default");
         assertEquals(
                 spring.get(RelaxedProperties.canonicalize("app.placeholder-with-default")),
                 EnvironmentPlaceholder.resolve(scgRawPlaceholder).orElseThrow(),
-                "Sem a env var definida, os dois devem resolver pro mesmo valor de default"
+                "Without the env var defined, both sides must resolve to the same default value"
         );
 
-        System.out.println("Todos os critérios do benchmark do ProfileMerger bateram com o Spring Boot real.");
+        System.out.println("All ProfileMerger benchmark criteria matched real Spring Boot.");
     }
 
     private EffectiveConfig scgEffectiveConfigForProfile(String profile) throws Exception {
@@ -130,28 +130,28 @@ class ActuatorEnvComparisonTest {
                 }
             }
         }
-        throw new IllegalStateException("Perfil '" + profile + "' não foi encontrado no merge do SCG");
+        throw new IllegalStateException("Profile '" + profile + "' was not found in SCG's merge");
     }
 
     private String fetchActuatorEnv() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder().uri(URI.create(ACTUATOR_URL)).GET().build();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode(), "Servidor Spring deve estar ativo na porta 8081");
+        assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
         return response.body();
     }
 
     /**
-     * Extrai só os PropertySources baseados em arquivo (cobre tanto a grafia
-     * antiga do Spring Boot, {@code "applicationConfig: [...]"}, quanto a
-     * atual no Boot 4.x, {@code "Config resource '...' via location '...'"} --
-     * confirmado contra uma app real nesta sessão, não assumido de doc),
-     * ignora systemEnvironment/systemProperties/etc., e resolve por chave
-     * CANÔNICA (relaxed binding), mantendo o valor da fonte de maior
-     * precedência -- o array do /actuator/env já vem ordenado da maior pra
-     * menor precedência, então processar na ordem direta e nunca sobrescrever
-     * uma chave canônica já vista resolve certo, sem precisar reimplementar
-     * o merge do Spring.
+     * Extracts only the file-based PropertySources (covers both the old
+     * Spring Boot spelling, {@code "applicationConfig: [...]"}, and the
+     * current Boot 4.x one, {@code "Config resource '...' via location '...'"} --
+     * confirmed against a real app, not assumed from docs), ignores
+     * systemEnvironment/systemProperties/etc., and resolves by CANONICAL key
+     * (relaxed binding), keeping the value from the highest-precedence
+     * source -- the /actuator/env array already comes ordered from highest
+     * to lowest precedence, so processing it in order and never overwriting
+     * an already-seen canonical key gets this right without reimplementing
+     * Spring's own merge.
      */
     private Map<String, String> canonicalConfigResourceProperties(String jsonResponse) throws Exception {
         Map<String, String> canonical = new LinkedHashMap<>();
