@@ -327,12 +327,16 @@ comparison (`ActuatorEnvComparisonTest`) is tagged `benchmark` and excluded
 by default from `mvn test` (via the root `pom.xml`'s `excludedGroups`
 property) for the same reason — it needs that app actually running.
 
-**Fixture:** `spring-env-benchmark`'s `application.yml` (base) +
-`application-prod.yml` (profile) + a residual `application.properties`
-(just `spring.application.name`) exercise 5 `ProfileMerger` behaviors:
-scalar override, list replacement, relaxed binding across base/profile
-(kebab-case base key, camelCase profile key), explicit-null override, and
-placeholder-with-default resolution.
+**Fixture:** `spring-env-benchmark`'s `application.yml` (base + an
+`on-profile: prod` document) + `application-prod.yml` (profile) + a
+residual `application.properties` (just `spring.application.name`)
+exercise 6 `ProfileMerger`/`ConfigFileGrouper` behaviors: scalar override,
+list replacement, relaxed binding across base/profile (kebab-case base
+key, camelCase profile key), explicit-null override,
+placeholder-with-default resolution, and — the same profile (`prod`)
+sourced from both a named file and an on-profile block inside the base
+file — the two merging together, with the named file winning a key
+conflict.
 
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
@@ -345,7 +349,7 @@ before comparing the placeholder case, since `EffectiveConfig` stores the
 raw `${VAR:default}` text — resolution happens lazily, per `Rule`, not at
 merge time.
 
-**Result:** all 5 assertions match the real Spring Boot 4.1.1 output.
+**Result:** all 6 assertions match the real Spring Boot 4.1.1 output.
 
 ```bash
 # 1. Start the benchmark app (plain directory in this repo, not a Maven module)
