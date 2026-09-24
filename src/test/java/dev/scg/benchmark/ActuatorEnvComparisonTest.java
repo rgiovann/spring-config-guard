@@ -136,7 +136,7 @@ class ActuatorEnvComparisonTest {
 
         System.out.println("All ProfileMerger benchmark criteria matched real Spring Boot.");
     }
-
+    @SuppressWarnings("SameParameterValue")
     private EffectiveConfig scgEffectiveConfigForProfile(String profile) throws Exception {
         List<GroupedConfigFile> groups = new ConfigFileGrouper()
                 .group(new ConfigLoader().loadDirectory(BENCHMARK_RESOURCES_PATH));
@@ -152,11 +152,12 @@ class ActuatorEnvComparisonTest {
     }
 
     private String fetchActuatorEnv() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(ACTUATOR_URL)).GET().build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
-        return response.body();
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(ACTUATOR_URL)).GET().build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
+            return response.body();
+        }
     }
 
     /**
