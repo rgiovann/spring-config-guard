@@ -631,4 +631,35 @@ class ActuatorExposureRuleTest {
         assertThat(findings).hasSize(2);
         assertThat(findings).anyMatch(f -> f.message().contains("management.endpoint.<id>.show-values"));
     }
+
+    @Test
+    @DisplayName("Lists unrestricted endpoints in a fixed order, the same on every run")
+    void listsUnrestrictedEndpointsInAFixedOrder() {
+        // Pinned exactly: the endpoints used to come from a Set.of, whose iteration order changes
+        // between JVM runs, so the same config produced differently ordered messages. With five
+        // endpoints, the old code matched this order in about 1 run in 120.
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "*"
+        ));
+
+        assertThat(rule.check(config))
+                .singleElement()
+                .extracting(Finding::message)
+                .asString()
+                .contains("the following remain unrestricted: env, threaddump, configprops, beans, loggers.");
+    }
+
+    @Test
+    @DisplayName("Lists endpoints leaking raw values in a fixed order, the same on every run")
+    void listsShowValuesEndpointsInAFixedOrder() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "env,configprops",
+                "management.endpoint.env.show-values", "always",
+                "management.endpoint.configprops.show-values", "always"
+        ));
+
+        assertThat(rule.check(config))
+                .extracting(Finding::message)
+                .anyMatch(message -> message.contains("exposes raw property values for: env, configprops (reachable via"));
+    }
 }

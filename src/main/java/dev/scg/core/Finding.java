@@ -20,10 +20,17 @@ public record Finding(
         String profileLabel
 
 ) {
+    /**
+     * A total order, so the same input always produces the same report: ties on severity, file
+     * and profile are broken by rule ID and then message, never left to the order in which a rule
+     * happened to generate its findings.
+     */
     public static final Comparator<Finding> DEFAULT_ORDER =
             Comparator.comparing(Finding::severity)
                     .thenComparing(Finding::sourceFile)
-                    .thenComparing(Finding::profileLabel);
+                    .thenComparing(Finding::profileLabel)
+                    .thenComparing(Finding::ruleId)
+                    .thenComparing(Finding::message);
     @Override
     public String toString() {
         // BASE_PROFILE_LABEL is an internal sentinel, not a real Spring profile name (see its

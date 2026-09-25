@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * SCG017 — detects HTTP used in OAuth2 Resource Server JWT transport ({@code issuer-uri} or
@@ -34,7 +33,8 @@ import java.util.Set;
  */
 public final class JwtResourceServerInsecureTransportRule implements Rule {
 
-    private static final Set<String> TARGET_KEYS = Set.of(
+    // A list, not a set: iterated to generate findings, in a fixed order.
+    private static final List<String> TARGET_KEYS = List.of(
             "spring.security.oauth2.resourceserver.jwt.issuer-uri",
             "spring.security.oauth2.resourceserver.jwt.jwk-set-uri"
     );

@@ -289,6 +289,14 @@ two apart when reviewing an existing or proposed rule, see
 `INFO` represents cases where static analysis cannot determine the actual
 risk. It does not independently cause `ExitCodeResolver` to fail the build.
 
+Output is deterministic: the same input produces byte-identical output on
+every run, since users diff reports and gate CI on them. Reporters sort with
+`Finding.DEFAULT_ORDER`, a total order (severity, source file, profile, rule
+ID, message). Never build a message, or anything else that reaches the
+output, by iterating `Set.of`, `Map.of`, `HashSet` or `HashMap`: `Set.of` and
+`Map.of` change their iteration order from one JVM run to the next. Use a
+`List` or a `LinkedHashSet`/`LinkedHashMap` for anything iterated.
+
 ## Build and Test
 
 Run the full test suite with:

@@ -33,7 +33,9 @@ public final class ActuatorExposureRule implements Rule {
 
     private static final String EXPOSURE_KEY = "management.endpoints.web.exposure.include";
 
-    private static final Set<String> SENSITIVE_ENDPOINTS = Set.of(
+    // Lists, not sets: iterated to build finding messages, which must list endpoints in the same
+    // order on every run (Set.of's iteration order changes from one JVM run to the next).
+    private static final List<String> SENSITIVE_ENDPOINTS = List.of(
             "env", "heapdump", "threaddump", "shutdown", "configprops", "beans", "loggers", "restart"
     );
 
@@ -53,7 +55,7 @@ public final class ActuatorExposureRule implements Rule {
 
     private static final String RESTRICTED_ACCESS_VALUE = "none";
 
-    private static final Set<String> SHOW_VALUES_ENDPOINTS = Set.of("env", "configprops");
+    private static final List<String> SHOW_VALUES_ENDPOINTS = List.of("env", "configprops");
     // Matches Spring Boot's own lenient enum binding rather than enumerating separator variants
     // by hand: LenientObjectToEnumConverterFactory.getCanonicalName() (org.springframework.boot.convert)
     // reduces both the source string and the enum constant name to letters/digits only, lowercased,

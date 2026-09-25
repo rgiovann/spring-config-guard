@@ -49,6 +49,30 @@ class FindingTest {
     }
 
     @Test
+    @DisplayName("Default order should break ties by rule ID when severity, source file and profile are equal")
+    void defaultOrderShouldBreakTiesByRuleId() {
+        Finding scg017 = new Finding("SCG017", Severity.HIGH, "message", "a.yml", "prod");
+        Finding scg003 = new Finding("SCG003", Severity.HIGH, "message", "a.yml", "prod");
+
+        List<Finding> sorted = Stream.of(scg017, scg003).sorted(Finding.DEFAULT_ORDER).toList();
+
+        assertThat(sorted).containsExactly(scg003, scg017);
+    }
+
+    @Test
+    @DisplayName("Default order should break ties by message when everything else is equal")
+    void defaultOrderShouldBreakTiesByMessage() {
+        // One rule reporting two keys in the same file and profile (e.g. SCG003 on two CORS origin
+        // keys): without this, their order depended on the order the rule generated them in.
+        Finding second = new Finding("SCG003", Severity.HIGH, "key 'b'", "a.yml", "prod");
+        Finding first = new Finding("SCG003", Severity.HIGH, "key 'a'", "a.yml", "prod");
+
+        List<Finding> sorted = Stream.of(second, first).sorted(Finding.DEFAULT_ORDER).toList();
+
+        assertThat(sorted).containsExactly(first, second);
+    }
+
+    @Test
     @DisplayName("Default order should be stable for an already sorted list")
     void defaultOrderShouldBeStableForAlreadySortedList() {
         Finding first = findingOf(Severity.HIGH, "a.yml", "dev");

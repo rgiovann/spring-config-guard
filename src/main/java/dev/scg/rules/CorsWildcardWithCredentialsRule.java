@@ -27,7 +27,8 @@ import java.util.*;
  */
 public final class CorsWildcardWithCredentialsRule implements Rule {
 
-    private static final Set<String> ORIGIN_KEYS = Set.of(
+    // A list, not a set: iterated to generate findings, in a fixed order.
+    private static final List<String> ORIGIN_KEYS = List.of(
             "management.endpoints.web.cors.allowed-origins",
             "management.endpoints.web.cors.allowed-origin-patterns"
     );
