@@ -1,18 +1,18 @@
 server:
-  port: 8081 # Porta diferente para não conflitar com nada
+  port: 8081 # Different port so it doesn't conflict with anything
 
 management:
   endpoints:
     web:
       exposure:
-        include: env,configprops # /actuator/env (fontes cruas) e /actuator/configprops (valores vinculados)
+        include: env,configprops # /actuator/env (raw sources) and /actuator/configprops (bound values)
   endpoint:
     env:
-      show-values: ALWAYS # CRÍTICO: Exibe os valores reais de senhas/secrets sem reter com '******'
+      show-values: ALWAYS # CRITICAL: shows the real values of passwords/secrets instead of masking them with '******'
     configprops:
-      show-values: ALWAYS # idem, para o mapa vinculado em BenchmarkProperties
+      show-values: ALWAYS # same, for the map bound in BenchmarkProperties
 
-# --- CASOS DE TESTE / FIXTURES (BASE) ---
+# --- TEST CASES / FIXTURES (BASE) ---
 app:
   scalar-property: "base-value"
   list-property:
@@ -21,25 +21,25 @@ app:
   relaxed-binding-test: "kebab-from-base"
   nullable-override: "should-be-nullified-in-profile"
   placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
-  # --- Chaves de mapa entre colchetes (ADR-007), lidas via /actuator/configprops ---
+  # --- Bracketed map keys (ADR-007), read via /actuator/configprops ---
   bracket-map:
-    "[com.acme-core]": "base-debug" # 8. merge chave a chave: sobrevive ao profile
-    "[org.example]": "base-info" # 8. idem
-    "[override.me]": "from-base" # 9. o profile sobrescreve só esta entrada
-    "[security.protocol]": "PLAINTEXT" # 10. application.properties define a mesma chave com pontos e vence
-    "[com.foo-bar]": "dash-from-base" # 11. colisão aceita: o profile define [com.foobar]
-    plain.dotted: "nested-dotted" # 12. chave com ponto sem colchetes (como no spring-cloud-stream-samples)
+    "[com.acme-core]": "base-debug" # 8. merged key by key: survives the profile
+    "[org.example]": "base-info" # 8. same
+    "[override.me]": "from-base" # 9. the profile overrides only this entry
+    "[security.protocol]": "PLAINTEXT" # 10. application.properties defines the same key with dots and wins
+    "[com.foo-bar]": "dash-from-base" # 11. accepted collision: the profile defines [com.foobar]
+    plain.dotted: "nested-dotted" # 12. dotted key without brackets (as in spring-cloud-stream-samples)
 
-# --- Bloco on-profile interno coexistindo com application-prod.yml, ambos pro
-# profile "prod": os dois contribuem e o arquivo nomeado vence um conflito de
-# chave (caso 6 de ActuatorEnvComparisonTest; VALIDATION.md, benchmark) ---
+# --- Internal on-profile block coexisting with application-prod.yml, both for
+# the "prod" profile: both contribute and the named file wins a key conflict
+# (case 6 of ActuatorEnvComparisonTest; VALIDATION.md, benchmark) ---
 ---
 spring:
   config:
     activate:
       on-profile: prod
 app:
-  on-profile-only-property: "from-internal-on-profile" # 6. só existe aqui -- os dois convivem?
-  file-vs-on-profile-conflict: "from-internal-on-profile" # 7. mesma chave que application-prod.yml define -- quem vence?
+  on-profile-only-property: "from-internal-on-profile" # 6. only exists here -- do the two coexist?
+  file-vs-on-profile-conflict: "from-internal-on-profile" # 7. same key that application-prod.yml defines -- which one wins?
   bracket-map:
-    "[from.on-profile]": "on-profile-entry" # 14. entrada entre colchetes vinda só do bloco on-profile
+    "[from.on-profile]": "on-profile-entry" # 14. bracketed entry coming only from the on-profile block
