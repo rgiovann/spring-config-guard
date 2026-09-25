@@ -8,6 +8,68 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.2.0
+
+**Added**
+- New coverage warning for configuration split across Spring config
+  locations. When one module has `application*` files in more than one of
+  `src/main/resources`, `src/main/resources/config` and `config/`, SCG
+  prints to stderr: `spring-config-guard: N application(s) have config
+  files in more than one Spring config location, evaluated independently --
+  risks split across locations are not detected.` Spring merges those
+  locations at runtime; SCG evaluates each directory on its own, so a risky
+  combination split across them (e.g. `allowed-origins: "*"` in one and
+  `allow-credentials: true` in the other) produces no finding. The warning
+  makes that gap visible. Like the `spring.config.import` warning, it is not
+  a `Finding` and doesn't affect `--fail-on`. See ADR-005.
+- Release jars are now built, tested and published by GitHub Actions from
+  the exact commit of the release tag, with notes taken from `CHANGELOG.md`.
+
+**Fixed**
+- When `application.yml` and `application.properties` coexisted in the same
+  directory (or two files for the same profile, in both formats), every
+  property of one of the two files was silently dropped and never analyzed.
+  Both are now merged, with `.properties` winning a key conflict, as Spring
+  Boot does. See ADR-003.
+- A named profile file (`application-prod.yml`) and a
+  `spring.config.activate.on-profile: prod` document inside a base file are
+  now merged into a single `prod` configuration, the named file winning a
+  key conflict (confirmed against a running Spring Boot app). They were
+  previously evaluated as two separate `prod` configurations. Also fixes a
+  `NullPointerException` when that merge involved an explicit `null`
+  override.
+
+**Detection changes**
+- **More findings** in projects affected by the first fix: the file that
+  used to be dropped is now analyzed, so its findings appear for the first
+  time.
+- **Fewer findings**: `src/test/` and Maven/Gradle build output (`target/`
+  or `build/` next to a `pom.xml`/`build.gradle`/`build.gradle.kts`) are no
+  longer scanned, since neither ships with the application. Running SCG
+  after a build no longer duplicates every finding from `target/classes`,
+  and test-only config no longer fails the gate. On the `spring-boot`
+  validation run, 66 findings become 64 (both removed ones came from
+  `src/test/resources`). Passing one of those directories directly as
+  `<project-path>` still scans it. See ADR-006.
+- **Profiles defined both by a named file and by an on-profile block**
+  (second fix), where the two used to be evaluated separately:
+  - more findings when a risky combination is split between them (e.g.
+    `allowed-origins: "*"` in the block, `allow-credentials: true` in the
+    file now raises SCG003; it raised nothing before);
+  - fewer findings when the file overrides the block with a safe value
+    (a value the block enabled and the file disables is no longer flagged);
+  - one finding instead of two when both define the same risky value.
+- **Source file of base findings** when both formats are present: findings
+  on the merged base configuration now always name the highest-precedence
+  file (`application.properties`) as `sourceFile`, even when the property
+  itself is defined in `application.yml`.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.1.0...v1.2.0`.
+
 ## v1.2.0-rc.1
 
 Pre-release published to validate the automated release workflow

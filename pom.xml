@@ -6,7 +6,7 @@
 
     <groupId>dev.scg</groupId>
     <artifactId>spring-config-guard</artifactId>
-    <version>1.2.0-SNAPSHOT</version>
+    <version>1.2.0</version>
     <packaging>jar</packaging>
 
     <name>spring-config-guard</name>
