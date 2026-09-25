@@ -52,6 +52,20 @@ severity first. Include in it the rules that combine more than one key
 config locations produces no finding for SCG003, but the effect on these
 three was not verified.
 
+### Imprecise `sourceFile` when a base or profile has several source files
+
+When one label (the base, or a profile) is folded from several physical
+files — `application.yml` and `application.properties` in the same
+directory, or a named profile file plus an on-profile block —
+`ConfigFileGrouper` records a single source path per label: the
+highest-precedence one. A finding on a property that only exists in a
+lower-precedence file therefore names the wrong file as "where to fix it"
+(e.g. H2 enabled in `application.yml` is reported against
+`application.properties`). Detection itself is correct. Fixing it means
+tracking the source file per property rather than per label, which touches
+`ConfigFileGrouper`, `EffectiveConfig` and how rules pick `sourceFile` —
+a design decision, not a local fix. Noted in the v1.2.0 release notes.
+
 ### `--config-name=<prefix>`: custom `spring.config.name`
 
 A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /
