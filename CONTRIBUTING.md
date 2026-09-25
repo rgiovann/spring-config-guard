@@ -85,6 +85,68 @@ maintained list anywhere else.
   `.claude/skills/add-security-rule/SKILL.md` (placeholder states,
   Zero-Trust across profiles, relaxed binding, null-value safety, etc.).
 
+## Releases
+
+Versions follow `MAJOR.MINOR.PATCH`, and tags are always `vX.Y.Z`. For a
+linter, "breaking" needs a precise meaning: users gate CI on its output, so
+a release can change their build result without changing any contract.
+
+* **MAJOR**: breaks a public contract — the JSON report schema, CLI flags,
+  exit codes, the Policy file schema, or a rule ID being removed or
+  renumbered.
+* **MINOR**: adds capability — a new rule, flag or coverage warning, or
+  new detection in an existing rule (e.g. recognizing a renamed property).
+* **PATCH**: fixes a bug or a message.
+
+A detection change alone — more findings, fewer findings, a recalibrated
+severity — is never a MAJOR bump: detecting things is what the tool is for.
+But it is never silent either: every release lists it under **Detection
+changes**, saying which way findings move (more or fewer) and why.
+
+Between releases, `main` carries the next version as `X.Y.Z-SNAPSHOT` in
+`pom.xml`.
+
+### Release checklist
+
+The assistant prepares the release (version, notes, `pom.xml`, README
+pin); the maintainer reviews it and approves before anything is tagged or
+published.
+
+1. Decide the version from the commits since the last tag, using the rules
+   above.
+2. Set `pom.xml` to `X.Y.Z` (drop `-SNAPSHOT`).
+3. Update the pinned version in README's CI/CD Integration example.
+4. Write the release notes with the template below.
+5. After approval, the assistant commits, tags `vX.Y.Z` and pushes the tag.
+   The maintainer then publishes the GitHub release from that tag, pasting
+   the prepared notes and attaching the jar built by `mvn -B package` at
+   that tag (`target/spring-config-guard.jar`).
+6. Set `pom.xml` to the next `-SNAPSHOT` version.
+
+### Release notes template
+
+```markdown
+## spring-config-guard vX.Y.Z
+
+**Added**
+- New rules, flags, coverage warnings or detection capability.
+
+**Fixed**
+- Bugs and message fixes.
+
+**Detection changes**
+- What now produces more or fewer findings, which rules, and why.
+  "None." when nothing changed.
+
+**Breaking changes**
+- Contract changes (MAJOR only). Otherwise: "None."
+
+Full diff: `vA.B.C...vX.Y.Z`.
+```
+
+Omit **Added** or **Fixed** when empty; always keep **Detection changes**
+and **Breaking changes**, so their absence is stated rather than implied.
+
 ## License
 
 By contributing, you agree your contribution is licensed under this

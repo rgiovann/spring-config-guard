@@ -309,9 +309,15 @@ A minimal GitHub Actions job that downloads the jar and fails the build on
 # .github/workflows/scg.yml
 - name: Security config lint (spring-config-guard)
   run: |
-    curl -LO https://github.com/rgiovann/spring-config-guard/releases/latest/download/spring-config-guard.jar
+    curl -LO https://github.com/rgiovann/spring-config-guard/releases/download/v1.1.0/spring-config-guard.jar
     java -jar spring-config-guard.jar . --fail-on=HIGH
 ```
+
+Pin a version in CI rather than using `releases/latest`: a new release can
+add or remove findings (new detection, fixed false positives), which could
+fail — or silently relax — your gate on a build that didn't change. Upgrade
+on purpose, after reading the release's "Detection changes" section (see
+[Releases](CONTRIBUTING.md#releases)).
 
 Any CI system that can run a JVM and a shell step works the same way —
 GitHub Actions is just the example above.

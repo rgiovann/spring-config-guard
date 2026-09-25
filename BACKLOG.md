@@ -61,12 +61,22 @@ error. Intended design: a `--config-name` flag (default `application`)
 parameterizing the prefix `ConfigLoader` already checks. Out of scope:
 `spring.config.location` and arbitrary paths. No confirmed need yet.
 
-### Versioning convention (undecided)
+### Release workflow triggered by a tag
 
-Fixes and new detection capability have both shipped as patch releases so
-far (v1.0.1 added a detection capability but was labeled "Fixed"). A
-possible convention: fix = patch (`v1.X.Y`), new rule or feature = minor
-(`v1.X.0`), breaking change (JSON format, removed flag) = major (`v2.0.0`).
+Publishing a release is manual: the GitHub release and its jar are created
+by hand from the tag. A GitHub Actions workflow on `v*` tag pushes could
+build the jar and create the release with the prepared notes, so the jar is
+always built from exactly the tagged commit. New CI infrastructure, so it
+needs a decision first.
+
+### Version visibility: `--version` and the version in reports
+
+The jar can't report which version it is: there is no `--version` flag and
+the JSON output doesn't say which version produced it, so a report can't be
+traced back to a release (`VALIDATION.md` pins SCG by commit for this
+reason). A `--version` flag is additive; adding a field to the JSON report
+changes its schema and needs a compatibility decision first. Depends on
+`pom.xml` carrying the real version, which the release process now ensures.
 
 ## Deferred (post-1.0)
 
