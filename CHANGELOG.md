@@ -8,6 +8,33 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.3.0
+
+**Added**
+- `--version` flag: prints `spring-config-guard <version>` and exits 0,
+  before validating any other argument (like `--help`, which still wins
+  when both are given). The version comes from the `pom.properties` Maven
+  writes into the jar; outside a packaged jar it is reported as unknown
+  rather than guessed.
+- The release workflow now fails unless the built jar's `--version` reports
+  exactly the version being released, so a published jar always identifies
+  itself correctly.
+
+**Detection changes**
+- None. Findings and coverage warnings are identical to `v1.2.0` on every
+  reference project (demo fixtures, `spring-env-benchmark`, and the four
+  `VALIDATION.md` repositories).
+
+**Breaking changes**
+- None. `--version` is a new flag; report formats, existing flags, exit
+  codes and the Policy file schema are unchanged.
+
+Documentation: README now explains what a finding's `sourceFile`
+identifies, and CONTRIBUTING.md classifies a new optional JSON field as a
+MINOR change.
+
+Full diff: `v1.2.0...v1.3.0`.
+
 ## v1.2.0
 
 **Added**

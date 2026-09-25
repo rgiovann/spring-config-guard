@@ -311,7 +311,7 @@ A minimal GitHub Actions job that downloads the jar and fails the build on
 # .github/workflows/scg.yml
 - name: Security config lint (spring-config-guard)
   run: |
-    curl -LO https://github.com/rgiovann/spring-config-guard/releases/download/v1.2.0/spring-config-guard.jar
+    curl -LO https://github.com/rgiovann/spring-config-guard/releases/download/v1.3.0/spring-config-guard.jar
     java -jar spring-config-guard.jar . --fail-on=HIGH
 ```
 
