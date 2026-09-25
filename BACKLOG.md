@@ -48,6 +48,19 @@ severity first. Include in it the rules that combine more than one key
 config locations produces no finding for SCG003, but the effect on these
 three was not verified.
 
+Also include the false negatives found in `spring-cloud-stream-samples`
+(`VALIDATION.md`):
+
+* **SCG006 and numeric passwords.** The heuristic that skips purely numeric
+  values for pattern-matched keys also skips `ssl.keystore.password: 123456`.
+  Decide whether the heuristic should exclude keys that name a password.
+* **SCG007 and SCG014 with the Spring Cloud Stream Kafka binder.** Both only
+  read `spring.kafka.*`; JAAS credentials and `SASL_PLAINTEXT` set in
+  `spring.cloud.stream.kafka.binder.configuration.*` (or per binder, under
+  `spring.cloud.stream.binders.<name>.environment.*`) raise nothing. Decide
+  whether the binder namespace is in scope, and how SCG014's "Kafka in use
+  but protocol unset" check would apply to it.
+
 ### Per-property origin in findings (waiting for a real consumer)
 
 `sourceFile` identifies the evaluated configuration, not where the offending

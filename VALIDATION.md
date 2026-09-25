@@ -72,6 +72,11 @@ its own output.
 | `spring-petclinic-microservices-config` | 53 | All 17 rules (full manual read, all 9 files) | No |
 | `spring-boot` | 66 | All 8 rules that fired (SCG001, 002, 006, 007, 009, 013, 014, 017 — 66 of 66 findings) | No |
 | `spring-boot-admin` | 85 | All 3 rules that fired (SCG001, 006, 013 — 85 of 85 findings) | No |
+| `spring-cloud-stream-samples` | 9 | All 9 findings against the file contents, plus every file declaring a password, secret or `security.protocol` read by hand | **Yes — 3 files** (see [its entry](#spring-cloudspring-cloud-stream-samples)) |
+
+The paragraph and method below describe the first four repositories.
+`spring-cloud-stream-samples` was added later, specifically for its Kafka
+security configuration; its own entry says how it was checked.
 
 Every rule that produced at least one finding in these 4 repositories has
 now been independently checked. Deliberately still not a scalar
@@ -334,6 +339,69 @@ stay silent.
 git clone https://github.com/spring-projects/spring-petclinic.git
 git -C spring-petclinic checkout 818c4136ea971c21674525f9053de0d9c7ad8cfe
 java -jar target/spring-config-guard.jar spring-petclinic --json --fail-on=NONE
+```
+
+## spring-cloud/spring-cloud-stream-samples
+
+Run against [spring-cloud/spring-cloud-stream-samples](https://github.com/spring-cloud/spring-cloud-stream-samples)
+(56 `application*.{yml,yaml,properties}` files outside `src/test/`,
+`--json --fail-on=NONE`), with SCG commit
+[`018c045`](https://github.com/rgiovann/spring-config-guard/commit/018c04565436100c1501d51ca602b7c7d7c3cb64),
+not `b0d15ec` like the four runs above. Added as the corpus's only real
+Kafka security surface: hardcoded keystore passwords, `SASL_PLAINTEXT`, and
+JAAS credentials configured through the Spring Cloud Stream Kafka binder
+rather than `spring.kafka.*`.
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 1 | — | — | 1 |
+| SCG006 | 5 | — | — | 5 |
+| SCG013 | — | 1 | — | 1 |
+| SCG014 | 2 | — | — | 2 |
+| **Total** | **8** | **1** | **0** | **9** |
+
+All 9 findings are accurate for the values on disk: literal passwords
+(`spring.datasource.password`, `spring.security.user.password`, and the
+binder's `jaas.options.password` in `kafka-streams-jaas-security`),
+`exposure.include=*`, `show-details: ALWAYS`, and two modules using
+`spring.kafka.*` without setting `security.protocol`. Like the other sample
+suites, these modules show one feature each and are not deployed services.
+
+**False negatives.** Every file declaring a password, secret or
+`security.protocol` was read by hand, which found three files with a risk
+SCG doesn't report:
+
+* `kafka-security-samples/kafka-ssl-demo` —
+  `ssl.keystore.password`, `ssl.truststore.password` and `ssl.key.password`,
+  all `123456`, under `spring.cloud.stream.kafka.binder.configuration`. SCG006
+  matches the key names, but its precision heuristic skips purely numeric
+  values for pattern-matched keys (meant for values like
+  `token-validity-in-seconds: 86400`), so a numeric password is never
+  reported.
+* `kafka-streams-samples/kafka-streams-jaas-security` —
+  `security.protocol: SASL_PLAINTEXT` under
+  `spring.cloud.stream.kafka.binder.configuration` (and the Kafka Streams
+  binder's equivalent). SCG014 only reads `spring.kafka.*`, so the binder's
+  unencrypted protocol raises nothing. The JAAS password in the same file is
+  caught by SCG006 through its key name.
+* `multi-binder-samples/kafka-multi-binder-jaas` — two JAAS configs with
+  inline passwords in
+  `spring.cloud.stream.binders.<name>.environment.spring.cloud.stream.kafka.binder.configuration.sasl.jaas.config`,
+  and `SASL_PLAINTEXT` in the binder configuration. SCG007 only reads
+  `spring.kafka.properties.sasl.jaas.config` and `spring.kafka.jaas.options`,
+  and SCG014 only `spring.kafka.*`, so the file raises nothing.
+
+The last two share one cause: SCG007 and SCG014 cover Spring Boot's
+`spring.kafka.*` namespace, not the Spring Cloud Stream Kafka binder's. All
+three are tracked in [`BACKLOG.md`](BACKLOG.md) for the rule-by-rule review.
+
+This repository uses no bracketed map keys, so it does not exercise
+ADR-007.
+
+```bash
+git clone https://github.com/spring-cloud/spring-cloud-stream-samples.git
+git -C spring-cloud-stream-samples checkout 2ff1168833cfcab14d2251219dad15a8919c1672
+java -jar target/spring-config-guard.jar spring-cloud-stream-samples --json --fail-on=NONE
 ```
 
 ## ProfileMerger correctness benchmark (`/actuator/env` comparison)
