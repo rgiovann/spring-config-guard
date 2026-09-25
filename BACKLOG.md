@@ -25,23 +25,19 @@ Continuation of a review of `ConfigLoader` → `ConfigFileGrouper` →
 `ProfileMerger`. The paths already exercised by the `/actuator/env`
 benchmark (scalar override, list replacement, relaxed binding across
 base/profile, explicit null, placeholder default, named profile file vs.
-on-profile block) are covered; these edge cases are not. Each one needs a
+on-profile block) and bracketed map keys (ADR-007) are covered; these edge
+cases are not. Each one needs a
 fixture, a comparison against real Spring through `spring-env-benchmark`
 where possible, and a classification (implementation bug, deliberate scope
 decision, static-analysis limitation, or Spring behavior fact) before any
 code change.
 
-1. **Relaxed binding inside bracketed map keys.** `RelaxedProperties.canonicalize()`
-   drops `-` and `_` from the whole key, including inside `[...]`. Spring
-   keeps a bracketed map key literally (`logging.level[com.foo-bar]`).
-   Check whether this causes wrong collisions or wrong purges during the
-   merge. Suspected implementation bug, not yet verified.
-2. **Lists of objects with a partial override.** For example
+1. **Lists of objects with a partial override.** For example
    `servers[0].url` in the base and only `servers[0].port` in a profile:
    confirm SCG replaces the whole list exactly as Spring does.
-3. **Scalar vs. map on the same key** between base and profile, in both
+2. **Scalar vs. map on the same key** between base and profile, in both
    directions (a scalar overriding a map, and a map overriding a scalar).
-4. **The same list written differently** at the same level: comma-separated
+3. **The same list written differently** at the same level: comma-separated
    in `.properties` (`a.b=x,y`) and indexed in `.yml` (`a.b[0]`).
 
 ### Rule-by-rule review of the 17 rules

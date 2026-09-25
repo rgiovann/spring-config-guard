@@ -194,7 +194,7 @@ public final class ConfigLoader {
 
         Map<String, String> flatDocument = new LinkedHashMap<>();
         for (String name : props.stringPropertyNames()) {
-            flatDocument.put(name, props.getProperty(name));
+            flatDocument.put(normalizeMapKeys(name), props.getProperty(name));
         }
 
         // Extracts the profile using relaxed binding — spring.config.activate.on-profile,
@@ -275,8 +275,10 @@ public final class ConfigLoader {
                     continue;
                 }
 
+                Map<String, String> rawFlat = new LinkedHashMap<>();
+                flatten(rawDocument, "", rawFlat);
                 Map<String, String> flatDocument = new LinkedHashMap<>();
-                flatten(rawDocument, "", flatDocument);
+                rawFlat.forEach((key, value) -> flatDocument.put(normalizeMapKeys(key), value));
 
                 Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
                 String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
@@ -313,6 +315,49 @@ public final class ConfigLoader {
 
         throw new IOException("Invalid YAML in '%s': %s".formatted(p, e.getMessage()), e);
     }
+    }
+
+    /**
+     * Rewrites every bracketed map key into dotted form ({@code spring.kafka.properties[security.protocol]}
+     * becomes {@code spring.kafka.properties.security.protocol}), leaving numeric list indices
+     * ({@code [0]}) untouched. See ARCHITECTURE.md, ADR-007.
+     * <p>
+     * Spring Boot binds both forms to the same map entry for a {@code Map<String, ...>} property, and
+     * its own YAML loader turns a quoted {@code "[a.b]"} key into {@code x.map[a.b]}; this project's
+     * YAML flattening produces {@code x.map.[a.b]} for the same key. Without this rewrite, rules only
+     * recognized the dotted form, and ProfileMerger treated a bracketed map key as a list index —
+     * replacing the whole map across profiles instead of merging it key by key.
+     * <p>
+     * Accepted trade-off: the bracket form preserves characters that relaxed binding otherwise
+     * ignores, so {@code [com.foo-bar]} and {@code [com.foobar]} are distinct keys in Spring but
+     * canonicalize to the same key here.
+     */
+    static String normalizeMapKeys(String key) {
+        if (key.indexOf('[') < 0) {
+            return key;
+        }
+        StringBuilder result = new StringBuilder(key.length());
+        int i = 0;
+        while (i < key.length()) {
+            char c = key.charAt(i);
+            int close = c == '[' ? key.indexOf(']', i + 1) : -1;
+            if (close < 0) {
+                result.append(c);
+                i++;
+                continue;
+            }
+            String content = key.substring(i + 1, close);
+            if (content.isEmpty() || content.chars().allMatch(Character::isDigit)) {
+                result.append(key, i, close + 1); // list index (or empty brackets): keep as is
+            } else {
+                if (!result.isEmpty() && result.charAt(result.length() - 1) != '.') {
+                    result.append('.');
+                }
+                result.append(content);
+            }
+            i = close + 1;
+        }
+        return result.toString();
     }
 
     private void flatten(Object yamlNode,

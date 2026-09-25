@@ -197,6 +197,13 @@ Do not access `EffectiveConfig.properties()` directly with `.get()` when
 performing property-key lookups, as this can silently miss relaxed-binding
 variants.
 
+Bracketed map keys never reach a rule: `ConfigLoader` rewrites
+`spring.kafka.properties[security.protocol]` into
+`spring.kafka.properties.security.protocol` for both YAML and
+`.properties`, keeping numeric list indices (`[0]`) as they are. Rules look
+map entries up by the dotted name only, and `ProfileMerger` merges them key
+by key like any other property (ARCHITECTURE.md, ADR-007).
+
 ## Placeholder Resolution
 
 `${VAR:default}` placeholders are resolved statically through

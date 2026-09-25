@@ -532,3 +532,74 @@ nothing that reaches production.
 A real user needs `src/test/` scanned (e.g. integration-test config pointed
 at shared infrastructure) — an explicit opt-in flag would be the next step,
 not a change to the default.
+
+---
+
+## ADR-007: Bracketed Map Keys Rewritten into Dotted Form at Load Time
+
+### Status
+Accepted
+
+### Context
+Spring Boot's bracket notation keeps a map key intact when it contains dots
+or other special characters — e.g. `spring.kafka.properties[security.protocol]`
+or, in YAML, a quoted `"[security.protocol]"` key. Checked with Spring Boot
+4.1.1's own `Binder` and `YamlPropertySourceLoader`:
+
+* `x.map[a.b]=v` and `x.map.a.b=v` bind to the same entry (`a.b`) of a
+  `Map<String, String>`;
+* the YAML loader turns `"[a.b]"` under `x.map` into `x.map[a.b]`;
+* maps are merged across property sources key by key: base `[a]`, `[b]`
+  plus profile `[c]` binds `{a, b, c}`, and a profile overriding `[a]`
+  replaces only `a`.
+
+SCG handled none of this. Rules look map entries up by their dotted name, so
+the bracketed spelling was invisible to them — with the jar of v1.3.0,
+`spring.kafka.properties[sasl.jaas.config]` holding a plaintext password
+raised no SCG007, and `[security.protocol]=SASL_SSL` raised a false SCG014
+(PLAINTEXT assumed). `ProfileMerger` reads `[` as the start of a list index
+and replaces lists whole, so a profile defining one bracketed map entry
+dropped every base entry of that map — a silent false negative for any
+rule reading them in that profile. YAML flattening also produced
+`x.map.[a.b]` while `.properties` produced `x.map[a.b]`, so the same key in
+the two formats was not recognized as one.
+
+### Decision
+`ConfigLoader.normalizeMapKeys()` rewrites every bracketed segment whose
+content is not a numeric list index into dotted form, for both YAML and
+`.properties`, before anything else sees the key:
+`x.map[a.b]` and `x.map.[a.b]` become `x.map.a.b`; `x.list[0]` stays as is;
+`x.list[0].map[a.b]` becomes `x.list[0].map.a.b`; empty or unclosed brackets
+are left literal.
+
+Chosen over teaching bracket semantics to `RelaxedProperties` and
+`ProfileMerger` (telling a list index from a map key everywhere a key is
+compared or purged): that alternative touches the merge's purge logic and
+every rule lookup, for more precise messages only, while one rewrite at the
+single entry point fixes rule lookups, the merge and the format mismatch at
+once, with no rule changed.
+
+### Consequences
+
+**Positive**
+* Bracketed map keys are detected under the names rules already look up,
+  in both formats; SCG007/SCG014 now behave the same for either spelling.
+* Maps merge key by key across profiles, as in Spring.
+* Covered by `BracketedMapKeysTest` (normalization cases, merge in both
+  formats, override of a single entry, cross-format key identity, SCG007
+  and SCG014 end to end; the SCG014 and SCG007 cases fail on v1.3.0).
+
+**Negative / Trade-offs**
+* Finding messages name the dotted key, not the bracketed spelling the
+  user wrote.
+* Accepted collision: brackets preserve characters that relaxed binding
+  ignores, so `[com.foo-bar]` and `[com.foobar]` are two entries in Spring
+  but canonicalize to one key here, the later overriding the earlier. Rare,
+  and pinned by a test so the limitation stays visible.
+* None of the reference projects in `VALIDATION.md` uses bracketed keys:
+  the fix is proven by fixtures and by Spring's own binder, not yet by a
+  real-world project.
+
+### Revisit if
+A rule needs the original bracketed spelling (e.g. to quote it back), or
+the dash/underscore collision shows up in a real project.
