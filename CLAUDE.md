@@ -149,7 +149,9 @@ ExitCodeResolver.resolve()
 Each stage has a deliberately narrow responsibility. Preserve these
 boundaries unless there is a concrete architectural reason to change them.
 
-`ConfigLoader` handles YAML/properties parsing and per-file profile documents.
+`ConfigLoader` handles file discovery (skipping `src/test/` and Maven/Gradle
+build output, see ARCHITECTURE.md ADR-006), YAML/properties parsing and
+per-file profile documents.
 It does not merge base and profile configurations.
 
 `ConfigFileGrouper` groups `application.yml` with corresponding

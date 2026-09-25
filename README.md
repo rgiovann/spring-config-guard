@@ -206,6 +206,18 @@ override."
 
 ### Other known limitations
 
+* **Test source sets and build output are not scanned.** The recursive walk
+  skips `src/test/` and a `target/` or `build/` directory next to a
+  `pom.xml`/`build.gradle`/`build.gradle.kts`: none of them ship with the
+  application. Build output holds copies of `src/main/resources` — scanning
+  them would duplicate every finding and, after a stale build or Maven
+  resource filtering, evaluate content that differs from the versioned
+  source. Test config (an H2 console on, a fixed test password) is expected
+  there, and a [Policy](#policy) can't silence it without also silencing the
+  same rule for the main config, because suppression is per rule and
+  profile, not per directory. Passing one of these directories directly as
+  `<project-path>` still scans it. See
+  [ADR-006](ARCHITECTURE.md#adr-006-test-source-sets-and-build-output-excluded-from-the-scan).
 * **A Spring profile literally named `base` can't be targeted by name in a
   [Policy](#policy) file.** `base` in a policy is an alias for the "no
   active profile" configuration, so a real profile with that exact name
@@ -237,7 +249,9 @@ java -jar target/spring-config-guard.jar <project-path> [--json] [--config-serve
   Server repository instead of a single Spring Boot project. See
   [Config Server Mode](#config-server-mode) below. Without this flag, SCG
   analyzes `<project-path>` the regular way (one or more
-  `application*.{yml,yaml,properties}` files, recursively).
+  `application*.{yml,yaml,properties}` files, recursively, skipping
+  `src/test/` and build output — see
+  [Other known limitations](#other-known-limitations)).
 * `--fail-on` — minimum severity that makes the process exit with an error
   code (useful for a CI gate). `NONE` never fails the build; default is
   `HIGH`.

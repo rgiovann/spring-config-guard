@@ -9,6 +9,23 @@ profile, skip it" — a rule either triggers on the effective properties or it
 doesn't, base config and named profiles alike (several rules document this
 explicitly as a deliberate "no profile exemption" decision, e.g.
 [`H2ConsoleExposedRule`](src/main/java/dev/scg/rules/H2ConsoleExposedRule.java)).
+What SCG does skip is a *location*, not a profile: `src/test/` source sets and
+Maven/Gradle build output are not scanned at all, since they never ship with
+the application (see [ADR-006](ARCHITECTURE.md#adr-006-test-source-sets-and-build-output-excluded-from-the-scan)).
+
+**Update after ADR-006:** the numbers below were recorded before `src/test/`
+was excluded from the scan. Re-running the same four commands at the same
+pinned target commits changes only the `spring-boot` run, from 66 findings
+in 41 files to **64 findings in 39 files**. The two findings that drop both
+came from test-only config:
+
+* SCG006 HIGH — `module/spring-boot-security-test/src/test/resources/application.properties`
+* SCG013 MEDIUM, profile `endpoints` —
+  `smoke-test/spring-boot-smoke-test-actuator/src/test/resources/application-endpoints.properties`
+
+No finding was added in any run, and `spring-boot-admin`,
+`spring-petclinic` and `spring-petclinic-microservices-config` (Config
+Server Mode, which never recursed) are unchanged.
 
 **Reproducibility:** all four runs below were reproduced against SCG
 commit [`b0d15ec`](https://github.com/rgiovann/spring-config-guard/commit/b0d15ec25b85437b9579e9b76320482a3dc856eb)
@@ -239,12 +256,17 @@ and integration-test modules, `--json --fail-on=NONE`):
 | SCG017 | 1 | — | — | 1 |
 | **Total** | **52** | **7** | **7** | **66** |
 
-All 66 findings resolve to files under `smoke-test/`/`integration-test/`
+64 of the 66 findings resolve to files under `smoke-test/`/`integration-test/`
 module directories — code that exists specifically to exercise one feature
 (Actuator, H2 console, OAuth2, Kafka, etc.) with the simplest config that
 does it, never to simulate production. A hardcoded
 `spring.security.user.password` in a smoke test is expected, not a leak.
-Zero findings outside those directories, across the entire repository.
+The other two are test-support code too: one SCG006 in
+`module/spring-boot-security-test/src/test/resources/application.properties`
+(that module's own test config, no longer scanned since ADR-006) and one
+SCG001 in `system-test/spring-boot-deployment-system-tests/src/main/resources/application.yml`
+(a deployment system-test app exposing every Actuator endpoint on purpose).
+None come from Spring Boot's own production modules.
 
 ```bash
 git clone https://github.com/spring-projects/spring-boot.git

@@ -74,6 +74,25 @@ public final class ConfigLoader {
 
     static final String NULL_SCALAR_SENTINEL_SUFFIX = ".__null_scalar__";
 
+    /** Build-output directory names, excluded only when a sibling build file marks them as such. */
+    private static final Set<String> BUILD_OUTPUT_DIRS = Set.of("target", "build");
+
+    private static final List<String> BUILD_FILES = List.of("pom.xml", "build.gradle", "build.gradle.kts");
+
+    /**
+     * Walks {@code dir} recursively, skipping two kinds of directory whose config files never ship
+     * with the application (see ARCHITECTURE.md, ADR-006):
+     * <ul>
+     *   <li>Build output: a {@code target/} or {@code build/} directory next to a Maven or Gradle
+     *       build file. It holds copies of {@code src/main/resources} (possibly stale, or filtered
+     *       with substituted values), which would duplicate or contradict the real source.</li>
+     *   <li>Test source sets: {@code src/test/}. Test-only config (H2 console on, fixed passwords)
+     *       isn't packaged, and a Policy can't suppress it without also suppressing the same rule
+     *       for the main config, since suppression is per rule + profile, not per directory.</li>
+     * </ul>
+     * Only directories strictly below {@code dir} are considered, so passing one of them directly
+     * as the scan root still scans it.
+     */
     public List<ConfigFile> loadDirectory(Path dir) throws IOException {
         List<ConfigFile> result = new ArrayList<>();
         if (!Files.isDirectory(dir)) {
@@ -83,6 +102,7 @@ public final class ConfigLoader {
             List<Path> candidates = paths
                     .filter(Files::isRegularFile)
                     .filter(ConfigLoader::isSpringConfigFile)
+                    .filter(p -> !isUnderExcludedDirectory(dir, p))
                     .toList();
 
             for (Path p : candidates) {
@@ -103,6 +123,28 @@ public final class ConfigLoader {
                 ? loadProperties(p)
                 : loadYaml(p);
         return new ConfigFile(p, documents);
+    }
+
+    private static boolean isUnderExcludedDirectory(Path root, Path file) {
+        Path relative = root.relativize(file);
+        Path parent = root;
+        // The last name is the file itself; only its ancestor directories are checked.
+        for (int i = 0; i < relative.getNameCount() - 1; i++) {
+            String name = relative.getName(i).toString();
+            if (BUILD_OUTPUT_DIRS.contains(name) && hasBuildFile(parent)) {
+                return true;
+            }
+            if ("test".equals(name) && parent.getFileName() != null
+                    && "src".equals(parent.getFileName().toString())) {
+                return true;
+            }
+            parent = parent.resolve(name);
+        }
+        return false;
+    }
+
+    private static boolean hasBuildFile(Path directory) {
+        return BUILD_FILES.stream().anyMatch(buildFile -> Files.isRegularFile(directory.resolve(buildFile)));
     }
 
     private static boolean isSpringConfigFile(Path p) {

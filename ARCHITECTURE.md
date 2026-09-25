@@ -452,3 +452,83 @@ Real users need risks across locations detected, not just flagged. The
 next step would be an explicit, user-declared location list (not directory
 heuristics), which is the configuration surface originally planned for
 non-standard project layouts.
+
+---
+
+## ADR-006: Test Source Sets and Build Output Excluded from the Scan
+
+### Status
+Accepted
+
+### Context
+`ConfigLoader.loadDirectory()` walks the scan root recursively and picked up
+every `application*` file it found, including two kinds of directory whose
+config never ships with the application:
+
+* **Build output.** `mvn package` copies `src/main/resources/application.yml`
+  to `target/classes/application.yml` (Gradle: `build/resources/main/`).
+  When SCG runs after a build — common in CI, where the lint step often
+  follows packaging — every finding appears twice. Worse, a stale build still
+  holds a value already fixed in the source, and Maven resource filtering
+  writes substituted values (`@db.password@` → the real one), so SCG would
+  evaluate content that differs from what is versioned. The real-world runs
+  in `VALIDATION.md` never showed this only because they used fresh clones.
+* **Test source sets.** `src/test/resources` legitimately holds config that
+  would be a finding in production (an H2 console on, a fixed password for
+  an in-memory database). It isn't packaged. Confirmed with a fixture: H2
+  disabled in `src/main/resources` but enabled in `target/classes` and
+  `src/test/resources` produced two SCG002 HIGH findings — failing a
+  `--fail-on=HIGH` gate on a project whose shipped config is safe.
+
+A team can't work around the test case with a Policy: suppression is per
+rule + profile, not per directory, and test config usually lands in the same
+base profile as the main config, so suppressing it would also hide the same
+rule for `src/main/resources`.
+
+### Decision
+Skip, during the recursive walk:
+
+* `target/` or `build/` directly next to a `pom.xml`, `build.gradle` or
+  `build.gradle.kts` — the build file is what identifies it as build output,
+  so a directory that merely happens to be named `build` in a non-standard
+  layout is still scanned.
+* `src/test/` — test source sets, by convention in both Maven and Gradle.
+
+Only directories strictly below the scan root are considered: passing
+`src/test/resources` or `target/classes` directly as `<project-path>` still
+scans it, as an explicit choice by the user.
+
+This does not contradict the Zero-Trust convention (CLAUDE.md, "Profiles
+(Zero-Trust)"). That convention is about profiles — a `dev` profile can
+still run against shared infrastructure — while a test source set is never
+part of the running application at all.
+
+No stderr notice is printed for skipped files: unlike an unfollowed import
+(ADR-004) or a split across config locations (ADR-005), skipping them hides
+nothing that reaches production.
+
+### Consequences
+
+**Positive**
+* No duplicated or stale findings when SCG runs after a build, and no
+  findings from test-only config that no Policy could target precisely.
+* On the real-world runs in `VALIDATION.md`, only `spring-boot` changed: 66
+  findings in 41 files became 64 in 39, both removed findings coming from
+  `src/test/resources`; no finding was added anywhere.
+* Covered by `ConfigLoaderExclusionTest` (Maven and Gradle output,
+  multi-module projects, directories named `test`/`target`/`build` that must
+  still be scanned, explicit scan roots).
+
+**Negative / Trade-offs**
+* A project that deliberately packages a file from `src/test/` into a
+  production artifact, or builds into a directory other than
+  `target/`/`build/`, is not covered by this convention: the first is now
+  missed, the second is still scanned.
+* A `target/` or `build/` next to a build file is always skipped, even if
+  a project kept hand-written config there — unlikely, since Maven and
+  Gradle own and regularly wipe those directories.
+
+### Revisit if
+A real user needs `src/test/` scanned (e.g. integration-test config pointed
+at shared infrastructure) — an explicit opt-in flag would be the next step,
+not a change to the default.
