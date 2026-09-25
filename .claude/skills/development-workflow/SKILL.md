@@ -113,11 +113,14 @@ transcript that disappears. In the same commit as the change:
 * rule-scoped decisions → the rule's own Javadoc;
 * new or changed conventions and invariants → `CLAUDE.md`;
 * boundaries users need to know → README, "Scope & Limitations";
-* changed validation numbers → `VALIDATION.md`.
+* changed validation numbers → `VALIDATION.md`;
+* work discovered but not done now → `BACKLOG.md`, and a finished item is
+  removed from it (its record is the ADR, `VALIDATION.md` or the commit).
 
-Never reference files that aren't in the repository (backlog item labels,
-untracked notes). If existing references like that turn up while working,
-report them to the maintainer.
+Source code and Javadoc never reference backlog items or files that aren't in
+the repository: the reason for a decision belongs next to the code or in an
+ADR. Documentation may point to `BACKLOG.md`. If existing references like
+that turn up while working, report them to the maintainer.
 
 ## 7. Commit and push
 

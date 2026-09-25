@@ -25,9 +25,13 @@ Within a session, the working tree is `main` plus the changes not yet
 approved. Fetch `origin/main` before starting a task and before committing,
 so work never builds on a stale clone.
 
-Files that are not in the repository (personal notes, untracked backlogs)
-never reach a session unless the maintainer provides them. Don't assume
-knowledge of them, and don't reference them from tracked files.
+`BACKLOG.md` holds the planned state of the project: pending, deferred and
+discarded work. Check it before proposing a new rule or feature, so a
+deliberately discarded idea isn't proposed again.
+
+Files that are not in the repository (personal notes) never reach a session
+unless the maintainer provides them. Don't assume knowledge of them, and
+don't reference them from tracked files.
 
 When investigating existing behavior or architecture, inspect the code,
 tests and documentation in the repository rather than relying on

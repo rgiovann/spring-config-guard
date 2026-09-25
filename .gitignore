@@ -41,6 +41,3 @@ dependency-reduced-pom.xml
 CLAUDE.local.md
 .claude/*
 !.claude/skills/
-
-# Personal planning notes (PT-BR), local-only
-BACKLOG.md
