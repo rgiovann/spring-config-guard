@@ -135,7 +135,7 @@ named profile document, per `application.yml`/`application-{profile}.yml`
 pair ([`ProfileMerger`](src/main/java/dev/scg/core/ProfileMerger.java)), or,
 in [Config Server Mode](#config-server-mode), the 4-layer
 Global-base/Global-profile/Service-base/Service-profile cascade. That is the
-full extent of what "effective configuration" means in this project. Three
+full extent of what "effective configuration" means in this project. Four
 mechanisms Spring Boot's own `Environment` resolves at runtime are
 deliberately outside that scope, for different reasons:
 
@@ -169,6 +169,23 @@ deliberately outside that scope, for different reasons:
   effort level) and is not planned; see
   [ADR-004](ARCHITECTURE.md#adr-004-springconfigimport-surfaced-as-a-coverage-warning-not-followed)
   for the full reasoning.
+* **Merging across Spring config locations.** Spring merges
+  `classpath:/`, `classpath:/config/`, `file:./` and `file:./config/` into
+  one `Environment`; SCG evaluates each directory independently, so a risky
+  combination split across two locations (e.g. `allowed-origins: "*"` in
+  `src/main/resources/application.yml` and `allow-credentials: true` in
+  `config/application-prod.yml`) produces no finding. Guessing which
+  directories belong to the same application risks silently fusing unrelated
+  modules of a monorepo, so SCG doesn't merge them. What it does instead:
+  when one module has config files in more than one of
+  `src/main/resources`, `src/main/resources/config` and `config/`, it
+  prints a coverage warning to stderr
+  (`spring-config-guard: N application(s) have config files in more than
+  one Spring config location, evaluated independently -- risks split across
+  locations are not detected.`,
+  [`ConfigLocationCoverage`](src/main/java/dev/scg/core/ConfigLocationCoverage.java)),
+  the same way it surfaces an unfollowed `spring.config.import`. See
+  [ADR-005](ARCHITECTURE.md#adr-005-multiple-spring-config-locations-surfaced-as-a-coverage-warning-not-merged).
 
 None of this is a defect to report as a false negative against SCG's
 existing rules — it's the boundary of what a tool that only parses
@@ -254,8 +271,14 @@ subdirectories are a good starting tour:
   (`spring-config-guard: N file(s) import external configuration via
   spring.config.import that was not scanned.`) on stderr next to a regular
   scan — identically in console and `--json` format.
+* `demo-project/config-location-showcase/` — `allowed-origins: "*"` in
+  `src/main/resources/application.yml` and `allow-credentials: true` in
+  `config/application-prod.yml`: Spring would resolve `prod` to the SCG003
+  combination, but each directory is evaluated on its own, so the report is
+  clean and the multi-location coverage warning on stderr is what surfaces
+  the gap — identically in console and `--json` format.
 
-All four are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
+All five are pinned by `DemoProjectShowcaseTest`, so they can't silently drift
 out of sync with rule behavior as rules evolve.
 
 `demo-project/config-server-showcase/` is the equivalent tour for

@@ -267,7 +267,8 @@ coinciding with the new fold:
   list-purge bug above, with no compile-time signal.
 * Folding happens **per directory**. Precedence across configuration
   locations (`classpath:/`, `classpath:/config/`, `./`, `./config/`) is not
-  modeled — each directory is still evaluated as its own group.
+  modeled — each directory is still evaluated as its own group (see
+  ADR-005).
 
 ### Revisit if
 A benchmark run on a newer Spring Boot version disagrees with any of the
@@ -361,3 +362,93 @@ would be a premature generalization with no second use case.
 Real users need local imported files scanned. Reasons 2–4 would have to be
 designed first; reason 5 (`configserver:` and other network-backed
 locations) stays out of scope regardless.
+
+---
+
+## ADR-005: Multiple Spring Config Locations Surfaced as a Coverage Warning, Not Merged
+
+### Status
+Accepted
+
+### Context
+Spring Boot merges config files from several locations into one
+`Environment` — lowest to highest precedence: `classpath:/`,
+`classpath:/config/`, `file:./`, `file:./config/`. `ConfigFileGrouper`
+groups by directory, so each of those becomes an independent
+`EffectiveConfig` (ADR-003's fold is per directory). Merging across
+locations was deferred earlier, for a reason that still holds: a heuristic
+that guesses which directories belong to the same application can silently
+fuse two modules of a monorepo into one incorrect `EffectiveConfig`.
+
+Confirmed with fixtures against the built jar that this has a concrete cost
+beyond "not modeled". For rules that combine two keys, a risk split across
+two locations disappears: `allowed-origins: "*"` in
+`src/main/resources/application.yml` plus `allow-credentials: true` in
+`config/application-prod.yml` (or `src/main/resources/config/application.yml`)
+is SCG003 HIGH in the real `prod` environment, but SCG reports nothing and
+`--fail-on=HIGH` exits 0. Single-key rules err the safe way instead (a risky
+classpath value overridden by a safe `config/` value is still flagged). The
+false negative was silent: nothing in the report said the result depended
+on a merge SCG never performed — the same class of trust gap as an
+unfollowed `spring.config.import` (ADR-004).
+
+### Decision
+Keep evaluating directories independently, and make the gap visible.
+`ConfigLocationCoverage.modulesWithMultipleLocations()` reports module
+roots `R` with config files in two or more of:
+
+* `R/src/main/resources` (`classpath:/`)
+* `R/src/main/resources/config` (`classpath:/config/`)
+* `R/config` (`file:./config/`, assuming the app starts from `R`)
+
+`Main` prints unconditionally to stderr when the count is above zero:
+
+```
+spring-config-guard: N application(s) have config files in more than one Spring config location, evaluated independently -- risks split across locations are not detected.
+```
+
+Same shape as ADR-004's warning, for the same reasons: outside the rule
+pipeline (no `Rule`/`Finding`), unaffected by `Policy` and `--fail-on`, no
+change to either report schema.
+
+Detection is deliberately narrow, tied to the structure of one module so a
+monorepo never produces a false alarm:
+
+* Locations are only related through a shared `R/src/main/resources`.
+  Sibling modules, each with its own single location, are never counted as
+  one application. A `config/` directory without a sibling
+  `src/main/resources` is not evidence of a Spring module root.
+* `file:./` (config files at the module root itself) is not recognized.
+  Its meaning depends on the working directory the app is started from,
+  which SCG can't know, and a root-level `application.yml` is rare enough
+  that the added false-alarm risk isn't justified yet. `R/config` carries
+  the same working-directory assumption, but a `config/` directory next to
+  `src/` is a strong, conventional signal.
+* `src/test/resources` is not a runtime location and is not counted.
+
+### Consequences
+
+**Positive**
+* The silent false negative now always comes with a visible warning, in
+  console and `--json` mode alike.
+* No merge heuristic that could compute a wrong `EffectiveConfig`; the
+  monorepo concern that deferred merging is fully respected.
+* No false alarm on the fixtures and real-world repositories already
+  validated (`spring-petclinic`, `spring-boot-admin`); covered by
+  `ConfigLocationCoverageTest` and two `DemoProjectShowcaseTest` cases
+  against `demo-project/config-location-showcase/`.
+
+**Negative / Trade-offs**
+* The risk itself is still not detected — the warning says the result is
+  incomplete, not what is missing.
+* Like ADR-004's warning, it never affects the exit code; a CI gate with
+  `--fail-on` passes while it's printed.
+* Locations outside the three recognized ones (`file:./`,
+  `file:./config/*/`, `spring.config.location`/`additional-location`) stay
+  invisible, with no warning.
+
+### Revisit if
+Real users need risks across locations detected, not just flagged. The
+next step would be an explicit, user-declared location list (not directory
+heuristics), which is the configuration surface originally planned for
+non-standard project layouts.

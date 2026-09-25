@@ -1,0 +1,7 @@
+# Base configuration packaged in the jar (classpath:/application.yml).
+# On its own this is not a credentialed-CORS risk: allow-credentials is not set here.
+management:
+  endpoints:
+    web:
+      cors:
+        allowed-origins: "*"

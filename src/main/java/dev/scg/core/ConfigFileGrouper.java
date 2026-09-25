@@ -22,7 +22,8 @@ import java.util.stream.Collectors;
  * Scope: grouping by simple convention (same directory; "application"
  * prefix already guaranteed by ConfigLoader.isSpringConfigFile). Custom base
  * name (spring.config.name) and multiple directories with precedence are
- * out of scope — see BL-17.
+ * out of scope — see ARCHITECTURE.md, ADR-005, and ConfigLocationCoverage, which
+ * warns when one module has config files in more than one Spring location.
  * <p>
  * When more than one physical source resolves to the same label, their
  * documents are folded into one via

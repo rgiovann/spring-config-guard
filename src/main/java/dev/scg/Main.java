@@ -60,6 +60,13 @@ public final class Main {
                     unfollowedImportCount);
         }
 
+        int multiLocationCount = ConfigLocationCoverage.modulesWithMultipleLocations(effectiveConfigs).size();
+        if (multiLocationCount > 0) {
+            System.err.printf(
+                    "spring-config-guard: %d application(s) have config files in more than one Spring config location, evaluated independently -- risks split across locations are not detected.%n",
+                    multiLocationCount);
+        }
+
         List<Rule> rules = RuleRegistry.discoverRules();
         if (rules.isEmpty()) {
             System.err.println(

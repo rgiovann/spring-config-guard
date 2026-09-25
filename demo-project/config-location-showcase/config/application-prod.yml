@@ -1,0 +1,10 @@
+# External override next to the jar (file:./config/application-prod.yml), a common
+# way to ship production settings. Spring merges it with the classpath base at runtime,
+# so the prod profile ends up with allowed-origins "*" AND allow-credentials true --
+# the SCG003 combination. SCG evaluates each directory independently, so neither
+# directory alone triggers SCG003; the coverage warning is what surfaces that gap.
+management:
+  endpoints:
+    web:
+      cors:
+        allow-credentials: true

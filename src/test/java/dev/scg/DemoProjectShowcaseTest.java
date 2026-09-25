@@ -32,6 +32,10 @@ class DemoProjectShowcaseTest {
     private static final String CONFIG_IMPORT_DIR = "demo-project/config-import-showcase";
     private static final String CONFIG_IMPORT_WARNING =
             "spring-config-guard: 1 file(s) import external configuration via spring.config.import that was not scanned.";
+    private static final String CONFIG_LOCATION_DIR = "demo-project/config-location-showcase";
+    private static final String CONFIG_LOCATION_WARNING =
+            "spring-config-guard: 1 application(s) have config files in more than one Spring config location, "
+                    + "evaluated independently -- risks split across locations are not detected.";
 
     @Test
     @DisplayName("multi-profile-showcase reports the 11 expected findings across base/dev/prod")
@@ -163,6 +167,44 @@ class DemoProjectShowcaseTest {
         assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_IMPORT_WARNING),
                 "The coverage warning is printed unconditionally by Main, independent of --json -- "
                         + "it must show up here exactly like it does in console format");
+    }
+
+    @Test
+    @DisplayName("config-location-showcase reports no finding but prints the multi-location coverage warning to stderr")
+    void shouldPrintConfigLocationCoverageWarningWhenRiskIsSplitAcrossLocations() {
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        String output;
+        try {
+            System.setErr(new PrintStream(errContent, true, StandardCharsets.UTF_8));
+            output = run(new String[]{CONFIG_LOCATION_DIR, "--fail-on=NONE"});
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        // Spring would resolve the prod profile to allowed-origins "*" + allow-credentials true
+        // (SCG003), but the two halves live in different locations, evaluated independently --
+        // this pins both the silent miss and the warning that surfaces it.
+        assertTrue(output.contains("no violations found"));
+        assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_LOCATION_WARNING));
+    }
+
+    @Test
+    @DisplayName("config-location-showcase prints the same multi-location warning in --json format, unaffected by output format")
+    void shouldPrintConfigLocationCoverageWarningInJsonFormatToo() throws Exception {
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        String output;
+        try {
+            System.setErr(new PrintStream(errContent, true, StandardCharsets.UTF_8));
+            output = run(new String[]{CONFIG_LOCATION_DIR, "--json", "--fail-on=NONE"});
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        List<Finding> findings = new ObjectMapper().readValue(output, new TypeReference<>() {});
+        assertTrue(findings.isEmpty());
+        assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_LOCATION_WARNING));
     }
 
     private static boolean hasFinding(String output, String ruleId, String profileMarker) {
