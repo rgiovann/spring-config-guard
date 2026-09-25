@@ -36,8 +36,11 @@ build/
 dependency-reduced-pom.xml
 
 ### Claude Code ###
-CLAUDE.md
-.claude/
+# CLAUDE.md and .claude/skills/ are shared project guidance; everything else
+# under .claude/ (e.g. settings.local.json) and CLAUDE.local.md are personal.
+CLAUDE.local.md
+.claude/*
+!.claude/skills/
 
 # Personal planning notes (PT-BR), local-only
 BACKLOG.md
