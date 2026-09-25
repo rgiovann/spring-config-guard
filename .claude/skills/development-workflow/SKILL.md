@@ -129,9 +129,15 @@ that turn up while working, report them to the maintainer.
 * Propose the commit message (`CLAUDE.md`, "Commit Messages") and **wait for
   explicit approval** before committing or pushing.
 * Never start a second change while one is still unreviewed.
-* After approval: commit with the maintainer's git identity (the same
+* After approval: commit with the maintainer as **author** (the same
   author as the existing history, no `Co-Authored-By` trailer), push to
   `main`, then check the CI run for that commit and report its result.
+* Leave the **committer** as the session's own git identity. Cloud
+  sessions sign commits with a platform key registered to that identity,
+  so GitHub shows them as Verified; overriding the committer with the
+  maintainer's email makes GitHub look for the key on the maintainer's
+  account and mark the commit Unverified. Never register the platform key
+  on the maintainer's account: it isn't theirs to control.
 
 ## 8. Reporting
 
