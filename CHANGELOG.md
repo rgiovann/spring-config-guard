@@ -8,6 +8,22 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.2.0-rc.1
+
+Pre-release published to validate the automated release workflow
+(`.github/workflows/release.yml`) end to end — tag push, version check,
+build and tests on the tagged commit, notes from this changelog, jar
+attached. Not intended for use: pin `v1.1.0` or wait for `v1.2.0`, whose
+notes will list the changes since `v1.1.0`.
+
+**Detection changes**
+- Same as the current `main`; they will be listed in `v1.2.0`.
+
+**Breaking changes**
+- None.
+
+Full diff: `v1.1.0...v1.2.0-rc.1`.
+
 ## v1.1.0
 
 **Added**
