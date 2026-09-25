@@ -17,16 +17,21 @@ it statically parses Spring Boot configuration files.
 
 ## Source of Truth
 
-The local working tree is the primary source of truth during development.
+The `main` branch on GitHub is the source of truth. Development happens in
+cloud sessions that clone it fresh, and every approved change is pushed back
+to it, so it always reflects the latest reviewed state of the project.
 
-Treat the code, configuration, tests, resources, and other files currently
-present in the local repository as authoritative for the current state of the
-project.
+Within a session, the working tree is `main` plus the changes not yet
+approved. Fetch `origin/main` before starting a task and before committing,
+so work never builds on a stale clone.
 
-Do not assume that the remote Git repository reflects the latest state.
+Files that are not in the repository (personal notes, untracked backlogs)
+never reach a session unless the maintainer provides them. Don't assume
+knowledge of them, and don't reference them from tracked files.
 
-When investigating existing behavior or architecture, inspect the local
-working tree before relying on assumptions about the remote repository.
+When investigating existing behavior or architecture, inspect the code,
+tests and documentation in the repository rather than relying on
+assumptions.
 
 ## Commit Messages
 
@@ -306,6 +311,11 @@ These directories can be used for manual end-to-end validation when
 appropriate.
 
 ## Implementation and Validation
+
+For every task that changes code, tests, fixtures or project documentation,
+follow `.claude/skills/development-workflow/SKILL.md`: planning checkpoints,
+verification evidence, recording decisions in the repository, reporting, and
+the commit/push approval gate.
 
 Prefer the smallest correct change.
 
