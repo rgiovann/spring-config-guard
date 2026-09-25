@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  *       (application-{profile}.ext) or from an on-profile block inside a
  *       base file ({@link #namedSourceRank}): a filename-profile file
  *       always outranks an on-profile block in a base file, confirmed
- *       against a real Spring Boot app (see BACKLOG.md, "Caso 3"); within
+ *       against a real Spring Boot app (see ARCHITECTURE.md, ADR-003); within
  *       either source, {@code .properties} still outranks
  *       {@code .yml}/{@code .yaml}.</li>
  * </ul>
@@ -161,7 +161,7 @@ public final class ConfigFileGrouper {
      * by {@link #NAMED_FILE_TIER} when the source is a filename-profile file
      * rather than an on-profile block inside a base file. A filename-profile
      * file always outranks an on-profile block, confirmed against a real
-     * Spring Boot app (see BACKLOG.md, "Caso 3").
+     * Spring Boot app (see ARCHITECTURE.md, ADR-003).
      */
     private static int namedSourceRank(Path path, boolean isFilenameProfileFile) {
         return (isFilenameProfileFile ? NAMED_FILE_TIER : 0) + precedenceRank(path);

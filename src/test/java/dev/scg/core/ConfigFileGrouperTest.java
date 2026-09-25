@@ -98,8 +98,8 @@ class ConfigFileGrouperTest {
     @Test
     @DisplayName("Should fold two base files with disjoint keys into one base document, keeping both")
     void shouldFoldTwoBaseFilesWithDisjointKeysKeepingBoth(@TempDir Path dir) throws IOException {
-        // Reproduces the bug found via the /actuator/env benchmark (BACKLOG.md,
-        // 2026-09-23): application.yml + application.properties coexisting as
+        // Reproduces the bug found via the /actuator/env benchmark (ARCHITECTURE.md,
+        // ADR-003): application.yml + application.properties coexisting as
         // base files used to silently lose one of the two files' properties
         // entirely, since ProfileMerger.findBaseProperties() only ever looked
         // at the first base document found.
@@ -160,7 +160,7 @@ class ConfigFileGrouperTest {
         // This and the next test encode a precedence rule the official Spring
         // Boot docs don't cover -- confirmed empirically against a real
         // Spring Boot 4.1.1 app via /actuator/env (spring-env-benchmark; see
-        // BACKLOG.md, "Caso 3"), not assumed.
+        // ARCHITECTURE.md, ADR-003), not assumed.
         Files.writeString(dir.resolve("application.yml"), """
                 base.key: valor
                 ---

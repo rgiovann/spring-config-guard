@@ -7,10 +7,10 @@ import java.util.Set;
 /**
  * Detects {@code spring.config.import} present in a scanned file, so its silent absence from the
  * report doesn't read as if the file were fully covered. Does not resolve or follow the import --
- * see BACKLOG.md for the five concrete reasons the full import graph stays out of scope
- * (recursive resolution, per-file base-dir relativity, precedence interacting with profile merge,
- * and network-backed locations like {@code configserver:} that aren't statically resolvable at
- * any effort level).
+ * see ARCHITECTURE.md, ADR-004, for the five concrete reasons the full import graph stays out of
+ * scope ({@code configtree:} needing a new parser, per-file base-dir relativity, recursive
+ * resolution, precedence interacting with profile merge, and network-backed locations like
+ * {@code configserver:} that aren't statically resolvable at any effort level).
  */
 public final class ConfigImportCoverage {
 

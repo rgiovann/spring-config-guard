@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Runs the built pipeline against the committed demo-project showcase fixtures and pins the exact
- * findings they're documented to produce (see BACKLOG.md / README references to these fixtures).
+ * findings they're documented to produce (see the README's references to these fixtures).
  * Without this, the fixtures are just static YAML/properties files that could silently drift out of
  * sync with rule behavior as rules evolve -- this test is what keeps them honest.
  */

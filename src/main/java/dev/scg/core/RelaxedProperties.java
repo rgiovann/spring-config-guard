@@ -75,7 +75,7 @@ public final class RelaxedProperties {
      * the target would silently miss every indexed item. This is exactly the gap that let
      * EmbeddedConnectionCredentialsRule (SCG007) miss credentials in
      * spring.elasticsearch.uris/spring.rabbitmq.addresses when written as real YAML lists
-     * instead of a single scalar (see BACKLOG.md).
+     * instead of a single scalar (regression-tested in EmbeddedConnectionCredentialsRuleTest).
      */
     public static String canonicalRoot(String canonicalKey) {
         if (canonicalKey == null) return null;

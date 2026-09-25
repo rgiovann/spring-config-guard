@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * ({@code spring-env-benchmark}, a plain sibling directory at the repository
  * root -- not a Maven module of this build, the same way demo-project/ and
  * demo-project-clean/ aren't: SCG's own build never resolves or depends on
- * Spring Boot because of it. See BACKLOG.md and VALIDATION.md for the full
- * rationale and steps).
+ * Spring Boot because of it. See VALIDATION.md, "ProfileMerger correctness
+ * benchmark", for the full rationale and steps).
  *
  * <p>Prerequisite: start the 'spring-env-benchmark' application on port 8081
  * with the 'prod' profile active

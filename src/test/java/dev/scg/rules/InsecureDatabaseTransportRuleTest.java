@@ -342,9 +342,8 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Stays silent on the bare host:port RabbitMQ address form (no scheme to inspect)")
         void shouldStaySilentOnBareHostPortRabbitMq() {
             // Deliberate boundary, not a gap: "host:port" carries no TLS signal of its own --
-            // that's spring.rabbitmq.ssl.enabled's job (tracked separately in BACKLOG.md as a
-            // future SCG01x rule). This mechanism only catches the explicit amqp:///amqps:// URI
-            // authoring style.
+            // that's spring.rabbitmq.ssl.enabled's job (SCG015, RabbitMqInsecureTransportRule).
+            // This mechanism only catches the explicit amqp:///amqps:// URI authoring style.
             Map<String, String> properties = Map.of(
                     "spring.rabbitmq.addresses", "localhost:5672"
             );
