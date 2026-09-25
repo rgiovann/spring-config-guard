@@ -5,3 +5,8 @@ app:
   relaxedBindingTest: "camel-override" # 3. Relaxed binding (camelCase sobrecrevendo kebab-case)
   nullable-override: null # 4. Override para null explícito
   file-vs-on-profile-conflict: "from-named-file" # 7. mesma chave que o bloco on-profile em application.yml -- quem vence?
+  bracket-map:
+    "[com.other]": "prod-warn" # 8. entrada nova: não pode apagar as da base
+    "[override.me]": "from-prod" # 9. sobrescreve só esta entrada
+    "[com.foobar]": "no-dash-from-prod" # 11. o Spring mantém separada de [com.foo-bar]; o SCG junta as duas
+    "[props.bracketed]": "from-prod-yml" # 13. sobrescreve a entrada entre colchetes de application.properties

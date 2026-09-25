@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,6 +62,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ActuatorEnvComparisonTest {
 
     private static final String ACTUATOR_URL = "http://localhost:8081/actuator/env";
+    private static final String CONFIGPROPS_URL = "http://localhost:8081/actuator/configprops";
+    private static final String BRACKET_MAP_PREFIX = "app.bracket-map.";
     private static final Path BENCHMARK_RESOURCES_PATH =
             Path.of("spring-env-benchmark/src/main/resources");
 
@@ -146,6 +149,74 @@ class ActuatorEnvComparisonTest {
 
         System.out.println("All ProfileMerger benchmark criteria matched real Spring Boot.");
     }
+
+    /**
+     * Bracketed map keys (ADR-007). /actuator/env can't be the oracle here: it lists each
+     * property source's raw keys separately, while merging map entries across sources and
+     * treating {@code [a.b]} and {@code a.b} as one key happen in Spring's Binder. So the map is
+     * compared against /actuator/configprops, which shows {@code app.bracket-map} as bound into
+     * {@code BenchmarkProperties} in the benchmark app: Spring's final answer.
+     */
+    @Test
+    void validateBracketedMapKeysAgainstSpringConfigprops() throws Exception {
+        Map<String, String> scgProperties = scgEffectiveConfigForProfile("prod").properties();
+        Map<String, String> scg = bracketMapEntries(scgProperties);
+        Map<String, String> spring = boundBracketMap(fetch(CONFIGPROPS_URL));
+
+        // 8. A profile adding an entry keeps the base's entries (merged key by key, not replaced
+        // like a list).
+        for (String key : List.of("com.acme-core", "org.example", "com.other")) {
+            assertNotNull(spring.get(key), "Spring must bind entry '" + key + "'");
+            assertEquals(spring.get(key), scg.get(key), "Entry '" + key + "' must survive the merge");
+        }
+        // 9. A profile overriding one entry replaces only that entry.
+        assertEquals("from-prod", spring.get("override.me"));
+        assertEquals("from-prod", scg.get("override.me"));
+        // 10. "[security.protocol]" (application.yml) and "security.protocol" (application.properties)
+        // are the same key, so .properties wins the conflict.
+        assertEquals("SASL_SSL", spring.get("security.protocol"));
+        assertEquals("SASL_SSL", scg.get("security.protocol"));
+        // 12. A dotted key without brackets, nested in YAML, is one map entry too.
+        assertEquals("nested-dotted", spring.get("plain.dotted"));
+        assertEquals("nested-dotted", scg.get("plain.dotted"));
+        // 13. A bracketed key in .properties is overridden by the profile's bracketed YAML key.
+        assertEquals("from-prod-yml", spring.get("props.bracketed"));
+        assertEquals("from-prod-yml", scg.get("props.bracketed"));
+        // 14. A bracketed entry only defined in the on-profile block survives the fold.
+        assertEquals("on-profile-entry", spring.get("from.on-profile"));
+        assertEquals("on-profile-entry", scg.get("from.on-profile"));
+
+        // 11. Known divergence, accepted in ADR-007: Spring keeps "[com.foo-bar]" and
+        // "[com.foobar]" as two entries; once rewritten into dotted form, SCG's relaxed binding
+        // sees one key and the profile's value wins. Asserted on both sides, so a change in either
+        // one fails here instead of passing unnoticed.
+        assertEquals("dash-from-base", spring.get("com.foo-bar"));
+        assertEquals("no-dash-from-prod", spring.get("com.foobar"));
+        assertEquals("no-dash-from-prod", RelaxedProperties.get(scgProperties, "app.bracket-map.com.foo-bar"),
+                "SCG resolves the base's spelling to the profile's value");
+        assertEquals(1, scg.keySet().stream()
+                        .filter(k -> RelaxedProperties.canonicalize(k).equals(RelaxedProperties.canonicalize("com.foobar")))
+                        .count(),
+                "SCG keeps a single entry for the two colliding keys");
+
+        // Every other entry: the two maps must be identical, so an entry SCG drops or invents
+        // fails even if no assertion above names it.
+        Map<String, String> springWithoutCollision = new LinkedHashMap<>(spring);
+        Map<String, String> scgWithoutCollision = new LinkedHashMap<>(scg);
+        springWithoutCollision.keySet().removeAll(List.of("com.foo-bar", "com.foobar"));
+        scgWithoutCollision.keySet().removeAll(List.of("com.foo-bar", "com.foobar"));
+        assertEquals(new TreeMap<>(springWithoutCollision), new TreeMap<>(scgWithoutCollision),
+                "Apart from the accepted collision, SCG's map must be the one Spring binds");
+
+        // The raw spelling the YAML loader produces is "x.map[a.b]", not "x.map.[a.b]": the second
+        // half of the original bug, where the two formats never matched.
+        String env = fetch(ACTUATOR_URL);
+        assertTrue(env.contains("\"app.bracket-map[com.acme-core]\""),
+                "Spring's YAML loader keeps the bracket attached to the map name");
+        assertFalse(env.contains("app.bracket-map.["), "No source spells the key with a dot before the bracket");
+
+        System.out.println("All bracketed map key criteria matched real Spring Boot.");
+    }
     @SuppressWarnings("SameParameterValue")
     private EffectiveConfig scgEffectiveConfigForProfile(String profile) throws Exception {
         List<GroupedConfigFile> groups = new ConfigFileGrouper()
@@ -162,12 +233,43 @@ class ActuatorEnvComparisonTest {
     }
 
     private String fetchActuatorEnv() throws Exception {
+        return fetch(ACTUATOR_URL);
+    }
+
+    private String fetch(String url) throws Exception {
         try (HttpClient client = HttpClient.newHttpClient()) {
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(ACTUATOR_URL)).GET().build();
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
             return response.body();
         }
+    }
+
+    /** SCG's {@code app.bracket-map.*} entries, keyed by the map key (the part after the prefix). */
+    private static Map<String, String> bracketMapEntries(Map<String, String> scgProperties) {
+        Map<String, String> entries = new LinkedHashMap<>();
+        scgProperties.forEach((key, value) -> {
+            if (key.startsWith(BRACKET_MAP_PREFIX)) {
+                entries.put(key.substring(BRACKET_MAP_PREFIX.length()), value);
+            }
+        });
+        return entries;
+    }
+
+    /** The {@code bracketMap} of the bean bound to prefix {@code app}, as /actuator/configprops shows it. */
+    private static Map<String, String> boundBracketMap(String configpropsJson) throws Exception {
+        for (JsonNode context : new ObjectMapper().readTree(configpropsJson).get("contexts")) {
+            for (JsonNode bean : context.get("beans")) {
+                if ("app".equals(bean.path("prefix").asText())) {
+                    Map<String, String> map = new LinkedHashMap<>();
+                    bean.path("properties").path("bracketMap").fields()
+                            .forEachRemaining(entry -> map.put(entry.getKey(), entry.getValue().asText()));
+                    assertFalse(map.isEmpty(), "configprops must show the bound bracketMap");
+                    return map;
+                }
+            }
+        }
+        throw new IllegalStateException("No bean bound to prefix 'app' in /actuator/configprops");
     }
 
     /**

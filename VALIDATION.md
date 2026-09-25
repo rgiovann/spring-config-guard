@@ -420,15 +420,24 @@ by default from `mvn test` (via the root `pom.xml`'s `excludedGroups`
 property) for the same reason — it needs that app actually running.
 
 **Fixture:** `spring-env-benchmark`'s `application.yml` (base + an
-`on-profile: prod` document) + `application-prod.yml` (profile) + a
-residual `application.properties` (just `spring.application.name`)
-exercise 6 `ProfileMerger`/`ConfigFileGrouper` behaviors: scalar override,
-list replacement, relaxed binding across base/profile (kebab-case base
-key, camelCase profile key), explicit-null override,
-placeholder-with-default resolution, and — the same profile (`prod`)
-sourced from both a named file and an on-profile block inside the base
-file — the two merging together, with the named file winning a key
+`on-profile: prod` document) + `application-prod.yml` (profile) +
+`application.properties` exercise 6 `ProfileMerger`/`ConfigFileGrouper`
+behaviors: scalar override, list replacement, relaxed binding across
+base/profile (kebab-case base key, camelCase profile key), explicit-null
+override, placeholder-with-default resolution, and — the same profile
+(`prod`) sourced from both a named file and an on-profile block inside the
+base file — the two merging together, with the named file winning a key
 conflict.
+
+A second set, under `app.bracket-map`, checks bracketed map keys
+([ADR-007](ARCHITECTURE.md#adr-007-bracketed-map-keys-rewritten-into-dotted-form-at-load-time)):
+a profile adding an entry keeps the base's entries; a profile overriding one
+entry replaces only that one; `"[security.protocol]"` in `.yml` and
+`security.protocol` in `.properties` are the same key, so `.properties`
+wins; a dotted key nested in YAML without brackets is one entry; a
+bracketed `.properties` key is overridden by the profile's `.yml`; an entry
+only in the on-profile block survives; and the raw YAML spelling is
+`app.bracket-map[com.acme-core]`, not `app.bracket-map.[com.acme-core]`.
 
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
@@ -441,7 +450,29 @@ before comparing the placeholder case, since `EffectiveConfig` stores the
 raw `${VAR:default}` text — resolution happens lazily, per `Rule`, not at
 merge time.
 
-**Result:** all 6 assertions match the real Spring Boot 4.1.1 output.
+The bracketed map can't be checked the same way: `/actuator/env` lists each
+source's raw keys, but merging map entries across sources and treating
+`[a.b]` and `a.b` as one key happen in Spring's `Binder`, when the value is
+read. So the benchmark app binds `app.bracket-map` into a
+`@ConfigurationProperties` record (`BenchmarkProperties`), and SCG's map is
+compared with what `/actuator/configprops` shows for it: Spring's final
+answer. Besides one assertion per case, the two maps must be identical, so
+an entry SCG drops or invents fails too.
+
+The one accepted divergence is pinned on both sides: Spring keeps
+`[com.foo-bar]` (base) and `[com.foobar]` (profile) as two entries, while
+SCG, after rewriting them into dotted form, sees one key under relaxed
+binding and keeps the profile's value (ADR-007). A change on either side
+fails the benchmark.
+
+**Result:** all assertions match the real Spring Boot 4.1.1 output (3
+benchmark tests). Run against the `ConfigLoader` from before ADR-007, the
+bracketed map test fails on the first case: the base's
+`[com.acme-core]` entry is lost once the profile adds one of its own.
+
+Exposing `configprops` changed what SCG reports on the benchmark app itself:
+the same 4 SCG001 findings, whose messages now name `configprops` next to
+`env`.
 
 ```bash
 # 1. Start the benchmark app (plain directory in this repo, not a Maven module)

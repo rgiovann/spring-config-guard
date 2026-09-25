@@ -5,10 +5,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: env # Expõe o endpoint /actuator/env
+        include: env,configprops # /actuator/env (fontes cruas) e /actuator/configprops (valores vinculados)
   endpoint:
     env:
       show-values: ALWAYS # CRÍTICO: Exibe os valores reais de senhas/secrets sem reter com '******'
+    configprops:
+      show-values: ALWAYS # idem, para o mapa vinculado em BenchmarkProperties
 
 # --- CASOS DE TESTE / FIXTURES (BASE) ---
 app:
@@ -19,10 +21,18 @@ app:
   relaxed-binding-test: "kebab-from-base"
   nullable-override: "should-be-nullified-in-profile"
   placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
+  # --- Chaves de mapa entre colchetes (ADR-007), lidas via /actuator/configprops ---
+  bracket-map:
+    "[com.acme-core]": "base-debug" # 8. merge chave a chave: sobrevive ao profile
+    "[org.example]": "base-info" # 8. idem
+    "[override.me]": "from-base" # 9. o profile sobrescreve só esta entrada
+    "[security.protocol]": "PLAINTEXT" # 10. application.properties define a mesma chave com pontos e vence
+    "[com.foo-bar]": "dash-from-base" # 11. colisão aceita: o profile define [com.foobar]
+    plain.dotted: "nested-dotted" # 12. chave com ponto sem colchetes (como no spring-cloud-stream-samples)
 
-# --- CASO 3: bloco on-profile interno coexistindo com application-prod.yml,
-# ambos pro profile "prod" -- precedência entre os dois mecanismos nunca foi
-# confirmada contra o Spring real (ver BACKLOG.md, Caso 3) ---
+# --- Bloco on-profile interno coexistindo com application-prod.yml, ambos pro
+# profile "prod": os dois contribuem e o arquivo nomeado vence um conflito de
+# chave (caso 6 de ActuatorEnvComparisonTest; VALIDATION.md, benchmark) ---
 ---
 spring:
   config:
@@ -31,3 +41,5 @@ spring:
 app:
   on-profile-only-property: "from-internal-on-profile" # 6. só existe aqui -- os dois convivem?
   file-vs-on-profile-conflict: "from-internal-on-profile" # 7. mesma chave que application-prod.yml define -- quem vence?
+  bracket-map:
+    "[from.on-profile]": "on-profile-entry" # 14. entrada entre colchetes vinda só do bloco on-profile

@@ -588,6 +588,10 @@ once, with no rule changed.
 * Covered by `BracketedMapKeysTest` (normalization cases, merge in both
   formats, override of a single entry, cross-format key identity, SCG007
   and SCG014 end to end; the SCG014 and SCG007 cases fail on v1.3.0).
+* Checked against a running Spring Boot app as well: the `/actuator`
+  benchmark in `VALIDATION.md` compares SCG's merged map with the one
+  `/actuator/configprops` shows bound, the collision below included, and
+  fails with the `ConfigLoader` from before this decision.
 
 **Negative / Trade-offs**
 * Finding messages name the dotted key, not the bracketed spelling the
@@ -597,8 +601,8 @@ once, with no rule changed.
   but canonicalize to one key here, the later overriding the earlier. Rare,
   and pinned by a test so the limitation stays visible.
 * None of the reference projects in `VALIDATION.md` uses bracketed keys:
-  the fix is proven by fixtures and by Spring's own binder, not yet by a
-  real-world project.
+  the fix is proven by fixtures, by Spring's own binder and by the
+  benchmark app, not yet by a real-world project.
 
 ### Revisit if
 A rule needs the original bracketed spelling (e.g. to quote it back), or
