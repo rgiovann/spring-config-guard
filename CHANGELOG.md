@@ -11,9 +11,9 @@ and refuses to publish a tag without one.
 ## v1.2.0-rc.1
 
 Pre-release published to validate the automated release workflow
-(`.github/workflows/release.yml`) end to end — tag push, version check,
-build and tests on the tagged commit, notes from this changelog, jar
-attached. Not intended for use: pin `v1.1.0` or wait for `v1.2.0`, whose
+(`.github/workflows/release.yml`) end to end — manual trigger, version
+and tag checks, build and tests, tag creation, notes from this changelog,
+jar attached. Not intended for use: pin `v1.1.0` or wait for `v1.2.0`, whose
 notes will list the changes since `v1.1.0`.
 
 **Detection changes**

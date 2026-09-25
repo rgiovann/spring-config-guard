@@ -1,13 +1,17 @@
 name: Release
 
-# Publishes a GitHub release when a version tag is pushed. The jar is always
-# built from the tagged commit, after the full test suite, and the release
-# notes come from that version's section in CHANGELOG.md. See
-# CONTRIBUTING.md, "Releases".
+# Publishes a GitHub release for a version, triggered manually (Actions tab,
+# or the API) from main. The workflow creates the vX.Y.Z tag itself, on the
+# exact commit it built and tested, and takes the release notes from that
+# version's section in CHANGELOG.md. See CONTRIBUTING.md, "Releases".
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the leading v (e.g. 1.2.0 or 1.2.0-rc.1)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,9 +19,32 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Passed through env, never interpolated into scripts, so the input
+      # can't inject shell code.
+      VERSION: ${{ inputs.version }}
     steps:
-      - name: Check out the tagged commit
+      - name: Check the version input and the branch
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not X.Y.Z or X.Y.Z-<suffix>."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases are published from main only (got $GITHUB_REF)."
+            exit 1
+          fi
+          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
+
+      - name: Check out main
         uses: actions/checkout@v7
+
+      - name: Check that the tag doesn't exist yet
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "::error::Tag $TAG already exists; a published release is never overwritten."
+            exit 1
+          fi
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
@@ -26,31 +53,30 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Check that pom.xml version matches the tag
+      - name: Check that pom.xml version matches
         run: |
-          expected="${GITHUB_REF_NAME#v}"
           actual="$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
-          if [ "$actual" != "$expected" ]; then
-            echo "::error::pom.xml version is '$actual', but tag $GITHUB_REF_NAME expects '$expected'."
+          if [ "$actual" != "$VERSION" ]; then
+            echo "::error::pom.xml version is '$actual', but the release is '$VERSION'."
             exit 1
           fi
 
       - name: Extract release notes from CHANGELOG.md
-        run: .github/scripts/extract-release-notes.sh "$GITHUB_REF_NAME" CHANGELOG.md > release-notes.md
+        run: .github/scripts/extract-release-notes.sh "$TAG" CHANGELOG.md > release-notes.md
 
       - name: Build and test
         run: mvn -B package
 
-      - name: Publish the GitHub release
+      - name: Create the tag and publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=""
-          case "$GITHUB_REF_NAME" in
+          case "$VERSION" in
             *-*) prerelease="--prerelease" ;;
           esac
-          gh release create "$GITHUB_REF_NAME" target/spring-config-guard.jar \
-            --title "spring-config-guard $GITHUB_REF_NAME" \
+          gh release create "$TAG" target/spring-config-guard.jar \
+            --target "$GITHUB_SHA" \
+            --title "spring-config-guard $TAG" \
             --notes-file release-notes.md \
-            --verify-tag \
             $prerelease

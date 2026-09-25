@@ -120,20 +120,29 @@ Publishing is automated by `.github/workflows/release.yml`.
    for a pre-release).
 4. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md`, using the
    template below.
-5. After approval, the assistant commits, tags `vX.Y.Z` on that commit and
-   pushes the tag. The release workflow then:
-   * fails unless `pom.xml`'s version equals the tag without its `v`;
+5. After approval, the assistant commits and pushes to `main`, then runs
+   the **Release** workflow manually (Actions tab → Release → Run workflow,
+   or the API) from `main`, with the version as input (`X.Y.Z`, no `v`).
+   The workflow:
+   * fails unless the input is `X.Y.Z` or `X.Y.Z-<suffix>` and it runs on
+     `main`;
+   * fails if the tag `vX.Y.Z` already exists, so a published release is
+     never overwritten;
+   * fails unless `pom.xml`'s version equals the input;
    * fails unless `CHANGELOG.md` has a non-empty `## vX.Y.Z` section;
-   * runs `mvn -B package` (full test suite) on the tagged commit;
-   * publishes the GitHub release with that section as its notes and
+   * runs `mvn -B package` (full test suite) on that commit;
+   * creates the tag `vX.Y.Z` on exactly that commit and publishes the
+     GitHub release with the section as its notes and
      `target/spring-config-guard.jar` attached — as a pre-release when the
-     tag has a suffix, so `releases/latest` is never a pre-release.
+     version has a suffix, so `releases/latest` is never a pre-release.
 6. The assistant checks the workflow run and the published release, and
    reports the link.
 7. Set `pom.xml` to the next `-SNAPSHOT` version.
 
-If the workflow fails, nothing is published: fix the cause, delete the tag
-(locally and on GitHub) and push it again.
+The workflow creates the tag itself because tags can't be pushed from the
+assistant's sessions, and so the tag always points at the commit that was
+built and tested. If it fails, nothing is published and no tag is created:
+fix the cause and run it again.
 
 ### Release notes template
 
