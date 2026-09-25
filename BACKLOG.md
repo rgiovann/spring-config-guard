@@ -52,19 +52,29 @@ severity first. Include in it the rules that combine more than one key
 config locations produces no finding for SCG003, but the effect on these
 three was not verified.
 
-### Imprecise `sourceFile` when a base or profile has several source files
+### Per-property origin in findings (waiting for a real consumer)
 
-When one label (the base, or a profile) is folded from several physical
-files — `application.yml` and `application.properties` in the same
-directory, or a named profile file plus an on-profile block —
-`ConfigFileGrouper` records a single source path per label: the
-highest-precedence one. A finding on a property that only exists in a
-lower-precedence file therefore names the wrong file as "where to fix it"
-(e.g. H2 enabled in `application.yml` is reported against
-`application.properties`). Detection itself is correct. Fixing it means
-tracking the source file per property rather than per label, which touches
-`ConfigFileGrouper`, `EffectiveConfig` and how rules pick `sourceFile` —
-a design decision, not a local fix. Noted in the v1.2.0 release notes.
+`sourceFile` identifies the evaluated configuration, not where the offending
+property is written: every `EffectiveConfig` carries one path, and rules
+copy it into each `Finding`. It points elsewhere whenever a configuration is
+assembled from several files — a property inherited from the base (since
+v1.0), `.yml` + `.properties` in one directory, a named profile file plus an
+on-profile block (both since v1.2.0), and the Global file in Config Server
+Mode (documented as intended in ADR-002). Detection is unaffected. The
+semantics are documented in README, "Output Format".
+
+Reporting the real origin would take: tracking a source file per property
+through `ConfigLoader` → `ConfigFileGrouper` → `ProfileMerger`, with the
+same list-replacement, explicit-null and relaxed-binding semantics as the
+values; rules reporting which keys triggered a finding (all 17 rules);
+a list of origins for rules that combine keys possibly written in different
+files (e.g. SCG003); and a new JSON field, which needs the schema
+compatibility decision first (the same question as the version field in
+"Version visibility" below).
+
+Worth it only once something consumes the location — e.g. PR annotations
+or code-scanning upload, where a wrong file would mark the wrong place.
+Until then, the documented semantics are enough.
 
 ### `--config-name=<prefix>`: custom `spring.config.name`
 

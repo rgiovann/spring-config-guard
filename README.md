@@ -329,6 +329,28 @@ Both report formats carry the same five
 `severity`, `message`, `sourceFile`, `profileLabel` — they only differ in how
 `profileLabel` is rendered.
 
+**What `sourceFile` means.** It identifies the *configuration* that was
+evaluated, not necessarily the file where the offending property is
+written. Each effective configuration carries one file: the base's own
+file, the profile's own file, or, in Config Server Mode, the service's
+file. When that configuration was assembled from several files, a property
+defined in one of the others is still reported against it:
+
+* A property inherited from the base shows up in a profile's finding with
+  that profile's file (H2 enabled in `application.yml` is reported for
+  `prod` against `application-prod.yml`).
+* With `application.yml` and `application.properties` in the same
+  directory, base findings name `application.properties`, the
+  highest-precedence file, even for a property defined in `application.yml`.
+* A profile defined by both `application-prod.yml` and an `on-profile: prod`
+  block in `application.yml` is reported against `application-prod.yml`.
+* In Config Server Mode, a property coming from the Global `application.yml`
+  is reported against the service's file.
+
+Detection is unaffected — the finding is real either way. When the reported
+file doesn't contain the property, look in the files that configuration
+inherits from or was merged with.
+
 ### Console output (default)
 
 A short header line per finding, followed by the message on its own
