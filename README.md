@@ -166,7 +166,9 @@ deliberately outside that scope, for different reasons:
   scope change (it includes import locations, like
   `spring.config.import=configserver:`, that are only resolvable by
   contacting a running server over the network — not statically, at any
-  effort level) and is not planned; see `BACKLOG.md` for the full reasoning.
+  effort level) and is not planned; see
+  [ADR-004](ARCHITECTURE.md#adr-004-springconfigimport-surfaced-as-a-coverage-warning-not-followed)
+  for the full reasoning.
 
 None of this is a defect to report as a false negative against SCG's
 existing rules — it's the boundary of what a tool that only parses
@@ -184,6 +186,18 @@ your specific deployment." The same reasoning applies from the other
 direction to a clean report: treat it as "no violation found in what SCG
 reads," not as "this configuration is safe under every possible runtime
 override."
+
+### Other known limitations
+
+* **A Spring profile literally named `base` can't be targeted by name in a
+  [Policy](#policy) file.** `base` in a policy is an alias for the "no
+  active profile" configuration, so a real profile with that exact name
+  can only be suppressed through `"*"`, which suppresses the rule in every
+  profile. Decided not to change: freeing the word `base` would break every
+  existing policy that uses the alias, to serve a profile name that is
+  valid in Spring but rare in practice. The report itself is unaffected —
+  it tells the two apart (`[base]` vs. `[profile: base]`, see
+  [Multi-profile example](#multi-profile-example-including-a-profile-literally-named-base)).
 
 ## Usage
 
@@ -438,7 +452,8 @@ SCG006:
   to that real profile — there is currently no way to suppress a rule for
   that specific real profile by name; `"*"` (below) is the only suppression
   that also reaches it, at the cost of suppressing every profile at once.
-  Tracked in `BACKLOG.md` as a pending design decision, not yet resolved.
+  This is a deliberate decision, not a pending one — see
+  [Other known limitations](#other-known-limitations).
 * `"*"` suppresses a rule across every profile at once, instead of listing
   each one:
 

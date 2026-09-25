@@ -142,8 +142,10 @@ rules' precision (see "Rules with nothing to check here" below).
   SCG001 count isn't a uniform 4-per-service (32) but 37. Also confirmed
   `eureka.client.serviceUrl.defaultZone: http://discovery-server:8761/eureka/`
   in several services is correctly *not* flagged — Eureka service discovery
-  is a deliberately deferred candidate (see `BACKLOG.md`, "Pós-1.0"), not an
-  oversight.
+  is a deliberately deferred candidate, not an oversight: the address
+  points to the service registry, which is typically deployed
+  intra-cluster, so `http://` there is frequently legitimate and flagging
+  it would be mostly noise.
 * **`spring-boot`** (all 8 rules that fired — SCG001, 002, 006, 007, 009,
   013, 014, 017 — 66 of 66 findings): **zero false negatives** across all
   of them. SCG001/002/006 findings are covered above. SCG007 (2 findings,

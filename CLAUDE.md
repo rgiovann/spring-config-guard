@@ -194,6 +194,24 @@ rather than silently suppressing the finding.
 
 A placeholder with a default resolves to that default, recursively.
 
+## Profiles (Zero-Trust)
+
+Rules are profile-agnostic. A rule never branches on
+`EffectiveConfig.profileLabel()` to suppress a finding or lower its
+severity: a misconfiguration under a profile labeled `dev`, `test` or
+`local` is still real risk if that profile can run against shared or
+staging infrastructure, and the label alone doesn't prove it can't.
+
+Accepting a risk for a given profile is a decision of the team scanning
+its own project, not of the tool. That decision belongs in the Policy
+layer (`dev.scg.policy.Policy`, `--policy=<file>`), which suppresses
+findings per rule and per profile after `RuleEngine.run()` — never inside
+a rule.
+
+A rule that deviates from this must justify it in its own Javadoc. See
+`.claude/skills/add-security-rule/SKILL.md` ("Zero-Trust and profiles")
+for the testing convention.
+
 ## Adding a Rule
 
 To add a new rule:
