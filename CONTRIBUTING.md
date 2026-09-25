@@ -87,7 +87,8 @@ maintained list anywhere else.
 
 ## Releases
 
-Versions follow `MAJOR.MINOR.PATCH`, and tags are always `vX.Y.Z`. For a
+Versions follow `MAJOR.MINOR.PATCH`, and tags are always `vX.Y.Z` (a
+pre-release adds a suffix, e.g. `v1.2.0-rc.1`). For a
 linter, "breaking" needs a precise meaning: users gate CI on its output, so
 a release can change their build result without changing any contract.
 
@@ -109,24 +110,37 @@ Between releases, `main` carries the next version as `X.Y.Z-SNAPSHOT` in
 ### Release checklist
 
 The assistant prepares the release (version, notes, `pom.xml`, README
-pin); the maintainer reviews it and approves before anything is tagged or
-published.
+pin); the maintainer reviews it and approves before anything is tagged.
+Publishing is automated by `.github/workflows/release.yml`.
 
 1. Decide the version from the commits since the last tag, using the rules
    above.
 2. Set `pom.xml` to `X.Y.Z` (drop `-SNAPSHOT`).
-3. Update the pinned version in README's CI/CD Integration example.
-4. Write the release notes with the template below.
-5. After approval, the assistant commits, tags `vX.Y.Z` and pushes the tag.
-   The maintainer then publishes the GitHub release from that tag, pasting
-   the prepared notes and attaching the jar built by `mvn -B package` at
-   that tag (`target/spring-config-guard.jar`).
-6. Set `pom.xml` to the next `-SNAPSHOT` version.
+3. Update the pinned version in README's CI/CD Integration example (skip
+   for a pre-release).
+4. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md`, using the
+   template below.
+5. After approval, the assistant commits, tags `vX.Y.Z` on that commit and
+   pushes the tag. The release workflow then:
+   * fails unless `pom.xml`'s version equals the tag without its `v`;
+   * fails unless `CHANGELOG.md` has a non-empty `## vX.Y.Z` section;
+   * runs `mvn -B package` (full test suite) on the tagged commit;
+   * publishes the GitHub release with that section as its notes and
+     `target/spring-config-guard.jar` attached — as a pre-release when the
+     tag has a suffix, so `releases/latest` is never a pre-release.
+6. The assistant checks the workflow run and the published release, and
+   reports the link.
+7. Set `pom.xml` to the next `-SNAPSHOT` version.
+
+If the workflow fails, nothing is published: fix the cause, delete the tag
+(locally and on GitHub) and push it again.
 
 ### Release notes template
 
+A `CHANGELOG.md` section; the heading must match the tag exactly.
+
 ```markdown
-## spring-config-guard vX.Y.Z
+## vX.Y.Z
 
 **Added**
 - New rules, flags, coverage warnings or detection capability.

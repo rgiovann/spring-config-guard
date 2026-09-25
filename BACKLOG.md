@@ -61,14 +61,6 @@ error. Intended design: a `--config-name` flag (default `application`)
 parameterizing the prefix `ConfigLoader` already checks. Out of scope:
 `spring.config.location` and arbitrary paths. No confirmed need yet.
 
-### Release workflow triggered by a tag
-
-Publishing a release is manual: the GitHub release and its jar are created
-by hand from the tag. A GitHub Actions workflow on `v*` tag pushes could
-build the jar and create the release with the prepared notes, so the jar is
-always built from exactly the tagged commit. New CI infrastructure, so it
-needs a decision first.
-
 ### Version visibility: `--version` and the version in reports
 
 The jar can't report which version it is: there is no `--version` flag and
