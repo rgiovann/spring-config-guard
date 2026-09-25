@@ -99,7 +99,7 @@ class ActuatorExposureRuleTest {
                  "when a wildcard is used without additional configuration")
     void shouldGenerateHighFindingWithEndpointsUnrestrictedByDefaultWhenWildcardIsUsedWithoutAdditionalConfig() {
         // No enabled/access configuration for any endpoint — shutdown, heapdump, and restart are
-        // restricted by Spring's own default (BL-11, and restart's own enableByDefault=false),
+        // restricted by Spring's own default (access=none for shutdown/heapdump, enableByDefault=false for restart),
         // while the other five are not.
 
         EffectiveConfig config = configWith(Map.of(

@@ -39,7 +39,7 @@ public final class ConfigLoader {
      * EMPTY list (e.g., "allowed-origins: []"). Without this, an empty
      * list produces zero flattened keys — indistinguishable from "the key was
      * never mentioned" — and ProfileMerger would have no way to know that the
-     * profile intended to clear the list inherited from the base (BL-03, scenario a).
+     * profile intended to clear the list inherited from the base.
      * <p>
      * Package-visible by design: ProfileMerger needs to recognize and then
      * remove this key before exposing the result to any Rule — it is an
@@ -48,7 +48,7 @@ public final class ConfigLoader {
     static final String EMPTY_LIST_SENTINEL_SUFFIX = ".__empty_list__";
 
     /**
-     * BL-08: sentinel key suffix for an explicitly empty YAML Map/object
+     * Sentinel key suffix for an explicitly empty YAML Map/object
      * (e.g., "headers: {}"). Emitted by flatten() for the same reason as the
      * list sentinel — an empty Map leaves no trace in the flattened map
      * without it.
@@ -210,8 +210,8 @@ public final class ConfigLoader {
      * value are both treated as base, without distinguishing the two. This is
      * a syntax/config-quality nuance, not a security risk, and is deliberately
      * out of this project's scope (same boundary as profile boolean
-     * expressions and multi-profile activation — see BL-05/BL-06). Removes
-     * the metadata key from the flattened map (risk point 4).
+     * expressions and multi-profile activation). Removes the metadata key
+     * from the flattened map.
      * <p>
      * Step D (grouping): documents with the SAME label (including multiple "base"
      * documents) are merged together, in the order they appear in the file —
@@ -228,7 +228,7 @@ public final class ConfigLoader {
 
             for (Object rawDocument : rawDocuments) {
                 if (rawDocument == null) {
-                    // Risk point 1: empty document (e.g., "---" alone at the end of the file).
+                    // Empty document (e.g., "---" alone at the end of the file).
                     // It does not generate any ConfigDocument — we simply ignore it.
                     continue;
                 }
@@ -242,7 +242,7 @@ public final class ConfigLoader {
                         ? BASE_LABEL
                         : profileValue.strip();
 
-                // Risk point 4: removes the metadata from the data map — consumers of
+                // Removes the metadata from the data map — consumers of
                 // ConfigDocument should not see this key as if it were a regular business
                 // property. Removes the ACTUAL key found (it may be on-profile, onProfile,
                 // ON_PROFILE, etc.), not the literal constant —
@@ -302,7 +302,7 @@ public final class ConfigLoader {
             case List<?> list -> {
 
                 if (list.isEmpty()) {
-                    // BL-03 (scenario a): an explicitly empty list leaves
+                    // An explicitly empty list leaves
                     // no trace if we simply iterate over nothing. Emit
                     // a sentinel so ProfileMerger can distinguish
                     // "profile redefined as empty" from "profile did not mention it at all".

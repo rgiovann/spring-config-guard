@@ -41,7 +41,7 @@ public final class ActuatorExposureRule implements Rule {
     // have a default value of "none" (restricted), unlike the other sensitive endpoints
     // (default "unrestricted").
     //Without this distinction, the rule generates false positives for these two endpoints when
-    // no explicit configuration exists (BL-11).
+    // no explicit configuration exists.
     // "restart" joins them for the same reason, confirmed against its own source rather than
     // assumed from the Boot 3.4/3.5 changelog above (which only covers Actuator-core defaults):
     // RestartEndpoint (Spring Cloud Context, org.springframework.cloud.context.restart) is
@@ -146,7 +146,7 @@ public final class ActuatorExposureRule implements Rule {
 
     private boolean mayContainWildcard(String value) {
         if (value == null) {
-            return false; // Explicit null (BL-09): intentional override, not a risk
+            return false; // Explicit null: intentional override, not a risk
         }
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
@@ -173,7 +173,7 @@ public final class ActuatorExposureRule implements Rule {
 
     private boolean explicitlyIncludes(String rawValue, String endpointId) {
         if (rawValue == null) {
-            return false; // explicit null (BL-09): intentional override, not a risk
+            return false; // explicit null: intentional override, not a risk
         }
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);

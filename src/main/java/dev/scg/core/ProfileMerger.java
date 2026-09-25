@@ -20,7 +20,7 @@ public final class ProfileMerger {
 
     /**
      * Synthetic label used for "no active profile". Deliberately
-     * an unlikely name to collide with a real Spring profile (BL-02):
+     * an unlikely name to collide with a real Spring profile:
      * previously it was the simple string "base", which could collide if a
      * real profile were literally named "base" (syntactically valid in Spring,
      * although rare in practice).
@@ -160,7 +160,7 @@ public final class ProfileMerger {
      * Checks whether the overlay key canonically matches ANY key
      * already present in the base — not just keys that represented a list there.
      * Deliberately covers two distinct scenarios:
-     * 1. BL-03(b): the overlay redefines as a scalar something that was a LIST
+     * 1. The overlay redefines as a scalar something that was a LIST
      *    in the base (e.g., base has "cors.origins[0]"/"[1]", overlay defines
      *    "cors.origins" as a single string — Spring's relaxed binding for List<String>).
      * 2. The overlay redefines a pure scalar that is also a pure scalar in the base,

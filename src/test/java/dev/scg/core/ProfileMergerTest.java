@@ -290,7 +290,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(b): scalar key (relaxed-binding) redefining the base list should purge orphaned indices")
+    @DisplayName("Scalar key (relaxed-binding) redefining the base list should purge orphaned indices")
     void scalarKeyRedefiningBaseListShouldPurgeOrphanedIndices() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
@@ -315,7 +315,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(b): scalar redefinition of a list should not affect another unrelated list")
+    @DisplayName("Scalar redefinition of a list should not affect another unrelated list")
     void scalarRedefinitionShouldNotAffectUnrelatedList() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.origins[0]", "a.com");
@@ -400,7 +400,7 @@ class ProfileMergerTest {
         assertEquals("1", profileProps.get("x"));
     }
     @Test
-    @DisplayName("EffectiveConfig.properties() should be protected against external mutation (BL-01 fixed)")
+    @DisplayName("EffectiveConfig.properties() should be protected against external mutation")
     void effectiveConfigShouldBeProtectedAgainstExternalMutation() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
@@ -421,7 +421,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): profile with an explicit empty list should clear the dangerous list inherited from the base")
+    @DisplayName("Profile with an explicit empty list should clear the dangerous list inherited from the base")
     void profileWithExplicitEmptyListShouldClearBaseList() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "*");
@@ -446,7 +446,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): profile can redefine an empty list as non-empty, replacing it completely")
+    @DisplayName("Profile can redefine an empty list as non-empty, replacing it completely")
     void profileRedefinesEmptyListAsNonEmpty() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins[0]", "a.com");
@@ -466,7 +466,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): base with an explicit empty list, profile that does not mention the key, should inherit empty without leaking the sentinel")
+    @DisplayName("Base with an explicit empty list, profile that does not mention the key, should inherit empty without leaking the sentinel")
     void baseWithEmptyListInheritsEmptyWithoutLeakingSentinel() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("cors.allowed-origins.__empty_list__", "true");
@@ -490,7 +490,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-03(a): empty object list (not just a scalar list) should also be correctly purged via the sentinel")
+    @DisplayName("Empty object list (not just a scalar list) should also be correctly purged via the sentinel")
     void emptyObjectListShouldAlsoBeCorrectlyPurged() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("users[0].name", "admin");
@@ -515,7 +515,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-02 resolved: profile explicitly named 'base' no longer collides with the synthetic label")
+    @DisplayName("Profile explicitly named 'base' does not collide with the synthetic label")
     void profileExplicitlyNamedBaseNoLongerCollidesWithSyntheticLabel() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
@@ -535,7 +535,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-08: Empty map in profile should NOT purge base keys (unlike a list)")
+    @DisplayName("Empty map in profile should NOT purge base keys (unlike a list)")
     void emptyMapInProfileShouldNotPurgeBaseKeys() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("headers.x-app-name", "minha-app");
@@ -560,7 +560,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-09: Profile with explicit scalar null should redefine the base key to null")
+    @DisplayName("Profile with explicit scalar null should redefine the base key to null")
     void profileWithExplicitNullShouldRedefineKeyToNull() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("app.feature-x.enabled", "true");
@@ -581,7 +581,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("BL-09: Profile with scalar null at a node that was an object in the base should purge sub-keys and result in null")
+    @DisplayName("Profile with scalar null at a node that was an object in the base should purge sub-keys and result in null")
     void profileWithNullAtObjectNodeShouldPurgeSubKeys() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("db.connection.timeout", "30");
