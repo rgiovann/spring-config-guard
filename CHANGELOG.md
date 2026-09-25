@@ -8,6 +8,62 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.3.1
+
+**Fixed**
+- Bracketed map keys (`spring.kafka.properties[sasl.jaas.config]`,
+  `logging.level[com.example]`, or `"[security.protocol]"` in YAML) were
+  treated as list indices. Rules look properties up by their dotted name, so
+  they never matched the bracketed spelling: SCG007 missed a plaintext JAAS
+  password written that way, and SCG014 reported Kafka as `PLAINTEXT` even
+  when `spring.kafka.properties[security.protocol]=SASL_SSL` was set. In
+  profiles, an entry added by the profile discarded every entry the base
+  defined in that map. SCG now rewrites bracketed map keys into dotted form
+  when loading `.yml` and `.properties` files, keeping numeric list indices,
+  as Spring Boot's binder does. See ADR-007.
+- The same input could produce a different report on each run: SCG001
+  listed endpoints in an order that changed from one JVM run to the next,
+  and findings one rule reported in the same file and profile could swap
+  places. Output is now byte-identical on every run, in JSON and console:
+  SCG001 lists endpoints in a fixed order (`env, threaddump, configprops,
+  beans, loggers`; `env, configprops`), and findings tied on severity, file
+  and profile are ordered by rule ID and then message.
+
+**Detection changes**
+- **More findings** where a sensitive property is written with brackets:
+  SCG007 now reports a plaintext JAAS password in
+  `spring.kafka.properties[sasl.jaas.config]`, in both formats.
+- **Fewer findings**: SCG014 no longer reports Kafka as unencrypted when the
+  secure protocol is set through `spring.kafka.properties[security.protocol]`.
+- **More findings in profiles**: a profile adding one entry to a map
+  written with brackets keeps the base's entries, as Spring does, so
+  findings on those entries now appear in that profile too. For example, a
+  hardcoded `spring.kafka.properties[ssl.keystore.password]` in the base
+  was reported by SCG006 only on the base when a profile added its own
+  `spring.kafka.properties[...]` entry; it is now reported on the profile
+  as well.
+- **Finding messages** name the dotted key
+  (`spring.kafka.properties.sasl.jaas.config`), not the bracketed spelling
+  written in the file.
+- **Known limitation**: brackets keep characters relaxed binding ignores,
+  so `[com.foo-bar]` and `[com.foobar]` are two entries in Spring but one
+  key in SCG, the later overriding the earlier (ADR-007).
+- The same findings and coverage warnings as `v1.3.0` on every reference
+  project (demo fixtures, `spring-env-benchmark`, and the `VALIDATION.md`
+  repositories): none of them uses bracketed keys. Only the order of the
+  endpoint lists in SCG001 messages differs, now fixed.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Documentation: `VALIDATION.md` adds `spring-cloud-stream-samples`, with
+three false negatives recorded for the rule-by-rule review, and the
+`/actuator` benchmark now checks bracketed map keys against
+`/actuator/configprops`.
+
+Full diff: `v1.3.0...v1.3.1`.
+
 ## v1.3.0
 
 **Added**
