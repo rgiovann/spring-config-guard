@@ -260,6 +260,8 @@ java -jar target/spring-config-guard.jar <project-path> [--json] [--config-serve
   Without this flag, no suppression is applied.
 * `--help` / `-h` — shows the usage message (flags, examples, exit codes)
   and exits with code 0. Takes precedence over any other argument.
+* `--version` — prints the version (`spring-config-guard 1.3.0`) and exits
+  with code 0, ignoring other arguments except `--help`, which wins.
 
 `demo-project/` carries deliberately misconfigured YAML fixtures and
 `demo-project-clean/` carries deliberately clean fixtures — useful for

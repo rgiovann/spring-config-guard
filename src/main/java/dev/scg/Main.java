@@ -4,6 +4,7 @@ import dev.scg.cli.CliArgumentParser;
 import dev.scg.cli.CliOptions;
 import dev.scg.cli.CliUsageException;
 import dev.scg.cli.ExitCodeResolver;
+import dev.scg.cli.Version;
 import dev.scg.core.*;
 import dev.scg.policy.Policy;
 import dev.scg.report.ConsoleReporter;
@@ -27,6 +28,10 @@ public final class Main {
     static int run(String[] args) {
         if (requestsHelp(args)) {
             System.out.print(CliArgumentParser.HELP_TEXT);
+            return ExitCodeResolver.SUCCESS;
+        }
+        if (hasArgument(args, CliArgumentParser.VERSION_FLAG)) {
+            System.out.println(Version.describe());
             return ExitCodeResolver.SUCCESS;
         }
 
@@ -117,8 +122,12 @@ public final class Main {
     }
 
     private static boolean requestsHelp(String[] args) {
+        return hasArgument(args, CliArgumentParser.HELP_FLAG) || hasArgument(args, CliArgumentParser.HELP_SHORT_FLAG);
+    }
+
+    private static boolean hasArgument(String[] args, String flag) {
         for (String arg : args) {
-            if (CliArgumentParser.HELP_FLAG.equals(arg) || CliArgumentParser.HELP_SHORT_FLAG.equals(arg)) {
+            if (flag.equals(arg)) {
                 return true;
             }
         }

@@ -69,8 +69,7 @@ same list-replacement, explicit-null and relaxed-binding semantics as the
 values; rules reporting which keys triggered a finding (all 17 rules);
 a list of origins for rules that combine keys possibly written in different
 files (e.g. SCG003); and a new JSON field, which needs the schema
-compatibility decision first (the same question as the version field in
-"Version visibility" below).
+compatibility decision first (the same question as "Version in the JSON report" below).
 
 Worth it only once something consumes the location — e.g. PR annotations
 or code-scanning upload, where a wrong file would mark the wrong place.
@@ -85,14 +84,12 @@ error. Intended design: a `--config-name` flag (default `application`)
 parameterizing the prefix `ConfigLoader` already checks. Out of scope:
 `spring.config.location` and arbitrary paths. No confirmed need yet.
 
-### Version visibility: `--version` and the version in reports
+### Version in the JSON report (waiting for a concrete need)
 
-The jar can't report which version it is: there is no `--version` flag and
-the JSON output doesn't say which version produced it, so a report can't be
-traced back to a release (`VALIDATION.md` pins SCG by commit for this
-reason). A `--version` flag is additive; adding a field to the JSON report
-changes its schema and needs a compatibility decision first. Depends on
-`pom.xml` carrying the real version, which the release process now ensures.
+`--version` tells which jar is installed, but a saved report still doesn't
+say which version produced it. Adding it means changing the JSON report,
+which needs the schema compatibility decision first. Worth it only once
+reports are stored or compared across versions, e.g. by an external tool.
 
 ## Deferred (post-1.0)
 

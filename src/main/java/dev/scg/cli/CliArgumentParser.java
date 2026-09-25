@@ -16,6 +16,7 @@ public final class CliArgumentParser {
 
     public static final String HELP_FLAG = "--help";
     public static final String HELP_SHORT_FLAG = "-h";
+    public static final String VERSION_FLAG = "--version";
 
     public static final String HELP_TEXT = """
             Usage: spring-config-guard <directory> [options]
@@ -41,6 +42,7 @@ public final class CliArgumentParser {
                                    (e.g. 'SCG002: [dev]'). Without this flag, no
                                    suppression is applied.
               --help, -h           Show this message and exit.
+              --version            Show the version and exit.
 
             Examples:
               java -jar spring-config-guard.jar ./my-project

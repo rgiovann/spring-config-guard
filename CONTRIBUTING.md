@@ -131,6 +131,7 @@ Publishing is automated by `.github/workflows/release.yml`.
    * fails unless `pom.xml`'s version equals the input;
    * fails unless `CHANGELOG.md` has a non-empty `## vX.Y.Z` section;
    * runs `mvn -B package` (full test suite) on that commit;
+   * fails unless the built jar's `--version` reports exactly that version;
    * creates the tag `vX.Y.Z` on exactly that commit and publishes the
      GitHub release with the section as its notes and
      `target/spring-config-guard.jar` attached — as a pre-release when the

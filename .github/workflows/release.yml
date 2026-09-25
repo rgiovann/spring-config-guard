@@ -67,6 +67,14 @@ jobs:
       - name: Build and test
         run: mvn -B package
 
+      - name: Check that the jar reports the released version
+        run: |
+          reported="$(java -jar target/spring-config-guard.jar --version)"
+          if [ "$reported" != "spring-config-guard $VERSION" ]; then
+            echo "::error::The built jar reports '$reported', expected 'spring-config-guard $VERSION'."
+            exit 1
+          fi
+
       - name: Create the tag and publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
