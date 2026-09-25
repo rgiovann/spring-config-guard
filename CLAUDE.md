@@ -17,21 +17,24 @@ it statically parses Spring Boot configuration files.
 
 ## Source of Truth
 
-The `main` branch on GitHub is the source of truth. Development happens in
-cloud sessions that clone it fresh, and every approved change is pushed back
-to it, so it always reflects the latest reviewed state of the project.
+The `main` branch on GitHub is the source of truth. Development happens
+either in cloud sessions that clone it fresh or in a local clone (e.g.
+Claude Code Desktop), and every approved change is pushed back to it, so it
+always reflects the latest reviewed state of the project.
 
 Within a session, the working tree is `main` plus the changes not yet
-approved. Fetch `origin/main` before starting a task and before committing,
-so work never builds on a stale clone.
+approved. Fetch `origin/main` before starting a task and before committing —
+in a local clone, also pull it — so work never builds on a stale copy made
+by the other environment.
 
 `BACKLOG.md` holds the planned state of the project: pending, deferred and
 discarded work. Check it before proposing a new rule or feature, so a
 deliberately discarded idea isn't proposed again.
 
-Files that are not in the repository (personal notes) never reach a session
-unless the maintainer provides them. Don't assume knowledge of them, and
-don't reference them from tracked files.
+Files that are not in the repository (personal notes) never reach a cloud
+session unless the maintainer provides them, and a local clone may or may
+not have them. Don't rely on them, and don't reference them from tracked
+files.
 
 When investigating existing behavior or architecture, inspect the code,
 tests and documentation in the repository rather than relying on

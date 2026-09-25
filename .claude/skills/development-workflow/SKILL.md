@@ -129,15 +129,24 @@ that turn up while working, report them to the maintainer.
 * Propose the commit message (`CLAUDE.md`, "Commit Messages") and **wait for
   explicit approval** before committing or pushing.
 * Never start a second change while one is still unreviewed.
-* After approval: commit with the maintainer as **author** (the same
-  author as the existing history, no `Co-Authored-By` trailer), push to
-  `main`, then check the CI run for that commit and report its result.
-* Leave the **committer** as the session's own git identity. Cloud
-  sessions sign commits with a platform key registered to that identity,
-  so GitHub shows them as Verified; overriding the committer with the
-  maintainer's email makes GitHub look for the key on the maintainer's
-  account and mark the commit Unverified. Never register the platform key
-  on the maintainer's account: it isn't theirs to control.
+* After approval: commit, push to `main`, then check the CI run for that
+  commit and report its result. No `Co-Authored-By` trailer.
+* Commit identity, the same rule in every environment (cloud session or
+  local, e.g. Claude Code Desktop): the maintainer is always the
+  **author**, and the **committer** is never overridden.
+  * Check `git config user.email`. If it is already the maintainer's (a
+    local session using their own git configuration), commit as is: their
+    own identity and signing key apply.
+  * If it is another identity (a cloud session's own), set only the
+    author to the maintainer (`git commit --author=...` or
+    `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL`), the same author as the existing
+    history.
+  * Why the committer stays: cloud sessions sign commits with a platform
+    key registered to the session's identity, so GitHub shows them as
+    Verified; setting the committer to the maintainer's email makes GitHub
+    look for that key on the maintainer's account and mark the commit
+    Unverified. Never register the platform key on the maintainer's
+    account: it isn't theirs to control.
 
 ## 8. Reporting
 
