@@ -92,12 +92,18 @@ pre-release adds a suffix, e.g. `v1.2.0-rc.1`). For a
 linter, "breaking" needs a precise meaning: users gate CI on its output, so
 a release can change their build result without changing any contract.
 
-* **MAJOR**: breaks a public contract — the JSON report schema, CLI flags,
-  exit codes, the Policy file schema, or a rule ID being removed or
-  renumbered.
-* **MINOR**: adds capability — a new rule, flag or coverage warning, or
-  new detection in an existing rule (e.g. recognizing a renamed property).
+* **MAJOR**: breaks a public contract — removing, renaming or retyping a
+  field of the JSON report, or changing its shape (e.g. from a list of
+  findings to an object); removing or changing CLI flags or exit codes; an
+  incompatible change to the Policy file schema; or a rule ID being removed
+  or renumbered.
+* **MINOR**: adds capability — a new rule, flag or coverage warning, new
+  detection in an existing rule (e.g. recognizing a renamed property), or
+  a new optional field in an existing JSON object.
 * **PATCH**: fixes a bug or a message.
+
+Consumers of the JSON report should ignore fields they don't know, so an
+added field never breaks them; that is what makes it MINOR.
 
 A detection change alone — more findings, fewer findings, a recalibrated
 severity — is never a MAJOR bump: detecting things is what the tool is for.

@@ -68,8 +68,8 @@ through `ConfigLoader` → `ConfigFileGrouper` → `ProfileMerger`, with the
 same list-replacement, explicit-null and relaxed-binding semantics as the
 values; rules reporting which keys triggered a finding (all 17 rules);
 a list of origins for rules that combine keys possibly written in different
-files (e.g. SCG003); and a new JSON field, which needs the schema
-compatibility decision first (the same question as "Version in the JSON report" below).
+files (e.g. SCG003); and a new optional JSON field, which would be a
+MINOR change (CONTRIBUTING.md, "Releases").
 
 Worth it only once something consumes the location — e.g. PR annotations
 or code-scanning upload, where a wrong file would mark the wrong place.
@@ -87,8 +87,9 @@ parameterizing the prefix `ConfigLoader` already checks. Out of scope:
 ### Version in the JSON report (waiting for a concrete need)
 
 `--version` tells which jar is installed, but a saved report still doesn't
-say which version produced it. Adding it means changing the JSON report,
-which needs the schema compatibility decision first. Worth it only once
+say which version produced it. A new optional field in each finding would
+be a MINOR change; moving to a top-level object with the version and the
+findings would change the report's shape, a MAJOR one. Worth it only once
 reports are stored or compared across versions, e.g. by an external tool.
 
 ## Deferred (post-1.0)
