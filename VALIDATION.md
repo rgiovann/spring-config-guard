@@ -459,6 +459,13 @@ fields the profile doesn't write (including a base `password`) are gone.
 A profile skipping index 0 (only `[1]`) isn't a case: Spring refuses to
 start ("elements ... were left unbound").
 
+A fifth set, under `app.shapes`, puts a scalar and a map on the same key,
+one in the base and the other in the profile, in both directions, bound as
+a `Map`, a `String` and an object. Spring removes neither shape: both stay
+in the property sources, and the target type decides which one binds (the
+sub-keys for a `Map` or an object, the scalar for a `String`), even when the
+ignored shape comes from the profile.
+
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
 (`RelaxedProperties.canonicalize`), keeping the value from the
@@ -492,7 +499,7 @@ SCG, after rewriting them into dotted form, sees one key under relaxed
 binding and keeps the profile's value (ADR-007). A change on either side
 fails the benchmark.
 
-**Result:** all assertions match the real Spring Boot 4.1.1 output (5
+**Result:** all assertions match the real Spring Boot 4.1.1 output (6
 benchmark tests). Run against the `ConfigLoader` from before ADR-007, the
 bracketed map test fails on the first case: the base's
 `[com.acme-core]` entry is lost once the profile adds one of its own. The
@@ -505,6 +512,15 @@ quoted `"[0]"` YAML key with a dot (`quoted-index.[0].url`), so the
 profile's element wasn't recognized as part of the list and the base's
 whole list survived. The other cases already matched.
 
+Scalar vs. map needed no change either: SCG keeps both shapes, like
+Spring's property sources, and a rule reads the shape of the property it
+checks. The test pins that SCG keeps both; with the merge changed to purge
+a base map when the profile sets a scalar, it fails on that case. What
+remains is a limitation, not a divergence: SCG doesn't know types, so a
+rule reading a key in the shape Spring ignores would see a value Spring
+doesn't bind. No rule does so for a realistic configuration, and no
+reference project writes one key in both shapes.
+
 One difference in representation remains, harmless for every current rule:
 for `[]` in a profile, SCG purges the base list and keeps no key, where
 Spring keeps an empty string. Rules reading a list see the same empty list
@@ -513,7 +529,10 @@ insecure default.
 
 Exposing `configprops` changed what SCG reports on the benchmark app itself:
 the same 4 SCG001 findings, whose messages now name `configprops` next to
-`env`.
+`env`. Since the lists-of-objects cases, the app also reports 2 SCG006
+findings, for the two literal passwords of the `partial-override` base list:
+on the base only, since the `prod` profile replaces that list and Spring
+drops them — the behavior ADR-008 fixed. 6 findings in total.
 
 ```bash
 # 1. Start the benchmark app (plain directory in this repo, not a Maven module)

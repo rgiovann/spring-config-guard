@@ -19,3 +19,13 @@ app:
     quoted-index:
       "[0]":
         url: "https://prod.internal" # 26. index 0 written as a quoted key instead of a list item
+  shapes:
+    scalar-then-map:
+      key: "from-prod" # 29.
+    map-then-scalar: "plain" # 30.
+    scalar-then-map-as-string:
+      key: "from-prod" # 31.
+    map-then-scalar-as-string: "plain" # 32.
+    scalar-then-object:
+      url: "https://prod.internal" # 33.
+    object-then-scalar: "plain" # 34.

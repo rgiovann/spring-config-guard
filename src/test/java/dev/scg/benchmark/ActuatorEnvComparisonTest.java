@@ -290,6 +290,46 @@ class ActuatorEnvComparisonTest {
         System.out.println("All list of objects criteria matched real Spring Boot.");
     }
 
+    /**
+     * A scalar and a map (or object) on the same key, one in the base and the other in the
+     * profile. Spring removes neither: both stay in the property sources, and the target type
+     * decides which one binds (sub-keys for a Map or an object, the scalar for a String). SCG
+     * doesn't know types, so it keeps both too, and each rule reads the shape of the property it
+     * checks. Pinned on both sides: purging one shape in the merge would fail here.
+     */
+    @Test
+    void validateScalarVsMapAgainstSpringConfigprops() throws Exception {
+        Map<String, String> scg = scgEffectiveConfigForProfile("prod").properties();
+        JsonNode shapes = appBeanProperties(fetch(CONFIGPROPS_URL)).path("shapes");
+
+        // 29/30: Map target; 33/34: object target. Spring binds the sub-keys, the scalar is ignored.
+        for (String name : List.of("scalar-then-map", "map-then-scalar", "scalar-then-object", "object-then-scalar")) {
+            Map<String, String> spring = new TreeMap<>();
+            shapes.path(kebabToCamel(name)).fields()
+                    .forEachRemaining(field -> spring.put(field.getKey(), field.getValue().asText()));
+            assertFalse(spring.isEmpty(), "configprops must show '" + name + "' as bound");
+
+            String prefix = "app.shapes." + name + ".";
+            Map<String, String> scgSubKeys = new TreeMap<>();
+            scg.forEach((k, v) -> {
+                if (k.startsWith(prefix)) {
+                    scgSubKeys.put(k.substring(prefix.length()), v);
+                }
+            });
+            assertEquals(spring, scgSubKeys, "SCG's sub-keys for case '" + name + "'");
+            assertEquals("plain", scg.get("app.shapes." + name), "SCG keeps the scalar too for case '" + name + "'");
+        }
+
+        // 31/32: String target. Spring binds the scalar, the sub-key is ignored.
+        for (String name : List.of("scalar-then-map-as-string", "map-then-scalar-as-string")) {
+            assertEquals("plain", shapes.path(kebabToCamel(name)).asText(), "Spring's value for case '" + name + "'");
+            assertEquals("plain", scg.get("app.shapes." + name), "SCG's scalar for case '" + name + "'");
+            assertNotNull(scg.get("app.shapes." + name + ".key"), "SCG keeps the sub-key too for case '" + name + "'");
+        }
+
+        System.out.println("All scalar vs. map criteria matched real Spring Boot.");
+    }
+
     private static List<Map<String, String>> scgObjectList(Map<String, String> scgProperties, String key) {
         Pattern element = Pattern.compile(
                 Pattern.quote(key) + "\\[(\\d+)]\\.(\\w+)");

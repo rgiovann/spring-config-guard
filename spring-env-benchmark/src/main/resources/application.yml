@@ -65,6 +65,17 @@ app:
     omits-key: # 27. control: no other file mentions it
       - url: "https://a.internal"
         port: 1
+  # --- A scalar and a map on the same key, base vs. profile, read via /actuator/configprops ---
+  shapes:
+    scalar-then-map: "plain" # 29. Map target; the profile sets scalar-then-map.key
+    map-then-scalar: # 30. Map target; the profile sets map-then-scalar as a scalar
+      key: "from-base"
+    scalar-then-map-as-string: "plain" # 31. String target; the profile sets .key
+    map-then-scalar-as-string: # 32. String target; the profile sets it as a scalar
+      key: "from-base"
+    scalar-then-object: "plain" # 33. object target; the profile sets .url
+    object-then-scalar: # 34. object target; the profile sets it as a scalar
+      url: "https://a.internal"
 
 # --- Internal on-profile block coexisting with application-prod.yml, both for
 # the "prod" profile: both contribute and the named file wins a key conflict

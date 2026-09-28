@@ -13,7 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * source's raw keys separately.
  */
 @ConfigurationProperties("app")
-public record BenchmarkProperties(Map<String, String> bracketMap, ListCases lists, ObjectListCases objectLists) {
+public record BenchmarkProperties(Map<String, String> bracketMap, ListCases lists, ObjectListCases objectLists,
+        ShapeCases shapes) {
 
     /** One list per scenario of the same list written in different formats. */
     public record ListCases(
@@ -37,5 +38,15 @@ public record BenchmarkProperties(Map<String, String> bracketMap, ListCases list
     }
 
     public record Server(String url, Integer port, String password) {
+    }
+
+    /** One property per scenario of a scalar and a map (or object) on the same key, by target type. */
+    public record ShapeCases(
+            Map<String, String> scalarThenMap,
+            Map<String, String> mapThenScalar,
+            String scalarThenMapAsString,
+            String mapThenScalarAsString,
+            Server scalarThenObject,
+            Server objectThenScalar) {
     }
 }

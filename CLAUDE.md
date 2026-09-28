@@ -171,6 +171,12 @@ It does not merge base and profile configurations.
 
 `ProfileMerger` performs base/profile merging according to the project's
 implemented Spring configuration semantics.
+SCG doesn't know the Java type a property binds to. A key written as a
+scalar in one source and as a map or object in another (`app.x` vs.
+`app.x.y`) keeps both shapes, as Spring's `Environment` does; Spring picks
+one when binding, by type, and each rule reads the shape of the property it
+checks. Don't make the merge purge one shape for the other: Spring doesn't
+(checked in the `/actuator` benchmark, VALIDATION.md).
 
 `RuleEngine` orchestrates rule execution and should not acquire YAML, CLI, or
 Maven-specific responsibilities.
