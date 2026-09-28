@@ -8,6 +8,51 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.5.0
+
+**Added**
+- SCG007 and SCG014 now cover the Spring Cloud Stream Kafka and Kafka
+  Streams binders, which configure Kafka clients through their own
+  properties instead of `spring.kafka.*`. The binders are evaluated as
+  Spring Cloud Stream resolves them: each client builds on `spring.kafka.*`,
+  overridden by the binder's `configuration` map, overridden by its
+  `consumer-properties`/`producer-properties`; a named binder's
+  `spring.cloud.stream.binders.<name>.environment` is a context of its own,
+  on top of the main one it inherits (unless `inherit-environment` is
+  false). See ADR-009.
+  - SCG007 reports a plaintext JAAS password in `sasl.jaas.config` in the
+    binders' client maps, and inside a binder's environment.
+  - SCG014 reports `PLAINTEXT`/`SASL_PLAINTEXT` written in the binders'
+    client maps, and in `spring.kafka.*` inside a binder's environment. A
+    top-level value inherited by several binders is reported once.
+  - SCG014 reports a binder in use with no protocol covering all its
+    clients (the binder's `configuration` map or `spring.kafka.security.protocol`;
+    a consumer-only or producer-only value leaves the other clients on
+    Kafka's `PLAINTEXT` default), the check it already applied to
+    `spring.kafka.*`. It isn't repeated where that check already reports the
+    same gap.
+- Messages name the key as written, including a binder's environment
+  prefix, and the binder a finding is about.
+
+**Detection changes**
+- **More findings**, all in the new binder checks above. On the reference
+  corpus, 34 findings added, all in `spring-cloud-stream-samples`: 2 SCG007
+  and 3 SCG014 on values written in the binder (the two false negatives
+  recorded in `VALIDATION.md`), and 29 SCG014 for samples that configure
+  Kafka only through the binder with no protocol set.
+- Every other reference project reports the same findings and coverage
+  warnings as `v1.4.0`.
+- Known limitations: a protocol set only through an environment variable
+  is invisible, so such a binder is reported as unset (as for
+  `spring.kafka.*`); a project using the binder with no binder key at all is
+  not recognized as using it.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.4.0...v1.5.0`.
+
 ## v1.4.0
 
 **Added**
