@@ -23,9 +23,14 @@ or in an ADR.
 
 Apply `.claude/skills/review-security-rule/SKILL.md` to each rule, highest
 severity first. Include in it the rules that combine more than one key
-(SCG001, SCG008, SCG011): ADR-005 confirmed that a combination split across
-config locations produces no finding for SCG003, but the effect on these
-three was not verified.
+(SCG008, SCG011): ADR-005 confirmed that a combination split across config
+locations produces no finding for SCG003, but the effect on these two was
+not verified.
+
+Reviewed so far: SCG001, against a running Spring Boot app (`VALIDATION.md`,
+"SCG001 exposure scenarios"); split across locations, its `show-values`
+finding is missed, a limitation the ADR-005 coverage warning already
+surfaces.
 
 Also decide, once for every rule rather than rule by rule, **the severity of
 a finding based on an absent key**. An insecure value written in the file

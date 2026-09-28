@@ -560,3 +560,50 @@ mvn test -Dgroups=benchmark -DexcludedGroups=
 # "benchmark" group; no source edit needed, and it's excluded again next
 # time you run a plain `mvn test`.
 ```
+
+## SCG001 exposure scenarios (`/actuator` comparison)
+
+Which sensitive Actuator endpoints SCG001 reports is checked against which
+ones Spring Boot 4.1.1 actually exposes over HTTP. The same benchmark app is
+started once per configuration, with the extra properties as command-line
+arguments, and `/actuator` lists the endpoints it links to.
+
+| # | With `exposure.include=*` | Sensitive endpoints Spring exposes |
+|---|---|---|
+| S1 | nothing else | `env`, `threaddump`, `configprops`, `beans`, `loggers` |
+| S2 | `exposure.exclude=env,heapdump` | `threaddump`, `configprops`, `beans`, `loggers` |
+| S3 | `endpoints.access.default=none` | none |
+| S4 | `endpoint.env.enabled=false` (legacy) | as S1, without `env` |
+| S5 | `endpoints.enabled-by-default=false` (legacy) | none |
+| S6 | `management.server.port=-1` | none |
+| S7 | `endpoint.heapdump.access=unrestricted` | as S1, plus `heapdump` |
+| S8 | `access.default=none`, `env.access=unrestricted` | `env` |
+| S9 | `enabled-by-default=false`, `env.enabled=true` (legacy) | `env` |
+| S10 | `endpoints.access.default=unrestricted` | as S1, plus `heapdump` and `shutdown` |
+| S11 | `max-permitted=read-only`, `heapdump.access=unrestricted` | as S1, plus `heapdump` |
+| S12 | `exposure.exclude=*` | none |
+| S13 | `enabled-by-default=true` (legacy) | as S1, plus `heapdump` and `shutdown` |
+| S14 | `endpoints.access.max-permitted=none` | none |
+| S15 | `endpoints.access.default=read-only` | as S1, plus `heapdump` (not `shutdown`: write-only) |
+| S16 | `env.access` and `env.enabled` both set | the app refuses to start: mutually exclusive |
+| S17 | `max-permitted=read-only`, `shutdown.access=unrestricted` | as S1 (not `shutdown`) |
+| S18 | `shutdown.access=unrestricted` | as S1, plus `shutdown` |
+
+Before this comparison, SCG001 read only `exposure.include` and each
+endpoint's own `access`/`enabled`: S2, S3, S5, S6, S12 and S14 were false
+positives (reported endpoints Spring doesn't expose), and S10 and S13 false
+negatives (`heapdump` and `shutdown` exposed but not reported). It now
+resolves each endpoint as Spring does, and `ActuatorExposureRuleTest`
+asserts, per scenario, exactly the endpoints listed above. `restart` isn't
+in the app (it needs Spring Cloud Context); its `defaultAccess = NONE` was
+read in `spring-cloud-commons`' source, so it follows `heapdump`.
+
+None of the reference projects above uses these keys with a web
+`exposure.include`, so their findings are unchanged.
+
+```bash
+cd spring-env-benchmark
+mvn -q package -DskipTests
+./actuator-exposure-scenarios.sh
+```
+

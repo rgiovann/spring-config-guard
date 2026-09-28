@@ -110,7 +110,7 @@ should be updated in the same PR that adds or removes a rule.
 
 | ID | Severity | Description |
 |---|---|---|
-| SCG001 | HIGH / INFO | Actuator exposed via `exposure.include=*` without restricting sensitive endpoints |
+| SCG001 | HIGH / INFO | Sensitive Actuator endpoints exposed over HTTP without restricting access |
 | SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
 | SCG003 | HIGH / MEDIUM | CORS with global or pattern-based wildcard in `allowed-origins`/patterns combined with `allow-credentials=true` |
 | SCG004 | MEDIUM / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins |

@@ -25,6 +25,16 @@ import java.util.Set;
  * exposure, not reachability by itself; {@code when-authorized} is treated as equally risky since
  * its real safety depends on a runtime {@code SecurityContext} this tool can't see.
  * <p>
+ * An endpoint counts as reachable only as Spring Boot resolves it, confirmed against a running
+ * Spring Boot 4.1.1 app (VALIDATION.md, "SCG001 exposure scenarios"): HTTP management is on
+ * ({@code management.server.port} isn't {@code -1}), the endpoint is included and not excluded
+ * ({@code exposure.exclude} wins over {@code exposure.include}), no global cap forbids all access
+ * ({@code management.endpoints.access.max-permitted=none}), and its access isn't {@code none},
+ * resolved from {@code management.endpoint.<id>.access} (or its legacy {@code enabled}), then the
+ * global {@code management.endpoints.access.default} (or its legacy {@code enabled-by-default}),
+ * then the endpoint's own default. A global default other than {@code none} also opens the
+ * endpoints restricted by default ({@code heapdump}, {@code shutdown}, {@code restart}).
+ * <p>
  * No profile exemption (Zero-Trust), unlike {@link H2ConsoleExposedRule}: {@code include=*} is
  * already an anti-pattern in base config regardless of profile, and dev/local environments often
  * carry real credentials anyway.
@@ -32,6 +42,11 @@ import java.util.Set;
 public final class ActuatorExposureRule implements Rule {
 
     private static final String EXPOSURE_KEY = "management.endpoints.web.exposure.include";
+    private static final String EXCLUDE_KEY = "management.endpoints.web.exposure.exclude";
+    private static final String MANAGEMENT_PORT_KEY = "management.server.port";
+    private static final String ACCESS_DEFAULT_KEY = "management.endpoints.access.default";
+    private static final String LEGACY_ENABLED_BY_DEFAULT_KEY = "management.endpoints.enabled-by-default";
+    private static final String MAX_PERMITTED_KEY = "management.endpoints.access.max-permitted";
 
     // Lists, not sets: iterated to build finding messages, which must list endpoints in the same
     // order on every run (Set.of's iteration order changes from one JVM run to the next).
@@ -47,13 +62,18 @@ public final class ActuatorExposureRule implements Rule {
     // "restart" joins them for the same reason, confirmed against its own source rather than
     // assumed from the Boot 3.4/3.5 changelog above (which only covers Actuator-core defaults):
     // RestartEndpoint (Spring Cloud Context, org.springframework.cloud.context.restart) is
-    // annotated @Endpoint(id="restart", enableByDefault=false) -- disabled unless explicitly
-    // opted into, same shape as shutdown/heapdump. Without this, exposure.include=* would flag
+    // annotated @Endpoint(id = "restart", defaultAccess = Access.NONE) (spring-cloud-commons main,
+    // 2026-09-26) -- restricted unless explicitly opted into, same shape as shutdown/heapdump. Without this, exposure.include=* would flag
     // "restart" as unrestricted on every plain Spring Boot app, including ones with no
     // spring-cloud-context on the classpath at all, where the property is a pure no-op.
     private static final Set<String> RESTRICTED_BY_DEFAULT = Set.of("shutdown", "heapdump", "restart");
 
     private static final String RESTRICTED_ACCESS_VALUE = "none";
+    private static final String READ_ONLY_ACCESS_VALUE = "readonly";
+
+    // Endpoints with write operations only (a POST): read-only access leaves nothing reachable.
+    // Spring Boot 4.1.1 exposes no shutdown under management.endpoints.access.default=read-only.
+    private static final Set<String> WRITE_ONLY_ENDPOINTS = Set.of("shutdown", "restart");
 
     private static final List<String> SHOW_VALUES_ENDPOINTS = List.of("env", "configprops");
     // Matches Spring Boot's own lenient enum binding rather than enumerating separator variants
@@ -74,12 +94,17 @@ public final class ActuatorExposureRule implements Rule {
 
     @Override
     public String description() {
-        return "Actuator exposed via exposure.include=* without restricting sensitive endpoints";
+        return "Sensitive Actuator endpoints exposed over HTTP without restricting access";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
+
+        // Nothing is reachable over HTTP when management HTTP is off or every access is forbidden.
+        if (isManagementHttpDisabled(config) || resolvesToCanonical(config, MAX_PERMITTED_KEY, RESTRICTED_ACCESS_VALUE)) {
+            return findings;
+        }
 
         boolean hasWildcardExposure = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY)
                 .stream()
@@ -101,7 +126,7 @@ public final class ActuatorExposureRule implements Rule {
             findings.add(new Finding(
                     id(),
                     Severity.HIGH,
-                    buildSensitiveEndpointsMessage(hasWildcardExposure, stillEnabled),
+                    buildSensitiveEndpointsMessage(hasWildcardExposure, isExclusionConfigured(config), stillEnabled),
                     config.sourceFile().toString(),
                     config.profileLabel()
             ));
@@ -132,10 +157,16 @@ public final class ActuatorExposureRule implements Rule {
         return findings;
     }
 
-    private String buildSensitiveEndpointsMessage(boolean hasWildcardExposure, List<String> stillEnabled) {
+    private String buildSensitiveEndpointsMessage(boolean hasWildcardExposure, boolean exclusionConfigured,
+                                                  List<String> stillEnabled) {
         String exposureDescription = hasWildcardExposure
                 ? "%s contains '*' and exposes all endpoints via HTTP".formatted(EXPOSURE_KEY)
                 : "%s explicitly lists sensitive endpoints".formatted(EXPOSURE_KEY);
+        // "all endpoints" would be wrong once exposure.exclude removes some: say so.
+        if (hasWildcardExposure && exclusionConfigured) {
+            exposureDescription = "%s contains '*' and exposes every endpoint not in %s via HTTP"
+                    .formatted(EXPOSURE_KEY, EXCLUDE_KEY);
+        }
 
         return exposureDescription + ", and the following remain unrestricted: %s. "
                 .formatted(String.join(", ", stillEnabled))
@@ -169,8 +200,54 @@ public final class ActuatorExposureRule implements Rule {
      * to avoid for key matching).
      */
     private boolean isEndpointReachable(EffectiveConfig config, String endpointId) {
-        return RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY).stream()
+        boolean included = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSURE_KEY).stream()
                 .anyMatch(rawValue -> mayContainWildcard(rawValue) || explicitlyIncludes(rawValue, endpointId));
+        return included && !isExcluded(config, endpointId);
+    }
+
+    /**
+     * {@code exposure.exclude} wins over {@code exposure.include}, a {@code *} excluding everything.
+     * Exact tokens only, and an unresolved placeholder without a default excludes nothing: the rule
+     * never assumes a restriction it can't see.
+     */
+    private boolean isExcluded(EffectiveConfig config, String endpointId) {
+        for (String rawValue : RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXCLUDE_KEY)) {
+            if (rawValue == null) {
+                continue;
+            }
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+            if (resolved.isEmpty()) {
+                continue;
+            }
+            for (String token : resolved.get().split(",")) {
+                String id = token.strip();
+                if (id.equals("*") || id.equalsIgnoreCase(endpointId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isExclusionConfigured(EffectiveConfig config) {
+        return RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXCLUDE_KEY).stream()
+                .anyMatch(value -> value != null && !value.isBlank());
+    }
+
+    /** {@code management.server.port=-1} turns HTTP management endpoints off entirely. */
+    private boolean isManagementHttpDisabled(EffectiveConfig config) {
+        return resolvesTo(config, MANAGEMENT_PORT_KEY, "-1");
+    }
+
+    /** Whether the key resolves to exactly this value; an unresolved placeholder never does. */
+    private static boolean resolvesTo(EffectiveConfig config, String key, String expected) {
+        String raw = RelaxedProperties.get(config.properties(), key);
+        if (raw == null) {
+            return false;
+        }
+        return EnvironmentPlaceholder.resolve(raw.strip())
+                .filter(value -> expected.equalsIgnoreCase(value.strip()))
+                .isPresent();
     }
 
     private boolean explicitlyIncludes(String rawValue, String endpointId) {
@@ -251,35 +328,55 @@ public final class ActuatorExposureRule implements Rule {
     }
 
     /**
-     * An endpoint is considered restricted (not exposed in practice) when:
-     * (1) management.endpoint.<id>.access = "none" (current mechanism, 3.4+), OR
-     * (2) management.endpoint.<id>.enabled = "false" (legacy mechanism), OR
-     * (3) neither key is defined, and the endpoint is one of those that
-     * Spring Boot itself restricts by default (shutdown, heapdump).
-     * access takes precedence over enabled when both are present — it is
-     * the newer mechanism of the two. This specific precedence order
-     * (what happens if both keys coexist with conflicting values) has not
-     * been confirmed against a real-world scenario; it is the most reasonable
-     * interpretation of the documented migration, not a tested fact — document
-     * it if this ever becomes relevant in practice.
+     * An endpoint is restricted when its access resolves to {@code none}, or to {@code read-only}
+     * for an endpoint with write operations only ({@link #WRITE_ONLY_ENDPOINTS}), from the first of:
+     * (1) {@code management.endpoint.<id>.access}, or its legacy {@code enabled} ({@code false} is
+     * {@code none}, {@code true} is {@code unrestricted}); Spring refuses to start when both are
+     * set, so no precedence between them applies; (2) the global
+     * {@code management.endpoints.access.default}, or its legacy {@code enabled-by-default};
+     * (3) the endpoint's own default, {@code none} for {@link #RESTRICTED_BY_DEFAULT}. A global
+     * default other than {@code none} opens those endpoints too. {@code max-permitted=read-only}
+     * caps every endpoint at read-only. An unresolved placeholder without a default is treated as
+     * unrestricted, without falling back further: a fallback could mask the risk.
      */
     private boolean isRestricted(EffectiveConfig config, String endpoint) {
-        String rawAccessValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".access");
-        if (rawAccessValue != null) {
-            Optional<String> accessValue = EnvironmentPlaceholder.resolve(rawAccessValue);
-            return accessValue.filter(s -> RESTRICTED_ACCESS_VALUE.equalsIgnoreCase(s.trim())).isPresent();
-            // access is present but is a dynamic placeholder without a default:
-            // we do not continue the fallback chain (which could mask the
-            // risk via RESTRICTED_BY_DEFAULT) — we assume unrestricted.
+        String access = accessLevel(config,
+                "management.endpoint." + endpoint + ".access", "management.endpoint." + endpoint + ".enabled")
+                .or(() -> accessLevel(config, ACCESS_DEFAULT_KEY, LEGACY_ENABLED_BY_DEFAULT_KEY))
+                .orElse(RESTRICTED_BY_DEFAULT.contains(endpoint) ? RESTRICTED_ACCESS_VALUE : "unrestricted");
+        if (RESTRICTED_ACCESS_VALUE.equals(access)) {
+            return true;
         }
+        boolean readOnly = READ_ONLY_ACCESS_VALUE.equals(access)
+                || resolvesToCanonical(config, MAX_PERMITTED_KEY, READ_ONLY_ACCESS_VALUE);
+        return readOnly && WRITE_ONLY_ENDPOINTS.contains(endpoint);
+    }
 
-        String rawEnabledValue = RelaxedProperties.get(config.properties(), "management.endpoint." + endpoint + ".enabled");
-        if (rawEnabledValue != null) {
-            Optional<String> enabledValue = EnvironmentPlaceholder.resolve(rawEnabledValue);
-            // same approach: dynamic placeholder without a default -> assume unrestricted
-            return enabledValue.filter(s -> "false".equalsIgnoreCase(s.trim())).isPresent();
+    /**
+     * The canonical access level ({@code none}, {@code readonly}, {@code unrestricted}) set by the
+     * access key, or by the legacy enabled key ({@code false} is none, anything else unrestricted);
+     * empty when neither is set. An unresolved placeholder counts as unrestricted.
+     */
+    private static Optional<String> accessLevel(EffectiveConfig config, String accessKey, String legacyEnabledKey) {
+        String rawAccess = RelaxedProperties.get(config.properties(), accessKey);
+        if (rawAccess != null) {
+            return Optional.of(EnvironmentPlaceholder.resolve(rawAccess).map(ActuatorExposureRule::canonicalize)
+                    .orElse("unrestricted"));
         }
+        String rawEnabled = RelaxedProperties.get(config.properties(), legacyEnabledKey);
+        if (rawEnabled != null) {
+            boolean disabled = EnvironmentPlaceholder.resolve(rawEnabled)
+                    .filter(value -> "false".equalsIgnoreCase(value.trim())).isPresent();
+            return Optional.of(disabled ? RESTRICTED_ACCESS_VALUE : "unrestricted");
+        }
+        return Optional.empty();
+    }
 
-        return RESTRICTED_BY_DEFAULT.contains(endpoint);
+    private static boolean resolvesToCanonical(EffectiveConfig config, String key, String expectedCanonical) {
+        String raw = RelaxedProperties.get(config.properties(), key);
+        return raw != null && EnvironmentPlaceholder.resolve(raw.strip())
+                .map(ActuatorExposureRule::canonicalize)
+                .filter(expectedCanonical::equals)
+                .isPresent();
     }
 }

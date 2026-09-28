@@ -6,9 +6,11 @@ import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -661,5 +663,94 @@ class ActuatorExposureRuleTest {
         assertThat(rule.check(config))
                 .extracting(Finding::message)
                 .anyMatch(message -> message.contains("exposes raw property values for: env, configprops (reachable via"));
+    }
+
+    /**
+     * Cases checked against a running Spring Boot 4.1.1 app (VALIDATION.md, "SCG001 exposure
+     * scenarios"): the endpoints listed are the ones it actually exposed with that configuration.
+     */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiter = '|', value = {
+            "include=* only | | env, threaddump, configprops, beans, loggers",
+            "exclude=env,heapdump | management.endpoints.web.exposure.exclude=env,heapdump | threaddump, configprops, beans, loggers",
+            "exclude=* | management.endpoints.web.exposure.exclude=* |",
+            "access.default=none | management.endpoints.access.default=none |",
+            "legacy enabled-by-default=false | management.endpoints.enabled-by-default=false |",
+            "max-permitted=none | management.endpoints.access.max-permitted=none |",
+            "server.port=-1 | management.server.port=-1 |",
+            "access.default=unrestricted | management.endpoints.access.default=unrestricted | env, heapdump, threaddump, shutdown, configprops, beans, loggers, restart",
+            "access.default=read-only | management.endpoints.access.default=read-only | env, heapdump, threaddump, configprops, beans, loggers",
+            "max-permitted=read-only, shutdown opted in | management.endpoints.access.max-permitted=read-only,management.endpoint.shutdown.access=unrestricted | env, threaddump, configprops, beans, loggers",
+            "legacy enabled-by-default=true | management.endpoints.enabled-by-default=true | env, heapdump, threaddump, shutdown, configprops, beans, loggers, restart",
+            "access.default=none, env opted in | management.endpoints.access.default=none,management.endpoint.env.access=unrestricted | env",
+            "legacy: enabled-by-default=false, env opted in | management.endpoints.enabled-by-default=false,management.endpoint.env.enabled=true | env",
+            "legacy env.enabled=false | management.endpoint.env.enabled=false | threaddump, configprops, beans, loggers",
+            "heapdump opted in | management.endpoint.heapdump.access=unrestricted | env, heapdump, threaddump, configprops, beans, loggers"
+    })
+    @DisplayName("Reports exactly the sensitive endpoints Spring Boot 4.1.1 exposes under include=*")
+    void reportsWhatSpringBootExposes(String scenario, String extraProperties, String expectedEndpoints) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put("management.endpoints.web.exposure.include", "*");
+        if (extraProperties != null) {
+            for (String pair : extraProperties.split(",(?=management)")) {
+                String[] keyValue = pair.split("=", 2);
+                properties.put(keyValue[0].strip(), keyValue[1].strip());
+            }
+        }
+
+        List<Finding> findings = rule.check(configWith(properties));
+
+        if (expectedEndpoints == null) {
+            assertThat(findings).as(scenario).isEmpty();
+        } else {
+            assertThat(findings).as(scenario).singleElement()
+                    .extracting(Finding::message).asString()
+                    .contains("remain unrestricted: " + expectedEndpoints + ".");
+        }
+    }
+
+    @Test
+    @DisplayName("Doesn't claim '*' exposes all endpoints when exposure.exclude removes some")
+    void wordsTheMessageAroundExclude() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "*",
+                "management.endpoints.web.exposure.exclude", "env"));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::message).asString()
+                .contains("exposes every endpoint not in management.endpoints.web.exposure.exclude")
+                .doesNotContain("exposes all endpoints");
+    }
+
+    @Test
+    @DisplayName("An unresolved placeholder in exposure.exclude excludes nothing")
+    void unresolvedExcludePlaceholderExcludesNothing() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "env",
+                "management.endpoints.web.exposure.exclude", "${EXCLUDED}"));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::message).asString()
+                .contains("remain unrestricted: env.");
+    }
+
+    @Test
+    @DisplayName("An unresolved placeholder in access.default counts as not restricting, opening endpoints restricted by default")
+    void unresolvedAccessDefaultPlaceholderIsWorstCase() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "heapdump",
+                "management.endpoints.access.default", "${ACCESS}"));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::message).asString()
+                .contains("remain unrestricted: heapdump.");
+    }
+
+    @Test
+    @DisplayName("The show-values finding also disappears when nothing is reachable")
+    void showValuesSilentWhenNothingReachable() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "env",
+                "management.endpoint.env.show-values", "always",
+                "management.server.port", "-1"));
+
+        assertThat(rule.check(config)).isEmpty();
     }
 }
