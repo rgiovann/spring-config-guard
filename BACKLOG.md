@@ -27,6 +27,20 @@ severity first. Include in it the rules that combine more than one key
 config locations produces no finding for SCG003, but the effect on these
 three was not verified.
 
+Also decide, once for every rule rather than rule by rule, **the severity of
+a finding based on an absent key**. An insecure value written in the file
+(`security.protocol: PLAINTEXT`) is certain; an absent key whose default is
+insecure (SCG014's "protocol not set", SCG015's RabbitMQ without SSL, ...)
+is nearly certain, but production often sets it through an environment
+variable SCG can't see. Both are HIGH today. Weigh a lower severity for
+absence (MEDIUM rather than INFO, which means "static analysis can't
+determine the risk") against Zero-Trust and against changing `--fail-on`
+results for existing users; list first which rules report absence. Raised
+by the 31 absence findings of SCG014 in `spring-cloud-stream-samples`, one
+per sample app. Not the answer: a profile exemption (Zero-Trust; `--policy`
+already suppresses explicitly) or merging findings per file (the 31 are in
+26 files, and where a file has several, they are different binders).
+
 ### Per-property origin in findings (waiting for a real consumer)
 
 `sourceFile` identifies the evaluated configuration, not where the offending
