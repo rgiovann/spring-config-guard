@@ -25,7 +25,8 @@ Continuation of a review of `ConfigLoader` → `ConfigFileGrouper` →
 `ProfileMerger`. The paths already exercised by the `/actuator/env`
 benchmark (scalar override, list replacement, relaxed binding across
 base/profile, explicit null, placeholder default, named profile file vs.
-on-profile block) and bracketed map keys (ADR-007) are covered; these edge
+on-profile block), bracketed map keys (ADR-007) and one list written in
+different formats (comma-separated, indexed, empty) are covered; these edge
 cases are not. Each one needs a
 fixture, a comparison against real Spring through `spring-env-benchmark`
 where possible, and a classification (implementation bug, deliberate scope
@@ -37,28 +38,6 @@ code change.
    confirm SCG replaces the whole list exactly as Spring does.
 2. **Scalar vs. map on the same key** between base and profile, in both
    directions (a scalar overriding a map, and a map overriding a scalar).
-3. **The same list written differently** at the same level: comma-separated
-   in `.properties` (`a.b=x,y`) and indexed in `.yml` (`a.b[0]`). Next to
-   pick up. The risk: the two spellings are different keys, so the
-   `.properties`-wins rule may not apply, both survive the merge, and a rule
-   such as SCG001 sees the `.yml` value Spring ignores. Scenarios:
-   * both directions: comma-separated `.properties` vs. indexed `.yml`, and
-     indexed `.properties` vs. a comma-separated string in `.yml`;
-   * spaces after the commas (`a.b=x, y`): check whether Spring trims each
-     element, and whether the rules that split lists (SCG001, the CORS rules,
-     SCG005) compare trimmed elements;
-   * an empty list meant to switch off the base's one (`a.b=` in
-     `.properties`, `a.b: []` in `.yml`), both at the same level and as a
-     profile override of a non-empty base list; also check how Spring's YAML
-     loader represents `[]`;
-   * control case: a profile that omits the key keeps the base's list, in
-     Spring and in SCG.
-
-   Test the merge with a list under `app.*` bound in `BenchmarkProperties`
-   and read through `/actuator/configprops`: the benchmark app itself needs
-   `management.endpoints.web.exposure.include` to expose the endpoints it is
-   measured through. Check the effect on SCG001 with SCG-only fixtures on the
-   real key.
 
 ### Rule-by-rule review of the 17 rules
 

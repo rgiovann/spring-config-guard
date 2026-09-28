@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -217,6 +218,60 @@ class ActuatorEnvComparisonTest {
 
         System.out.println("All bracketed map key criteria matched real Spring Boot.");
     }
+    /**
+     * The same list written in different formats. As with the bracketed map, /actuator/env lists
+     * each source's raw keys ("app.lists.props-comma" in application.properties and
+     * "app.lists.props-comma[0]" in application.yml), so the list Spring actually uses is read
+     * from /actuator/configprops.
+     */
+    @Test
+    void validateListFormatsAgainstSpringConfigprops() throws Exception {
+        Map<String, String> scg = scgEffectiveConfigForProfile("prod").properties();
+        JsonNode spring = appBeanProperties(fetch(CONFIGPROPS_URL));
+
+        Map<String, List<String>> expected = new LinkedHashMap<>();
+        // 15. comma-separated .properties over an indexed .yml list: .properties wins, the whole list
+        expected.put("props-comma", List.of("health", "info"));
+        // 16. indexed .properties over a comma-separated .yml string
+        expected.put("props-indexed", List.of("x"));
+        // 17. Spring strips each element
+        expected.put("spaced", List.of("x", "y", "z"));
+        // 18. an empty .properties value is an empty list, not [""], and replaces the .yml list
+        expected.put("props-empty", List.of());
+        // 19. [] in the profile's .yml over a non-empty base list. Spring's YAML loader stores it as
+        // an empty string; SCG purges the base list and keeps no key. Same list for every rule
+        // reading lists; it would only matter to a rule treating an absent key as an insecure
+        // default.
+        expected.put("profile-yaml-empty", List.of());
+        // 20. an empty value in the profile's .properties over a non-empty base list
+        expected.put("profile-props-empty", List.of());
+        // 21. a comma-separated profile value over an indexed base list
+        expected.put("profile-comma-over-indexed", List.of("x", "y"));
+        // 22. control: the profile doesn't mention the key, so the base list survives
+        expected.put("profile-omits-key", List.of("a", "b"));
+
+        expected.forEach((name, list) -> {
+            assertEquals(list, boundList(spring, kebabToCamel(name)), "Spring's list for case '" + name + "'");
+            assertEquals(list, scgList(scg, "app.lists." + name), "SCG's list for case '" + name + "'");
+        });
+
+        System.out.println("All list format criteria matched real Spring Boot.");
+    }
+
+    private static String kebabToCamel(String kebab) {
+        StringBuilder camel = new StringBuilder();
+        boolean upper = false;
+        for (char c : kebab.toCharArray()) {
+            if (c == '-') {
+                upper = true;
+            } else {
+                camel.append(upper ? Character.toUpperCase(c) : c);
+                upper = false;
+            }
+        }
+        return camel.toString();
+    }
+
     @SuppressWarnings("SameParameterValue")
     private EffectiveConfig scgEffectiveConfigForProfile(String profile) throws Exception {
         List<GroupedConfigFile> groups = new ConfigFileGrouper()
@@ -258,18 +313,48 @@ class ActuatorEnvComparisonTest {
 
     /** The {@code bracketMap} of the bean bound to prefix {@code app}, as /actuator/configprops shows it. */
     private static Map<String, String> boundBracketMap(String configpropsJson) throws Exception {
+        Map<String, String> map = new LinkedHashMap<>();
+        appBeanProperties(configpropsJson).path("bracketMap").fields()
+                .forEachRemaining(entry -> map.put(entry.getKey(), entry.getValue().asText()));
+        assertFalse(map.isEmpty(), "configprops must show the bound bracketMap");
+        return map;
+    }
+
+    /** One of the {@code lists} of the bean bound to prefix {@code app}, as /actuator/configprops shows it. */
+    private static List<String> boundList(JsonNode appProperties, String camelCaseName) {
+        JsonNode list = appProperties.path("lists").path(camelCaseName);
+        assertTrue(list.isArray(), "configprops must show list '" + camelCaseName + "' as bound");
+        List<String> values = new ArrayList<>();
+        list.forEach(element -> values.add(element.asText()));
+        return values;
+    }
+
+    private static JsonNode appBeanProperties(String configpropsJson) throws Exception {
         for (JsonNode context : new ObjectMapper().readTree(configpropsJson).get("contexts")) {
             for (JsonNode bean : context.get("beans")) {
                 if ("app".equals(bean.path("prefix").asText())) {
-                    Map<String, String> map = new LinkedHashMap<>();
-                    bean.path("properties").path("bracketMap").fields()
-                            .forEachRemaining(entry -> map.put(entry.getKey(), entry.getValue().asText()));
-                    assertFalse(map.isEmpty(), "configprops must show the bound bracketMap");
-                    return map;
+                    return bean.path("properties");
                 }
             }
         }
         throw new IllegalStateException("No bean bound to prefix 'app' in /actuator/configprops");
+    }
+
+    /**
+     * The list SCG's rules see for {@code key}: the values of the key itself or of its indexed
+     * children, each split on commas and stripped, as SCG001 and the CORS rules read a list. An
+     * empty string yields no element, and so does a key that no longer exists after the merge.
+     */
+    private static List<String> scgList(Map<String, String> scgProperties, String key) {
+        List<String> values = new ArrayList<>();
+        for (String raw : RelaxedProperties.valuesForKeyOrListChildren(scgProperties, key)) {
+            for (String token : raw.split(",")) {
+                if (!token.isBlank()) {
+                    values.add(token.strip());
+                }
+            }
+        }
+        return values;
     }
 
     /**

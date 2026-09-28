@@ -10,3 +10,6 @@ app:
     "[override.me]": "from-prod" # 9. overrides only this entry
     "[com.foobar]": "no-dash-from-prod" # 11. Spring keeps it separate from [com.foo-bar]; SCG merges the two
     "[props.bracketed]": "from-prod-yml" # 13. overrides the bracketed entry from application.properties
+  lists:
+    profile-yaml-empty: [] # 19. explicit empty list over the base's non-empty one
+    profile-comma-over-indexed: "x,y" # 21. comma-separated over the base's indexed list

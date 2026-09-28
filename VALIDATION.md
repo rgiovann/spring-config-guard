@@ -439,6 +439,17 @@ bracketed `.properties` key is overridden by the profile's `.yml`; an entry
 only in the on-profile block survives; and the raw YAML spelling is
 `app.bracket-map[com.acme-core]`, not `app.bracket-map.[com.acme-core]`.
 
+A third set, under `app.lists`, checks the same list written in different
+formats, where the comma-separated and indexed spellings are different keys
+(`a` vs. `a[0]`): comma-separated `.properties` over an indexed `.yml` list
+and the reverse, both replaced entirely by `.properties`; spaces after the
+commas (Spring strips each element); an empty `.properties` value, which
+Spring binds as an empty list, clearing the `.yml` list and, from a
+profile, the base's list; `[]` in a profile's `.yml`, which Spring's YAML
+loader stores as an empty string; a comma-separated profile value over an
+indexed base list; and, as a control, a profile that doesn't mention the key
+keeping the base's list.
+
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
 (`RelaxedProperties.canonicalize`), keeping the value from the
@@ -459,16 +470,33 @@ compared with what `/actuator/configprops` shows for it: Spring's final
 answer. Besides one assertion per case, the two maps must be identical, so
 an entry SCG drops or invents fails too.
 
+The lists are read from `/actuator/configprops` for the same reason, one
+`List<String>` per case. On the SCG side, each list is read as the rules
+read it: the values of the key or of its indexed children, split on commas
+and stripped. `ListFormatsTest` repeats the cases on the real
+`management.endpoints.web.exposure.include` key, checking SCG001, and runs
+in the regular build.
+
 The one accepted divergence is pinned on both sides: Spring keeps
 `[com.foo-bar]` (base) and `[com.foobar]` (profile) as two entries, while
 SCG, after rewriting them into dotted form, sees one key under relaxed
 binding and keeps the profile's value (ADR-007). A change on either side
 fails the benchmark.
 
-**Result:** all assertions match the real Spring Boot 4.1.1 output (3
+**Result:** all assertions match the real Spring Boot 4.1.1 output (4
 benchmark tests). Run against the `ConfigLoader` from before ADR-007, the
 bracketed map test fails on the first case: the base's
-`[com.acme-core]` entry is lost once the profile adds one of its own.
+`[com.acme-core]` entry is lost once the profile adds one of its own. The
+list format cases needed no code change: `ProfileMerger` already treats
+`a` and `a[n]` as one list in both directions. With that purge disabled,
+the list test fails on its first case (SCG sees `[*, health, info]`, both
+spellings surviving).
+
+One difference in representation remains, harmless for every current rule:
+for `[]` in a profile, SCG purges the base list and keeps no key, where
+Spring keeps an empty string. Rules reading a list see the same empty list
+either way; it would only matter to a rule treating an absent key as an
+insecure default.
 
 Exposing `configprops` changed what SCG reports on the benchmark app itself:
 the same 4 SCG001 findings, whose messages now name `configprops` next to
