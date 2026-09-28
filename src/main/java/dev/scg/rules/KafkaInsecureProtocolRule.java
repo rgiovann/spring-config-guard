@@ -24,6 +24,9 @@ import java.util.Set;
  * {@code SASL_PLAINTEXT} gets its own message: the SASL handshake itself still travels
  * unencrypted, so it leaks credentials in addition to payload data.
  * <p>
+ * The Spring Cloud Stream Kafka and Kafka Streams binders are evaluated too, each named binder's
+ * {@code environment} as a context of its own ({@link #checkBinders}; ARCHITECTURE.md, ADR-009).
+ * <p>
  * Severity {@link Severity#HIGH}: unencrypted transport exposes data — and for
  * {@code SASL_PLAINTEXT}, credentials — to anyone with network visibility. No profile exemption
  * (Zero-Trust). Plain {@link Rule}: the protocol values are fixed facts of the Kafka wire
@@ -58,39 +61,135 @@ public final class KafkaInsecureProtocolRule implements Rule {
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
+        boolean springKafkaUnsetReported = false;
 
         // Step 1: Check for evidence of Spring Kafka usage
-        if (!RelaxedProperties.hasKeyWithPrefix(config.properties(), SPRING_KAFKA_PREFIX)) {
-            return findings;
-        }
+        if (RelaxedProperties.hasKeyWithPrefix(config.properties(), SPRING_KAFKA_PREFIX)) {
 
-        // Step 2: Evaluate all 10 explicit target keys (common + client-specific)
-        List<String> targetKeys = buildTargetKeys();
-        for (String key : targetKeys) {
-            String raw = RelaxedProperties.get(config.properties(), key);
-            if (raw != null && !raw.isBlank()) {
-                evaluateExplicitKey(config, key, raw, findings);
+            // Step 2: Evaluate all 10 explicit target keys (common + client-specific)
+            for (String key : buildTargetKeys()) {
+                String raw = RelaxedProperties.get(config.properties(), key);
+                if (raw != null && !raw.isBlank()) {
+                    evaluateExplicitKey(config, key, raw, findings);
+                }
+            }
+
+            // Step 3: Check if the COMMON protocol configuration is absent
+            // A client-specific override (e.g. consumer) does NOT protect other clients (producer, etc.)
+            // from defaulting to PLAINTEXT if no common protocol is set.
+            if (!isCommonProtocolConfigured(config)) {
+                springKafkaUnsetReported = true;
+                findings.add(new Finding(
+                        id(),
+                        Severity.HIGH,
+                        "Kafka is configured via 'spring.kafka.*' properties, but 'spring.kafka.security.protocol' " +
+                                "is not explicitly set. Unless overridden per client, Kafka clients default to " +
+                                "'PLAINTEXT' (unencrypted/unauthenticated). Set 'spring.kafka.security.protocol' " +
+                                "to 'SSL' or 'SASL_SSL'.",
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
             }
         }
 
-        // Step 3: Check if the COMMON protocol configuration is absent
-        // A client-specific override (e.g. consumer) does NOT protect other clients (producer, etc.)
-        // from defaulting to PLAINTEXT if no common protocol is set.
-        boolean commonProtocolConfigured = isCommonProtocolConfigured(config);
-        if (!commonProtocolConfigured) {
-            findings.add(new Finding(
-                    id(),
-                    Severity.HIGH,
-                    "Kafka is configured via 'spring.kafka.*' properties, but 'spring.kafka.security.protocol' " +
-                            "is not explicitly set. Unless overridden per client, Kafka clients default to " +
-                            "'PLAINTEXT' (unencrypted/unauthenticated). Set 'spring.kafka.security.protocol' " +
-                            "to 'SSL' or 'SASL_SSL'.",
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
-        }
+        // Step 4: the Spring Cloud Stream Kafka binders (ADR-009)
+        checkBinders(config, springKafkaUnsetReported, findings);
 
         return findings;
+    }
+
+    /**
+     * The Spring Cloud Stream Kafka and Kafka Streams binders build each client's configuration from
+     * Spring Boot's {@code spring.kafka.*} properties, overridden by the binder's {@code configuration}
+     * map, overridden by its {@code consumer-properties}/{@code producer-properties} maps. A named
+     * binder's {@code environment} is a separate context on top of the main one (ADR-009).
+     * <ul>
+     *     <li>Every insecure value a context writes itself is reported once, under the key as written:
+     *     the binder maps' {@code security.protocol}, and, inside a named binder's environment, the
+     *     {@code spring.kafka.*} keys Step 2 checks at the top level. A top-level value inherited by
+     *     several binders is reported once, in the main context.</li>
+     *     <li>A binder in use with no protocol covering all its clients (its {@code configuration}
+     *     map or Spring Boot's common keys; a per-client map doesn't protect the admin client or the
+     *     other client type) is reported per context. Not in the main context when Step 3 already
+     *     reported the same gap, or when named Kafka binders exist: the main context is then only
+     *     inherited, not a binder of its own.</li>
+     * </ul>
+     */
+    private void checkBinders(EffectiveConfig config, boolean springKafkaUnsetReported, List<Finding> findings) {
+        List<KafkaBinderContexts.Context> contexts = KafkaBinderContexts.of(config);
+        boolean namedKafkaBinders = contexts.stream()
+                .filter(context -> context.binderName().isPresent())
+                .anyMatch(context -> context.usesKafkaBinder() || context.usesKafkaStreamsBinder());
+
+        for (KafkaBinderContexts.Context context : contexts) {
+            boolean isMain = context.binderName().isEmpty();
+
+            for (String key : binderTargetKeys(isMain)) {
+                if (!context.owns(key)) {
+                    continue;
+                }
+                String raw = context.get(key);
+                if (raw != null && !raw.isBlank()) {
+                    evaluateExplicitKey(config, context.writtenKey(key), raw, findings);
+                }
+            }
+
+            if (isMain && (springKafkaUnsetReported || namedKafkaBinders)) {
+                continue;
+            }
+            if (context.usesKafkaBinder() && !isBinderProtocolConfigured(context, KafkaBinderContexts.KAFKA_BINDER_PREFIX)) {
+                findings.add(binderProtocolUnsetFinding(config, context, KafkaBinderContexts.KAFKA_BINDER_PREFIX));
+            }
+            if (context.usesKafkaStreamsBinder()
+                    && !isBinderProtocolConfigured(context, KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX)) {
+                findings.add(binderProtocolUnsetFinding(config, context, KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX));
+            }
+        }
+    }
+
+    /** The binder maps' protocol keys; inside a named binder's environment, Step 2's keys too. */
+    private static List<String> binderTargetKeys(boolean isMain) {
+        List<String> keys = new ArrayList<>();
+        for (String prefix : List.of(KafkaBinderContexts.KAFKA_BINDER_PREFIX, KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX)) {
+            for (String map : KafkaBinderContexts.CLIENT_MAPS) {
+                keys.add(prefix + map + "security.protocol");
+            }
+        }
+        if (!isMain) {
+            keys.addAll(buildTargetKeys());
+        }
+        return keys;
+    }
+
+    private static boolean isBinderProtocolConfigured(KafkaBinderContexts.Context context, String binderPrefix) {
+        List<String> coveringKeys = new ArrayList<>(List.of(
+                binderPrefix + "configuration.security.protocol",
+                "spring.kafka.security.protocol",
+                "spring.kafka.properties.security.protocol"));
+        if (binderPrefix.equals(KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX)) {
+            coveringKeys.add("spring.kafka.streams.security.protocol");
+            coveringKeys.add("spring.kafka.streams.properties.security.protocol");
+        }
+        return coveringKeys.stream()
+                .map(context::get)
+                .anyMatch(value -> value != null && !value.isBlank());
+    }
+
+    private Finding binderProtocolUnsetFinding(EffectiveConfig config, KafkaBinderContexts.Context context, String binderPrefix) {
+        String binderKind = binderPrefix.equals(KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX)
+                ? "Kafka Streams binder" : "Kafka binder";
+        return new Finding(
+                id(),
+                Severity.HIGH,
+                ("Kafka is used through the Spring Cloud Stream %s (%s), but no security.protocol covers all its " +
+                        "clients: neither '%sconfiguration.security.protocol' nor 'spring.kafka.security.protocol' " +
+                        "is set. Kafka clients default to 'PLAINTEXT' (unencrypted/unauthenticated). Set one of them " +
+                        "to 'SSL' or 'SASL_SSL'%s.")
+                        .formatted(binderKind, context.label(), binderPrefix,
+                                context.binderName().isPresent() ? ", inside that binder's environment or at the top level" : ""),
+                config.sourceFile().toString(),
+                config.profileLabel()
+        );
     }
 
     /**

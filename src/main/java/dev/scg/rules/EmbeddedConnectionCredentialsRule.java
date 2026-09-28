@@ -20,7 +20,9 @@ import java.util.stream.Collectors;
  * <p>This rule inspects properties defined in {@code uri-based} and {@code jaas-based} targets.
  * It enforces a strict Zero-Trust approach across all execution profiles, flagging static
  * credentials in URI user-info sections (e.g., JDBC, R2DBC, Redis, MongoDB) as well as
- * explicitly declared passwords in JAAS modules (e.g., Kafka SASL).</p>
+ * explicitly declared passwords in JAAS modules (e.g., Kafka SASL), including the JAAS
+ * configuration passed through the Spring Cloud Stream Kafka binders' client maps and a key set
+ * inside a named binder's {@code environment} (ADR-009).</p>
  *
  * <p>Placeholder defaults (e.g., {@code ${DB_PASS:hardcoded123}}) are also evaluated
  * and reported as high-severity violations when static fallback credentials are exposed.</p>
@@ -94,7 +96,10 @@ public final class EmbeddedConnectionCredentialsRule implements ConfigurableRule
             // canonicalRoot strips a trailing "[0]"/"[1]"/... so a key written as one item of a
             // YAML list (e.g. spring.elasticsearch.uris[0]) still matches the plain target key
             // -- a raw canonicalize()+equals() would silently miss every indexed item.
-            String canonicalKey = RelaxedProperties.canonicalRoot(RelaxedProperties.canonicalize(entry.getKey()));
+            // A key inside a Spring Cloud Stream binder's environment is the same property for that
+            // binder's own context (ADR-009), so it is matched without that prefix.
+            String canonicalKey = RelaxedProperties.canonicalRoot(
+                    KafkaBinderContexts.withoutBinderEnvironment(RelaxedProperties.canonicalize(entry.getKey())));
             boolean isUriTarget = uriBasedKeys.contains(canonicalKey);
             boolean isJaasTarget = jaasBasedKeys.contains(canonicalKey);
 

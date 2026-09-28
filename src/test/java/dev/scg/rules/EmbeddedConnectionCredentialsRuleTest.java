@@ -90,7 +90,7 @@ class EmbeddedConnectionCredentialsRuleTest {
             EmbeddedConnectionCredentialsRule newRule = new EmbeddedConnectionCredentialsRule();
             Map<String, List<String>> invalidMetadata = Map.of(
                     "uri-based", List.of("spring.datasource.url")
-                    // jaas-based ausente
+                    // jaas-based missing
             );
 
             assertThatThrownBy(() -> newRule.configure(invalidMetadata))

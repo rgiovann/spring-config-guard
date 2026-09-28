@@ -671,3 +671,104 @@ rule at the one place keys are built from YAML.
 
 ### Revisit if
 Spring changes how its YAML loader joins keys starting with `[`.
+
+## ADR-009: Spring Cloud Stream Kafka Binders Evaluated as Their Own Contexts
+
+### Status
+Accepted
+
+### Context
+SCG007 and SCG014 read only Spring Boot's `spring.kafka.*` namespace. The
+Spring Cloud Stream Kafka and Kafka Streams binders configure Kafka clients
+through their own properties, so the same risks written there went
+unreported. Found in `spring-cloud-stream-samples` (`VALIDATION.md`): a
+plaintext JAAS password and `SASL_PLAINTEXT` inside
+`spring.cloud.stream.binders.<name>.environment.*`, and `SASL_PLAINTEXT` in
+`spring.cloud.stream.kafka.binder.configuration`, all silent.
+
+How the binder resolves its configuration, read in Spring Cloud Stream's
+source (`main`, 2026-09-25):
+
+* `KafkaBinderConfigurationProperties` builds each consumer and producer
+  configuration from Spring Boot's `spring.kafka.*` properties, then the
+  binder's `configuration` map (entries valid for that client), then its
+  `consumer-properties`/`producer-properties` map. The admin client does
+  the same with `configuration` ("binder properties supersede boot kafka
+  properties", `KafkaTopicProvisioner`). The Kafka Streams binder's
+  properties extend the Kafka binder's and follow the same order on top of
+  `spring.kafka.streams.*`.
+* A named binder's `environment` map is added to that binder's own context
+  as its highest-precedence property source, and the application's
+  environment is merged below it unless `inherit-environment` is false
+  (`DefaultBinderFactory`).
+
+### Decision
+Both rules read the binders as Spring Cloud Stream does. A helper
+(`KafkaBinderContexts`) builds the main context and one context per named
+binder: its `environment` on top of the main context, which it inherits
+unless `inherit-environment` is false.
+
+* SCG007 also inspects `sasl.jaas.config` in the `configuration`,
+  `consumer-properties` and `producer-properties` maps of both binders, and
+  matches a key written inside a named binder's environment without that
+  prefix.
+* SCG014 keeps its `spring.kafka.*` checks unchanged and adds:
+  * every insecure value a context writes itself: the binder maps'
+    `security.protocol`, and, inside a named binder's environment, the
+    `spring.kafka.*` keys it already checks at the top level. A top-level
+    value inherited by several binders is reported once;
+  * a binder in use with no protocol covering all its clients: the binder's
+    `configuration` map or Spring Boot's common keys, since a per-client
+    map leaves the admin client and the other client type on Kafka's
+    `PLAINTEXT` default. Reported per context, not in the main context when
+    the existing `spring.kafka.*` check already reports the same gap, or
+    when named Kafka binders exist (the main context is then only
+    inherited).
+
+"Binder in use" means a key under the binder's prefix in that context, or a
+named binder whose `type` is `kafka` (or `kstream`/`ktable`/`globalktable`
+for the Kafka Streams binder).
+
+Evaluating each binder's environment as its own context was chosen over
+matching environment keys as one more prefix: the environment overrides
+the main context for that binder only, so an `environment` value of
+`spring.kafka.security.protocol: SSL` makes that binder secure without
+making the main context secure. A separate `EffectiveConfig` per binder was
+rejected: it would change the pipeline, and every other rule, for two
+rules.
+
+The "binder in use but protocol unset" check was included after measuring
+it: 29 findings in 24 files of `spring-cloud-stream-samples`, all samples
+that configure Kafka only through the binder. It is the check SCG014
+already applies to `spring.kafka.*`; leaving it out would report a project
+configured through Spring Boot's properties and stay silent on the same
+project configured through the binder.
+
+### Consequences
+
+**Positive**
+* Closes the two false negatives: on the reference corpus, 2 SCG007 and 3
+  SCG014 findings on values written in the binder, plus 29 SCG014 findings
+  for binders without a protocol, all in `spring-cloud-stream-samples`;
+  every other reference project is unchanged.
+* Messages name the key as written, including the binder's environment
+  prefix, and the binder a finding is about.
+* Covered by `KafkaBinderRulesTest`: the binder maps, both binders, the
+  precedence over `spring.kafka.*`, inheritance and `inherit-environment`,
+  one finding for an inherited value, no duplicate with the existing check.
+
+**Negative / Trade-offs**
+* A protocol set only through an environment variable is invisible, as it
+  already was for `spring.kafka.*`: such a binder is reported as unset.
+* A project using the binder with no binder key at all (only its defaults)
+  isn't recognized as using it: SCG sees configuration files, not the
+  classpath.
+* Other binders (RabbitMQ, Pulsar) and other rules are not binder-aware.
+  SCG006 needs nothing: it matches key names anywhere, environment
+  included.
+
+### Revisit if
+Spring Cloud Stream changes how its binders merge properties or build a
+binder's environment, or another rule needs binder contexts (the helper is
+there to reuse).
+

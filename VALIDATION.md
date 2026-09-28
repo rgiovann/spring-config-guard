@@ -72,7 +72,7 @@ its own output.
 | `spring-petclinic-microservices-config` | 53 | All 17 rules (full manual read, all 9 files) | No |
 | `spring-boot` | 66 | All 8 rules that fired (SCG001, 002, 006, 007, 009, 013, 014, 017 — 66 of 66 findings) | No |
 | `spring-boot-admin` | 85 | All 3 rules that fired (SCG001, 006, 013 — 85 of 85 findings) | No |
-| `spring-cloud-stream-samples` | 12 | All 12 findings against the file contents, plus every file declaring a password, secret or `security.protocol` read by hand | **Yes — 2 files still open**, 1 fixed (see [its entry](#spring-cloudspring-cloud-stream-samples)) |
+| `spring-cloud-stream-samples` | 46 | The 15 findings on explicit values against the file contents, plus every file declaring a password, secret or `security.protocol` read by hand | **Yes — 3 files, all fixed since** (see [its entry](#spring-cloudspring-cloud-stream-samples)) |
 
 The paragraph and method below describe the first four repositories.
 `spring-cloud-stream-samples` was added later, specifically for its Kafka
@@ -347,8 +347,9 @@ Run against [spring-cloud/spring-cloud-stream-samples](https://github.com/spring
 (56 `application*.{yml,yaml,properties}` files outside `src/test/`,
 `--json --fail-on=NONE`), with SCG commit
 [`018c045`](https://github.com/rgiovann/spring-config-guard/commit/018c04565436100c1501d51ca602b7c7d7c3cb64),
-not `b0d15ec` like the four runs above, then re-run after the SCG006 fix
-below (3 findings added, nothing else changed). Added as the corpus's only real
+not `b0d15ec` like the four runs above, then re-run after each fix below:
+the SCG006 fix (3 findings added) and ADR-009 (34 added). Nothing else
+changed. Added as the corpus's only real
 Kafka security surface: hardcoded keystore passwords, `SASL_PLAINTEXT`, and
 JAAS credentials configured through the Spring Cloud Stream Kafka binder
 rather than `spring.kafka.*`.
@@ -357,17 +358,26 @@ rather than `spring.kafka.*`.
 |---|---|---|---|---|
 | SCG001 | 1 | — | — | 1 |
 | SCG006 | 8 | — | — | 8 |
+| SCG007 | 2 | — | — | 2 |
 | SCG013 | — | 1 | — | 1 |
-| SCG014 | 2 | — | — | 2 |
-| **Total** | **11** | **1** | **0** | **12** |
+| SCG014 | 34 | — | — | 34 |
+| **Total** | **45** | **1** | **0** | **46** |
 
-All 12 findings are accurate for the values on disk: literal passwords
-(`spring.datasource.password`, `spring.security.user.password`, the
-binder's `jaas.options.password` in `kafka-streams-jaas-security`, and the
-three numeric SSL passwords in `kafka-ssl-demo`),
-`exposure.include=*`, `show-details: ALWAYS`, and two modules using
-`spring.kafka.*` without setting `security.protocol`. Like the other sample
-suites, these modules show one feature each and are not deployed services.
+31 of the 34 SCG014 findings report a protocol that isn't set: 2 modules
+using `spring.kafka.*`, and, since ADR-009, 29 binders in use (samples that
+configure Kafka only through the Spring Cloud Stream binder, typically
+`brokers: localhost:9092`), where Kafka's default is `PLAINTEXT`. They
+follow from the absence of a key rather than from a value, so they are
+counted, not read one by one.
+
+The other 15 findings are on explicit values, all accurate for the values
+on disk: literal passwords (`spring.datasource.password`,
+`spring.security.user.password`, the binder's `jaas.options.password` in
+`kafka-streams-jaas-security`, and the three numeric SSL passwords in
+`kafka-ssl-demo`), the 2 JAAS passwords and 3 `SASL_PLAINTEXT` values
+written in the binder (below), `exposure.include=*` and
+`show-details: ALWAYS`. Like the other sample suites, these modules show one
+feature each and are not deployed services.
 
 **False negatives.** Every file declaring a password, secret or
 `security.protocol` was read by hand, which found three files with a risk
@@ -381,22 +391,24 @@ SCG didn't report:
   `token-validity-in-seconds: 86400`). It now reports a numeric value when
   the key ends in a secret pattern, which names the secret itself; the three
   passwords are among the 12 findings above.
-* `kafka-streams-samples/kafka-streams-jaas-security` —
+* `kafka-streams-samples/kafka-streams-jaas-security` — **fixed** (ADR-009).
   `security.protocol: SASL_PLAINTEXT` under
   `spring.cloud.stream.kafka.binder.configuration` (and the Kafka Streams
-  binder's equivalent). SCG014 only reads `spring.kafka.*`, so the binder's
-  unencrypted protocol raises nothing. The JAAS password in the same file is
-  caught by SCG006 through its key name.
-* `multi-binder-samples/kafka-multi-binder-jaas` — two JAAS configs with
-  inline passwords in
+  binder's equivalent). SCG014 only read `spring.kafka.*`, so the binder's
+  unencrypted protocol raised nothing; both keys are now reported. The JAAS
+  password in the same file is caught by SCG006 through its key name.
+* `multi-binder-samples/kafka-multi-binder-jaas` — **fixed** (ADR-009). Two
+  JAAS configs with inline passwords in
   `spring.cloud.stream.binders.<name>.environment.spring.cloud.stream.kafka.binder.configuration.sasl.jaas.config`,
-  and `SASL_PLAINTEXT` in the binder configuration. SCG007 only reads
+  and `SASL_PLAINTEXT` in the binder configuration. SCG007 only read
   `spring.kafka.properties.sasl.jaas.config` and `spring.kafka.jaas.options`,
-  and SCG014 only `spring.kafka.*`, so the file raises nothing.
+  and SCG014 only `spring.kafka.*`, so the file raised nothing; it now raises
+  2 SCG007 and 1 SCG014 findings.
 
-The last two share one cause: SCG007 and SCG014 cover Spring Boot's
-`spring.kafka.*` namespace, not the Spring Cloud Stream Kafka binder's. Both
-are tracked in [`BACKLOG.md`](BACKLOG.md) for the rule-by-rule review.
+The last two shared one cause: SCG007 and SCG014 covered Spring Boot's
+`spring.kafka.*` namespace, not the Spring Cloud Stream Kafka binders'.
+ADR-009 evaluates the binders, each named binder's environment as a context
+of its own.
 
 This repository uses no bracketed map keys, so it does not exercise
 ADR-007.

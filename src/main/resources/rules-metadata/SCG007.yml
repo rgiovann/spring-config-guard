@@ -19,7 +19,17 @@ uri-based:
 
 # Keys whose value is a JAAS configuration string (Kafka SASL) that may embed a
 # password="..." entry inline. Matched against JAAS_PASSWORD_PATTERN after placeholder
-# resolution.
+# resolution. The Spring Cloud Stream Kafka and Kafka Streams binders pass their
+# configuration/consumer-properties/producer-properties maps to the Kafka clients as-is, so
+# sasl.jaas.config there is the same JAAS string (ADR-009). A key written inside a named
+# binder's environment (spring.cloud.stream.binders.<name>.environment.*) is matched without
+# that prefix.
 jaas-based:
   - "spring.kafka.properties.sasl.jaas.config"
   - "spring.kafka.jaas.options"
+  - "spring.cloud.stream.kafka.binder.configuration.sasl.jaas.config"
+  - "spring.cloud.stream.kafka.binder.consumer-properties.sasl.jaas.config"
+  - "spring.cloud.stream.kafka.binder.producer-properties.sasl.jaas.config"
+  - "spring.cloud.stream.kafka.streams.binder.configuration.sasl.jaas.config"
+  - "spring.cloud.stream.kafka.streams.binder.consumer-properties.sasl.jaas.config"
+  - "spring.cloud.stream.kafka.streams.binder.producer-properties.sasl.jaas.config"
