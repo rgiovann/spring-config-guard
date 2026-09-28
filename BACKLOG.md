@@ -30,9 +30,6 @@ three was not verified.
 Also include the false negatives found in `spring-cloud-stream-samples`
 (`VALIDATION.md`):
 
-* **SCG006 and numeric passwords.** The heuristic that skips purely numeric
-  values for pattern-matched keys also skips `ssl.keystore.password: 123456`.
-  Decide whether the heuristic should exclude keys that name a password.
 * **SCG007 and SCG014 with the Spring Cloud Stream Kafka binder.** Both only
   read `spring.kafka.*`; JAAS credentials and `SASL_PLAINTEXT` set in
   `spring.cloud.stream.kafka.binder.configuration.*` (or per binder, under

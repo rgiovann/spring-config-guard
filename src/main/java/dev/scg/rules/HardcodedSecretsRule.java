@@ -118,7 +118,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
             // Handles missing values ​​/ blank values
             if (rawValue == null || rawValue.isBlank()) {
-                // Emite INFO (CWE-258) exclusivamente para chaves nativas de infraestrutura
+                // Emits INFO (CWE-258) only for native infrastructure keys
                 if (isKnownHighRiskKey) {
                     findings.add(new Finding(
                             id(),
@@ -169,7 +169,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             // resolved values (e.g. token-validity-in-seconds: 86400, or ${TOKEN_TTL:86400})
             // are configuration metrics, not secrets. Checked against the RESOLVED value so it
             // applies equally to a bare literal and to a placeholder's static default.
-            if (isCustomSecretKey && isNonSecretPrimitiveValue(valueToInspect)) {
+            // Exception: a key that ENDS in a secret pattern names the secret itself, so a numeric
+            // value there is the secret (ssl.keystore.password: 123456, found in
+            // spring-cloud-stream-samples). Booleans stay skipped even then: require-password: true
+            // is a switch, not a password.
+            if (isCustomSecretKey && isNonSecretPrimitiveValue(valueToInspect)
+                    && !(namesTheSecret(canonicalKey) && isNumeric(valueToInspect))) {
                 continue;
             }
 
@@ -243,6 +248,20 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             }
         }
         return false;
+    }
+
+    /** Whether the key ends in a secret pattern (e.g. {@code ...keystore.password}), naming the secret itself. */
+    private boolean namesTheSecret(String canonicalKey) {
+        for (String pattern : secretKeyPatterns) {
+            if (canonicalKey.endsWith(pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNumeric(String value) {
+        return value.trim().matches("\\d+");
     }
 
     private boolean hasIgnoredKeySuffix(String canonicalKey) {

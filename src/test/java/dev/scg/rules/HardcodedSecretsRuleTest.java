@@ -143,6 +143,37 @@ class HardcodedSecretsRuleTest {
             assertThat(findings).isEmpty();
         }
 
+        @ParameterizedTest(name = "Should detect a numeric secret in ''{0}'' = ''{1}''")
+        @CsvSource({
+                // Found in spring-cloud-stream-samples (kafka-ssl-demo), missed before this check
+                "spring.cloud.stream.kafka.binder.configuration.ssl.keystore.password, 123456",
+                "spring.cloud.stream.kafka.binder.configuration.ssl.truststore.password, 123456",
+                "spring.cloud.stream.kafka.binder.configuration.ssl.key.password, 123456",
+                "app.payment.api-key, 99887766",
+                "app.vault.secret, 0000",
+                "app.db.password, ${DB_PASSWORD:1234}"
+        })
+        @DisplayName("Reports a numeric value when the key ends in a secret pattern, naming the secret itself")
+        void shouldDetectNumericValueWhenKeyNamesTheSecret(String propertyKey, String value) {
+            List<Finding> findings = rule.check(createConfig(Map.of(propertyKey, value)));
+
+            assertThat(findings).singleElement().satisfies(finding ->
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+        }
+
+        @ParameterizedTest(name = "Should still ignore ''{0}'' = ''{1}''")
+        @CsvSource({
+                "app.security.password-min-length, 8",
+                "app.security.password.encoder-strength, 10",
+                "app.secret-rotation-days, 30",
+                "app.require-password, true",
+                "app.api-key, false"
+        })
+        @DisplayName("Still ignores numeric values in keys that don't end in the pattern, and booleans in any key")
+        void shouldStillIgnoreMetricsAndSwitches(String propertyKey, String value) {
+            assertThat(rule.check(createConfig(Map.of(propertyKey, value)))).isEmpty();
+        }
+
         @ParameterizedTest(name = "Should detect custom property matching pattern: {0}")
         @ValueSource(strings = {
                 "app.jwt.token",
