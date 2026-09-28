@@ -38,6 +38,33 @@ app:
     profile-props-empty: ["a", "b"] # 20. application-prod.properties overrides it with an empty string
     profile-comma-over-indexed: ["a", "b", "c"] # 21. application-prod.yml overrides it comma-separated
     profile-omits-key: ["a", "b"] # 22. control: no profile file mentions it
+  # --- Lists of objects partially overridden by a profile, read via /actuator/configprops ---
+  object-lists:
+    partial-override: # 23. application-prod.yml sets only [0].port
+      - url: "https://a.internal"
+        port: 1
+        password: "base-secret-a"
+      - url: "https://b.internal"
+        port: 2
+        password: "base-secret-b"
+    properties-partial-override: # 24. application-prod.properties sets only [0].port
+      - url: "https://a.internal"
+        port: 1
+      - url: "https://b.internal"
+        port: 2
+    same-directory-override: # 25. application.properties sets only [0].url
+      - url: "https://a.internal"
+        port: 1
+      - url: "https://b.internal"
+        port: 2
+    quoted-index: # 26. application-prod.yml writes the index as a quoted "[0]" key
+      - url: "https://a.internal"
+        port: 1
+      - url: "https://b.internal"
+        port: 2
+    omits-key: # 27. control: no other file mentions it
+      - url: "https://a.internal"
+        port: 1
 
 # --- Internal on-profile block coexisting with application-prod.yml, both for
 # the "prod" profile: both contribute and the named file wins a key conflict

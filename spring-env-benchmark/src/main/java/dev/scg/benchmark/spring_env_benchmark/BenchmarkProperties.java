@@ -13,7 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * source's raw keys separately.
  */
 @ConfigurationProperties("app")
-public record BenchmarkProperties(Map<String, String> bracketMap, ListCases lists) {
+public record BenchmarkProperties(Map<String, String> bracketMap, ListCases lists, ObjectListCases objectLists) {
 
     /** One list per scenario of the same list written in different formats. */
     public record ListCases(
@@ -25,5 +25,17 @@ public record BenchmarkProperties(Map<String, String> bracketMap, ListCases list
             List<String> profilePropsEmpty,
             List<String> profileCommaOverIndexed,
             List<String> profileOmitsKey) {
+    }
+
+    /** One list of objects per scenario of a profile overriding part of a base list. */
+    public record ObjectListCases(
+            List<Server> partialOverride,
+            List<Server> propertiesPartialOverride,
+            List<Server> sameDirectoryOverride,
+            List<Server> quotedIndex,
+            List<Server> omitsKey) {
+    }
+
+    public record Server(String url, Integer port, String password) {
     }
 }

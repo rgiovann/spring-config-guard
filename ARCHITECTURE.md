@@ -538,7 +538,8 @@ not a change to the default.
 ## ADR-007: Bracketed Map Keys Rewritten into Dotted Form at Load Time
 
 ### Status
-Accepted
+Accepted. Since ADR-008, YAML flattening no longer produces `x.map.[a.b]`
+(the context below); the decision is unchanged.
 
 ### Context
 Spring Boot's bracket notation keeps a map key intact when it contains dots
@@ -607,3 +608,66 @@ once, with no rule changed.
 ### Revisit if
 A rule needs the original bracketed spelling (e.g. to quote it back), or
 the dash/underscore collision shows up in a real project.
+
+## ADR-008: YAML Flattening Joins Bracketed Keys Like Spring's YAML Loader
+
+### Status
+Accepted
+
+### Context
+Flattening a YAML document joined every key to its parent with a dot. A key
+starting with `[` therefore came out as `x.[0]` or `x.map.[a.b]`, while
+Spring Boot's YAML loader joins such a key without a dot: confirmed with
+Spring Boot 4.1.1, where `/actuator/env` shows a quoted `"[0]"` key under
+`quoted-index` as `quoted-index[0].url`, and (ADR-007) `"[a.b]"` under
+`x.map` as `x.map[a.b]`.
+
+ADR-007 absorbed the dot for map keys, since `normalizeMapKeys()` rewrites
+`x.map.[a.b]` and `x.map[a.b]` alike. It kept numeric indices verbatim,
+dot included, so a list index written as a quoted YAML key stayed `x.[0]`:
+a key `ProfileMerger` doesn't recognize as part of list `x`, and that
+`RelaxedProperties.valuesForKeyOrListChildren()` doesn't read as one of its
+items. Measured with the jar before this decision:
+
+* a profile writing `"[0]": {url: ...}` over a base list of objects kept
+  the base's whole list (Spring binds only the profile's element), so SCG006
+  reported a base password Spring had dropped: a false positive;
+* `exposure.include: {"[0]": "*"}` raised no SCG001: a false negative on a
+  HIGH rule.
+
+Found by the `/actuator` benchmark's lists-of-objects cases
+(`VALIDATION.md`). The spelling is rare: no reference project uses it.
+
+### Decision
+`ConfigLoader.flatten()` joins a key starting with `[` to its parent without
+a dot, as Spring's YAML loader does: `x` + `"[0]"` is `x[0]`, and
+`x.map` + `"[a.b]"` is `x.map[a.b]`, which `normalizeMapKeys()` still
+rewrites to `x.map.a.b` (ADR-007). `.properties` keys are unchanged.
+
+Chosen over also dropping the dot before a numeric index in
+`normalizeMapKeys()`: that would repair the key after writing it wrong, and
+would also rewrite a `.properties` key literally written `x.[0]`, whose
+meaning in Spring was not checked. Fixing the join matches Spring's own
+rule at the one place keys are built from YAML.
+
+### Consequences
+
+**Positive**
+* A list index written as a quoted YAML key is the same key as a list item:
+  the profile replaces the base's list, and rules read the item.
+* The YAML and `.properties` spellings of a bracketed key match before
+  normalization, not only after it.
+* Covered by `BracketedMapKeysTest` (the join, the profile replacing the
+  base's list without the SCG006 false positive, SCG001 on the wildcard;
+  all three fail before this decision) and by the benchmark's
+  lists-of-objects test, which compares with `/actuator/configprops` and
+  failed on the quoted index case before this decision. Findings on every
+  reference project are byte-identical to before.
+
+**Negative / Trade-offs**
+* None known. A YAML key starting with `[` that isn't meant as a bracketed
+  key would now join without a dot, but Spring's loader treats it that way
+  too.
+
+### Revisit if
+Spring changes how its YAML loader joins keys starting with `[`.

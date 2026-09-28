@@ -450,6 +450,15 @@ loader stores as an empty string; a comma-separated profile value over an
 indexed base list; and, as a control, a profile that doesn't mention the key
 keeping the base's list.
 
+A fourth set, under `app.object-lists`, checks lists of objects partially
+overridden: a profile `.yml` or `.properties` setting only `[0].port` of a
+base list of two objects, a same-directory `.properties` setting only
+`[0].url`, a profile writing the index as a quoted `"[0]"` YAML key, and a
+control. Spring takes the whole list from the highest-precedence source, so
+fields the profile doesn't write (including a base `password`) are gone.
+A profile skipping index 0 (only `[1]`) isn't a case: Spring refuses to
+start ("elements ... were left unbound").
+
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
 (`RelaxedProperties.canonicalize`), keeping the value from the
@@ -483,7 +492,7 @@ SCG, after rewriting them into dotted form, sees one key under relaxed
 binding and keeps the profile's value (ADR-007). A change on either side
 fails the benchmark.
 
-**Result:** all assertions match the real Spring Boot 4.1.1 output (4
+**Result:** all assertions match the real Spring Boot 4.1.1 output (5
 benchmark tests). Run against the `ConfigLoader` from before ADR-007, the
 bracketed map test fails on the first case: the base's
 `[com.acme-core]` entry is lost once the profile adds one of its own. The
@@ -491,6 +500,10 @@ list format cases needed no code change: `ProfileMerger` already treats
 `a` and `a[n]` as one list in both directions. With that purge disabled,
 the list test fails on its first case (SCG sees `[*, health, info]`, both
 spellings surviving).
+The lists of objects found one divergence, fixed in ADR-008: SCG joined a
+quoted `"[0]"` YAML key with a dot (`quoted-index.[0].url`), so the
+profile's element wasn't recognized as part of the list and the base's
+whole list survived. The other cases already matched.
 
 One difference in representation remains, harmless for every current rule:
 for `[]` in a profile, SCG purges the base list and keeps no key, where

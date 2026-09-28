@@ -323,10 +323,10 @@ public final class ConfigLoader {
      * ({@code [0]}) untouched. See ARCHITECTURE.md, ADR-007.
      * <p>
      * Spring Boot binds both forms to the same map entry for a {@code Map<String, ...>} property, and
-     * its own YAML loader turns a quoted {@code "[a.b]"} key into {@code x.map[a.b]}; this project's
-     * YAML flattening produces {@code x.map.[a.b]} for the same key. Without this rewrite, rules only
-     * recognized the dotted form, and ProfileMerger treated a bracketed map key as a list index —
-     * replacing the whole map across profiles instead of merging it key by key.
+     * its own YAML loader turns a quoted {@code "[a.b]"} key into {@code x.map[a.b]}, as this
+     * project's YAML flattening does (ADR-008). Without this rewrite, rules only recognized the dotted
+     * form, and ProfileMerger treated a bracketed map key as a list index — replacing the whole map
+     * across profiles instead of merging it key by key.
      * <p>
      * Accepted trade-off: the bracket form preserves characters that relaxed binding otherwise
      * ignores, so {@code [com.foo-bar]} and {@code [com.foobar]} are distinct keys in Spring but
@@ -379,9 +379,13 @@ public final class ConfigLoader {
 
                 for (var entry : map.entrySet()) {
 
-                    String child = prefix.isEmpty()
-                            ? entry.getKey().toString()
-                            : prefix + "." + entry.getKey();
+                    // Same join rule as Spring's own YAML loader: a key starting with '[' (a quoted
+                    // "[0]" index or "[a.b]" map key) attaches to its parent without a dot, so
+                    // "x" + "[0]" is x[0], not x.[0]. See ARCHITECTURE.md, ADR-008.
+                    String key = entry.getKey().toString();
+                    String child = prefix.isEmpty() || key.startsWith("[")
+                            ? prefix + key
+                            : prefix + "." + key;
 
                     flatten(entry.getValue(), child, flat);
                 }

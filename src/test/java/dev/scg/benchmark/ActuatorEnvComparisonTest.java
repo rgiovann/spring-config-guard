@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -256,6 +257,56 @@ class ActuatorEnvComparisonTest {
         });
 
         System.out.println("All list format criteria matched real Spring Boot.");
+    }
+
+    /**
+     * Lists of objects partially overridden by a profile. Spring takes the whole list from the
+     * highest-precedence source that defines it, so fields the profile doesn't write are gone, not
+     * inherited from the base. Every SCG key under a case must be a "case[i].field" key: a key
+     * spelled any other way (such as "case.[0].url") is a list entry SCG failed to recognize, and
+     * is reported as a stray entry so the comparison fails.
+     */
+    @Test
+    void validateObjectListsAgainstSpringConfigprops() throws Exception {
+        Map<String, String> scg = scgEffectiveConfigForProfile("prod").properties();
+        JsonNode objectLists = appBeanProperties(fetch(CONFIGPROPS_URL)).path("objectLists");
+
+        // 23. a profile .yml setting only [0].port; 24. the same from a profile .properties;
+        // 25. a same-directory .properties setting only [0].url; 26. a profile writing the index
+        // as a quoted "[0]" YAML key; 27. control: nothing else mentions the list
+        for (String name : List.of("partial-override", "properties-partial-override",
+                "same-directory-override", "quoted-index", "omits-key")) {
+            List<Map<String, String>> spring = new ArrayList<>();
+            objectLists.path(kebabToCamel(name)).forEach(element -> {
+                Map<String, String> fields = new TreeMap<>();
+                element.fields().forEachRemaining(field -> fields.put(field.getKey(), field.getValue().asText()));
+                spring.add(fields);
+            });
+            assertFalse(spring.isEmpty(), "configprops must show object list '" + name + "' as bound");
+            assertEquals(spring, scgObjectList(scg, "app.object-lists." + name),
+                    "SCG's list of objects for case '" + name + "'");
+        }
+
+        System.out.println("All list of objects criteria matched real Spring Boot.");
+    }
+
+    private static List<Map<String, String>> scgObjectList(Map<String, String> scgProperties, String key) {
+        Pattern element = Pattern.compile(
+                Pattern.quote(key) + "\\[(\\d+)]\\.(\\w+)");
+        TreeMap<Integer, Map<String, String>> byIndex = new TreeMap<>();
+        scgProperties.forEach((k, v) -> {
+            if (!k.startsWith(key)) {
+                return;
+            }
+            var matcher = element.matcher(k);
+            if (matcher.matches()) {
+                byIndex.computeIfAbsent(Integer.parseInt(matcher.group(1)), i -> new TreeMap<>())
+                        .put(matcher.group(2), v);
+            } else {
+                byIndex.computeIfAbsent(-1, i -> new TreeMap<>()).put("stray entry " + k, v);
+            }
+        });
+        return new ArrayList<>(byIndex.values());
     }
 
     private static String kebabToCamel(String kebab) {

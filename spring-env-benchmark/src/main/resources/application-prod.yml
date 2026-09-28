@@ -13,3 +13,9 @@ app:
   lists:
     profile-yaml-empty: [] # 19. explicit empty list over the base's non-empty one
     profile-comma-over-indexed: "x,y" # 21. comma-separated over the base's indexed list
+  object-lists:
+    partial-override:
+      - port: 9 # 23. the only field the profile sets
+    quoted-index:
+      "[0]":
+        url: "https://prod.internal" # 26. index 0 written as a quoted key instead of a list item

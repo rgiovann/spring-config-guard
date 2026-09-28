@@ -202,7 +202,9 @@ Bracketed map keys never reach a rule: `ConfigLoader` rewrites
 `spring.kafka.properties.security.protocol` for both YAML and
 `.properties`, keeping numeric list indices (`[0]`) as they are. Rules look
 map entries up by the dotted name only, and `ProfileMerger` merges them key
-by key like any other property (ARCHITECTURE.md, ADR-007).
+by key like any other property (ARCHITECTURE.md, ADR-007). When flattening
+YAML, a key starting with `[` joins its parent without a dot, as in Spring's
+YAML loader, so a quoted `"[0]"` key is the list item `x[0]` (ADR-008).
 
 ## Placeholder Resolution
 

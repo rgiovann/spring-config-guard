@@ -160,6 +160,55 @@ class BracketedMapKeysTest {
         assertTrue(ruleIds(dir).contains("SCG006"));
     }
 
+    @Test
+    @DisplayName("A list index written as a quoted YAML key joins without a dot, as in Spring's YAML loader")
+    void quotedYamlIndexKeyJoinsWithoutDot(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                app:
+                  servers:
+                    "[0]":
+                      url: "https://a.internal"
+                """);
+
+        assertEquals(Map.of("app.servers[0].url", "https://a.internal"), profile(dir, ProfileMerger.BASE_PROFILE_LABEL));
+    }
+
+    @Test
+    @DisplayName("A profile writing the index as a quoted YAML key replaces the base's whole list")
+    void quotedYamlIndexKeyInProfileReplacesBaseList(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                app:
+                  datasources:
+                    - url: "jdbc:postgresql://db/app"
+                      password: "base-secret"
+                """);
+        Files.writeString(dir.resolve("application-prod.yml"), """
+                app:
+                  datasources:
+                    "[0]":
+                      url: "jdbc:postgresql://db/app"
+                """);
+
+        // Spring binds [{url}] in prod: the base's password is gone, so SCG006 must not report it there.
+        assertEquals(Map.of("app.datasources[0].url", "jdbc:postgresql://db/app"), profile(dir, "prod"));
+        assertFalse(ruleIdsForProfile(dir, "prod").contains("SCG006"));
+    }
+
+    @Test
+    @DisplayName("SCG001 detects a wildcard written as a quoted YAML index key")
+    void scg001DetectsWildcardInQuotedYamlIndexKey(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                management:
+                  endpoints:
+                    web:
+                      exposure:
+                        include:
+                          "[0]": "*"
+                """);
+
+        assertTrue(ruleIds(dir).contains("SCG001"));
+    }
+
     private static Map<String, String> profile(Path dir, String label) throws IOException {
         return effectiveConfigs(dir).stream()
                 .filter(config -> config.profileLabel().equals(label))
@@ -174,6 +223,13 @@ class BracketedMapKeysTest {
             result.addAll(new ProfileMerger().merge(group.mergedFile()));
         }
         return result;
+    }
+
+    private static List<String> ruleIdsForProfile(Path dir, String label) throws IOException {
+        return new RuleEngine(RuleRegistry.discoverRules()).run(effectiveConfigs(dir)).stream()
+                .filter(finding -> finding.profileLabel().equals(label))
+                .map(Finding::ruleId)
+                .toList();
     }
 
     private static List<String> ruleIds(Path dir) throws IOException {

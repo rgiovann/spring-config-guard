@@ -25,18 +25,15 @@ Continuation of a review of `ConfigLoader` → `ConfigFileGrouper` →
 `ProfileMerger`. The paths already exercised by the `/actuator/env`
 benchmark (scalar override, list replacement, relaxed binding across
 base/profile, explicit null, placeholder default, named profile file vs.
-on-profile block), bracketed map keys (ADR-007) and one list written in
-different formats (comma-separated, indexed, empty) are covered; these edge
-cases are not. Each one needs a
-fixture, a comparison against real Spring through `spring-env-benchmark`
-where possible, and a classification (implementation bug, deliberate scope
-decision, static-analysis limitation, or Spring behavior fact) before any
-code change.
+on-profile block), bracketed map keys (ADR-007), one list written in
+different formats (comma-separated, indexed, empty) and lists of objects
+partially overridden (ADR-008) are covered; this edge case is not. It
+needs a fixture, a comparison against real Spring through
+`spring-env-benchmark` where possible, and a classification (implementation
+bug, deliberate scope decision, static-analysis limitation, or Spring
+behavior fact) before any code change.
 
-1. **Lists of objects with a partial override.** For example
-   `servers[0].url` in the base and only `servers[0].port` in a profile:
-   confirm SCG replaces the whole list exactly as Spring does.
-2. **Scalar vs. map on the same key** between base and profile, in both
+1. **Scalar vs. map on the same key** between base and profile, in both
    directions (a scalar overriding a map, and a map overriding a scalar).
 
 ### Rule-by-rule review of the 17 rules
