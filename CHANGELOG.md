@@ -8,6 +8,52 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.4.0
+
+**Added**
+- SCG006 now reports a numeric secret when the key ends in a secret
+  pattern (`...password`, `...secret`, `...api-key`, ...), since such a key
+  names the secret itself: `ssl.keystore.password: 123456` was skipped by
+  the heuristic that treats numeric values as metrics, not secrets. Numeric
+  values in other keys (`token-validity-in-seconds: 86400`,
+  `password-min-length: 8`) and booleans in any key
+  (`require-password: true`) are still skipped.
+
+**Fixed**
+- A list index written as a quoted YAML key (`"[0]":`) was joined with a
+  dot (`x.[0]`) instead of Spring's `x[0]`, so it wasn't recognized as a
+  list item. With the jar of v1.3.1, `exposure.include: {"[0]": "*"}`
+  raised no SCG001, and a profile writing `"[0]": {url: ...}` over a base
+  list kept the base's whole list, so SCG006 reported a base password
+  Spring drops in that profile. YAML keys starting with `[` now join their
+  parent without a dot, as in Spring's YAML loader. See ADR-008.
+
+**Detection changes**
+- **More findings**: SCG006 on numeric values in keys ending in a secret
+  pattern. On the reference corpus, 3 findings added in
+  `spring-cloud-stream-samples`: the three numeric SSL passwords in
+  `kafka-ssl-demo`, a false negative recorded in `VALIDATION.md`.
+- **More findings**: SCG001 and any rule reading a list now see items
+  written as quoted YAML index keys.
+- **Fewer findings**: a profile replacing a base list through a quoted
+  index key no longer inherits the base's items, so findings on them (e.g.
+  SCG006 on a base password) no longer appear in that profile.
+- Every other reference project reports the same findings and coverage
+  warnings as `v1.3.1`; none of them uses quoted index keys.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Documentation: the `/actuator` benchmark now compares lists written in two
+formats, lists of objects partially overridden, and a scalar and a map on
+the same key against `/actuator/configprops` (6 benchmark tests); only the
+quoted index case needed a fix. `VALIDATION.md` and `CLAUDE.md` record the
+results, including that SCG keeps both shapes of a key written as a scalar
+and as a map, as Spring does.
+
+Full diff: `v1.3.1...v1.4.0`.
+
 ## v1.3.1
 
 **Fixed**
