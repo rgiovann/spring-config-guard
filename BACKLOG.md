@@ -75,6 +75,56 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
   then create and publish the action. False positives in a CI gate are what
   drive new users away first.
 
+### dev.to article on what we found about Spring Boot configuration
+
+Write a technical article (dev.to, English, neutral tone) on how Spring
+Boot actually resolves configuration, from what was checked against running
+apps and Spring's source while building SCG; SCG appears as the way to
+automate the checks, not as the subject. Possibly a short series, one topic
+per post. Every claim below is already verified, with its evidence in the
+repository:
+
+* **Actuator exposure is more than `exposure.include`** (`VALIDATION.md`,
+  "SCG001 exposure scenarios", reproducible with
+  `spring-env-benchmark/actuator-exposure-scenarios.sh`): `exposure.exclude`
+  wins over `include`; `management.endpoints.access.default=none`,
+  `max-permitted=none` and `management.server.port=-1` expose nothing;
+  `access.default=unrestricted` also opens `heapdump` and `shutdown`,
+  restricted by default, and `read-only` opens `heapdump` but not the
+  write-only `shutdown`; the legacy `enabled` and
+  `enabled-by-default` keys still work in Boot 4.1.1; setting an endpoint's
+  `access` and `enabled` together keeps the app from starting.
+* **`/actuator/env` shows raw property sources, `/actuator/configprops` what
+  Spring binds** (`VALIDATION.md`, benchmark): merging, precedence and
+  bracket/dotted equivalence only show in the second.
+* **Bracketed map keys** (ADR-007): `x.map[a.b]` and `x.map.a.b` are the same
+  entry; maps merge key by key across profiles; brackets keep characters
+  relaxed binding ignores, so `[com.foo-bar]` and `[com.foobar]` are two
+  entries.
+* **Quoted keys in YAML** (ADR-008): a key starting with `[` joins its parent
+  without a dot, so `"[0]":` is a list item.
+* **Lists** (`VALIDATION.md`, benchmark): the whole list comes from the
+  highest-precedence source, whatever the format (comma-separated or
+  indexed); elements are stripped; an empty value is an empty list; `[]` in
+  YAML is stored as an empty string; a profile skipping index 0 keeps the
+  app from starting.
+* **A scalar and a map on one key**: Spring keeps both; the target type
+  decides which one binds.
+* **`.yml` and `.properties` side by side, profiles in two places**
+  (ADR-003): both formats load, `.properties` wins; a named profile file
+  wins over an `on-profile` block.
+* **Config split across locations** (ADR-005): Spring merges
+  `src/main/resources`, `config/` and friends; a risky combination split
+  across them is easy to miss.
+* **Spring Cloud Stream Kafka binders** (ADR-009): each client builds on
+  `spring.kafka.*`, overridden by the binder's `configuration`, overridden
+  by `consumer-`/`producer-properties`; a named binder's `environment` is a
+  context of its own on top of the main one.
+* **Lessons from building a linter**: `Set.of` iteration order changes
+  between JVM runs, so output wasn't reproducible until it was sorted
+  (`CLAUDE.md`, "Findings"); a heuristic meant to skip numeric metrics also
+  hid `ssl.keystore.password: 123456` (found in `spring-cloud-stream-samples`).
+
 ### Per-property origin in findings (waiting for a real consumer)
 
 `sourceFile` identifies the evaluated configuration, not where the offending
