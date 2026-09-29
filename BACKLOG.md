@@ -46,6 +46,35 @@ per sample app. Not the answer: a profile exemption (Zero-Trust; `--policy`
 already suppresses explicitly) or merging findings per file (the 31 are in
 26 files, and where a file has several, they are different binders).
 
+How the review proceeds: stop after each rule for the maintainer's go-ahead
+before starting the next one. Next: list the rules that report an absent
+key (for the severity decision above), then review SCG006. Where a rule
+relies on Spring Boot behavior, check it against a running app, as for
+SCG001.
+
+### GitHub Action for the Marketplace
+
+Publish SCG as a GitHub Action (`uses: rgiovann/spring-config-guard-action@v1`)
+so a CI gate no longer needs the README's `curl` + `java -jar` step.
+
+* **In a separate repository** (`spring-config-guard-action`), as most
+  established CLI and security tools do: the action's own `action.yml` at
+  the root and its own `v1`-style tags, independent of this repository's CI
+  and release workflows. Confirm the Marketplace's current publishing
+  requirements (public repository, one action per repository, whether
+  workflow files are allowed, the developer agreement, 2FA) before creating
+  it.
+* **A composite action**: `actions/setup-java` (Java 21), download of a
+  pinned release jar with its sha256 checked, then SCG with the flags as
+  inputs (path, `fail-on`, `policy`, `config-server`, `json`). Each SCG
+  release means a matching action release.
+* **A CI gate first** (exit code and report). PR annotations and a SARIF
+  upload for code scanning come later: they place each finding on a file,
+  so they depend on "Per-property origin in findings" below.
+* **Order**: release v1.6.0 (the SCG001 fix), review SCG006 and SCG014,
+  then create and publish the action. False positives in a CI gate are what
+  drive new users away first.
+
 ### Per-property origin in findings (waiting for a real consumer)
 
 `sourceFile` identifies the evaluated configuration, not where the offending
@@ -66,7 +95,9 @@ files (e.g. SCG003); and a new optional JSON field, which would be a
 MINOR change (CONTRIBUTING.md, "Releases").
 
 Worth it only once something consumes the location — e.g. PR annotations
-or code-scanning upload, where a wrong file would mark the wrong place.
+or code-scanning upload, where a wrong file would mark the wrong place. The
+planned GitHub Action (above) is that consumer once it adds annotations or
+SARIF.
 Until then, the documented semantics are enough.
 
 ### `--config-name=<prefix>`: custom `spring.config.name`
