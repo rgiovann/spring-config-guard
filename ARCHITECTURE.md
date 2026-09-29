@@ -600,7 +600,15 @@ once, with no rule changed.
 * Accepted collision: brackets preserve characters that relaxed binding
   ignores, so `[com.foo-bar]` and `[com.foobar]` are two entries in Spring
   but canonicalize to one key here, the later overriding the earlier. Rare,
-  and pinned by a test so the limitation stays visible.
+  and pinned by a test so the limitation stays visible. The divergence is
+  specific to brackets: checked later with Spring Boot 4.1.1 through
+  `/actuator/configprops`, from a `.properties` file, unbracketed
+  `x.map.com.foo-bar=A` and `x.map.com.foobar=B` also bind two map keys,
+  `com.foo-bar` and `com.foobar`, but both get the same value (`A` in that
+  run), since the key names keep the dash while the value lookup is
+  relaxed. So SCG's single key matches Spring holding one value for both
+  spellings (which of the two values SCG keeps was not checked); only a
+  bracketed pair gets two different values in Spring.
 * None of the reference projects in `VALIDATION.md` uses bracketed keys:
   the fix is proven by fixtures, by Spring's own binder and by the
   benchmark app, not yet by a real-world project.
