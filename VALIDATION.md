@@ -625,8 +625,8 @@ mvn -q package -DskipTests
 Which keys SCG006 treats as secrets is checked against the 2650 properties in
 the configuration metadata of Spring Boot 4.1.1's modules (96 of 97 module
 jars from Maven Central; `spring-boot-webflux` couldn't be fetched), plus a
-hand-built set of 26 keys: 20 non-secrets, native and third-party, and 6
-secrets as controls.
+hand-built set of 30 keys: 20 non-secrets, native and third-party, 6
+secrets as controls, and 4 secrets whose key doesn't end in the word.
 
 SCG006 used to match a pattern (`password`, `secret`, `token`,
 `credential`, ...) anywhere in the key, so a namespace, a map key, a nested
@@ -644,21 +644,34 @@ properties:
   `spring.cloud.gcp.secretmanager.project-id`, a Spring Cloud Stream binding
   named `tokenEvents`, `app.jwt.token-prefix=Bearer`.
 
-A custom key now matches only when it ends in a pattern, and
-`logging.level`/`logging.group` are skipped. Of the 20 non-secrets, only
-`server.ssl.certificate-private-key=/etc/tls/server.key` is still reported (a
-plain path; accepted, see the rule's Javadoc). The 6 secrets are still
-reported. Against the metadata, the change stops matching 5 native
-properties, none of them a secret (`api-token-type`,
-`credentials-provider-class-name`, `max-token-count`,
-`embedded.credential.username`, `opaquetoken.client-id`), and every native
-secret is still matched. Every reference project above reports the same
-findings, byte for byte, as with the v1.6.0 jar: all 80 SCG006 findings there
-were on keys ending in a pattern.
+A custom key is now HIGH only when it ends in a pattern, and
+`logging.level`/`logging.group` are skipped. A key that only contains a
+pattern is INFO, which never fails a build on its own (checked: exit 0 with
+`--fail-on=LOW`): it may still name a secret, so it stays visible instead of
+being silenced. Measured on the same keys:
 
-The accepted cost is a secret whose key has the word before another one or
-in the plural (`app.secret-key-base`, `app.password-hash`, `app.api-keys`),
-no longer reported; `HardcodedSecretsRuleTest` pins those cases. Three
+| | v1.6.0 | Now |
+|---|---|---|
+| 20 non-secrets | 18 HIGH | 1 HIGH, 15 INFO, 4 silent |
+| 6 secrets (controls) | 6 HIGH | 6 HIGH |
+| 4 secrets named with the word before another one, in the plural, or behind a placeholder default (`app.secret-key-base`, `app.password-hash`, `app.api-keys`, `app.token-value`) | 4 HIGH | 4 INFO |
+
+The remaining HIGH is
+`server.ssl.certificate-private-key=/etc/tls/server.key` (a plain path;
+accepted, see the rule's Javadoc); the 4 silent ones are the 2
+`logging.level` keys, a boolean and a number. Against the metadata, 4 native
+properties can now be INFO instead of HIGH, none of them a secret
+(`api-token-type`, `credentials-provider-class-name`,
+`embedded.credential.username`, `opaquetoken.client-id`), plus the 6
+non-boolean fields of
+`spring.security.oauth2.authorizationserver.client.<id>.token`, which the
+metadata doesn't list since they sit inside a map; every native secret is
+still HIGH. Every reference project above reports the same findings, byte
+for byte, as with the v1.6.0 jar: all 80 SCG006 findings there were on keys
+ending in a pattern, and no key there only contains one with a value that
+could be a secret.
+
+`HardcodedSecretsRuleTest` pins these cases. Three
 `high-risk-keys` entries that don't exist in Spring Boot 4.1.1 were replaced
 (`spring.elasticsearch.rest.password`, removed in 3.0;
 `spring.couchbase.env.ssl.key-store-password`, deprecated;

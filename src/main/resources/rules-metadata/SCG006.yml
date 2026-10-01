@@ -45,10 +45,11 @@ high-risk-keys:
 # Patterns for custom/third-party property keys that aren't in high-risk-keys but name a
 # secret (e.g. "app.jwt.token", "payment.gateway.secret"). A property matches if its
 # canonicalized key ENDS with one of these entries (also canonicalized), so the key names the
-# secret itself; a pattern elsewhere in the key (a namespace like
-# "spring.cloud.kubernetes.secrets.namespace", a nested object like
-# "...authorizationserver.client.<id>.token.access-token-time-to-live") does not match.
-# Reported with the "custom key pattern" message wording. Keep entries specific/compound
+# secret itself, and is reported as HIGH with the "custom key pattern" message wording. A
+# pattern elsewhere in the key (a namespace like "spring.cloud.kubernetes.secrets.namespace", a
+# nested object like "...authorizationserver.client.<id>.token.access-token-time-to-live", or
+# "app.secret-key-base", which may well be a secret) is reported as INFO instead: static
+# analysis can't tell which it is. Keep entries specific/compound
 # (e.g. "signing-key", not bare "key") — a bare "key" would match "...cache.key" or
 # "...routing-key". Plurals are listed only where needed: "credentials" is a native key ending
 # ("api-key-credentials"), while a plural "tokens" would match "max-tokens: 4000".

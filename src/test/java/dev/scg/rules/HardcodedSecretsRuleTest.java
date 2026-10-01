@@ -243,10 +243,10 @@ class HardcodedSecretsRuleTest {
     }
 
     @Nested
-    @DisplayName("A pattern elsewhere in the key does not name a secret")
+    @DisplayName("A pattern elsewhere in the key: INFO, since it may or may not name a secret")
     class PatternPositionTests {
 
-        @ParameterizedTest(name = "Should ignore ''{0}'' = ''{1}''")
+        @ParameterizedTest(name = "INFO, not HIGH: ''{0}'' = ''{1}''")
         @CsvSource(delimiter = '|', value = {
                 // Native Spring Boot 4.1.1 properties (OAuth2AuthorizationServerProperties.Token,
                 // the resource server's opaquetoken, Hikari, embedded LDAP)
@@ -267,9 +267,47 @@ class HardcodedSecretsRuleTest {
                 "app.jwt.token-prefix | Bearer",
                 "app.jwt.token-validity | 1h"
         })
-        @DisplayName("Ignores keys where the pattern names a namespace, a map key or a nested object, not the value")
-        void shouldIgnorePatternNotAtTheEnd(String key, String value) {
-            assertThat(rule.check(createConfig(Map.of(key, value)))).isEmpty();
+        @DisplayName("Reports INFO, not HIGH, where the pattern names a namespace, a map key or a nested object")
+        void shouldReportInfoForPatternNotAtTheEnd(String key, String value) {
+            // With the pattern matched anywhere, all of these were HIGH (v1.6.0). They can't fail a
+            // build as INFO, yet a key like app.secret-key-base (below) still shows up.
+            assertThat(rule.check(createConfig(Map.of(key, value))))
+                    .singleElement().satisfies(this::assertAmbiguousKeyInfo);
+        }
+
+        @ParameterizedTest(name = "INFO: ''{0}''")
+        @ValueSource(strings = {
+                "app.secret-key-base",
+                "app.password-hash",
+                "app.api-keys"
+        })
+        @DisplayName("Reports INFO for a secret named with the word before another one or in the plural, instead of missing it")
+        void shouldReportInfoForPatternFollowedByAnotherWord(String key) {
+            assertThat(rule.check(createConfig(Map.of(key, "c2VjcmV0LXZhbHVl"))))
+                    .singleElement().satisfies(this::assertAmbiguousKeyInfo);
+        }
+
+        @Test
+        @DisplayName("Reports INFO for a placeholder's static default too, saying where the value comes from")
+        void shouldReportInfoForPlaceholderDefaultInAmbiguousKey() {
+            assertThat(rule.check(createConfig(Map.of("app.token-value", "${TOKEN_VALUE:tok-123}"))))
+                    .singleElement().satisfies(finding -> {
+                        assertAmbiguousKeyInfo(finding);
+                        assertThat(finding.message()).contains("static placeholder default ('${TOKEN_VALUE:tok-123}')");
+                    });
+        }
+
+        @ParameterizedTest(name = "Silent: ''{0}''")
+        @ValueSource(strings = {"true", "FALSE", "86400", "", "   ", "${TOKEN_VALUE}", "${TOKEN_VALUE:}",
+                "${TOKEN_TTL:3600}", "classpath:keys/app.key", "{cipher}AQB0"})
+        @DisplayName("Stays silent in an ambiguous key for values that can't be a hardcoded secret")
+        void shouldStaySilentForNonSecretValuesInAmbiguousKey(String value) {
+            assertThat(rule.check(createConfig(Map.of("app.token-value", value)))).isEmpty();
+        }
+
+        private void assertAmbiguousKeyInfo(Finding finding) {
+            assertThat(finding.severity()).isEqualTo(Severity.INFO);
+            assertThat(finding.message()).contains("doesn't end in it");
         }
 
         @ParameterizedTest(name = "Should ignore ''{0}''")
@@ -287,19 +325,6 @@ class HardcodedSecretsRuleTest {
         @DisplayName("The logging prefix is matched on a '.' boundary: a key merely starting with the same text is still checked")
         void shouldMatchIgnoredPrefixOnSegmentBoundary() {
             assertThat(rule.check(createConfig(Map.of("logging.levelx.password", "s3cr3t")))).hasSize(1);
-        }
-
-        @ParameterizedTest(name = "Accepted false negative: ''{0}''")
-        @ValueSource(strings = {
-                "app.secret-key-base",
-                "app.password-hash",
-                "app.api-keys"
-        })
-        @DisplayName("Accepted limitation: a secret whose key has the word before another one, or in the plural, is not reported")
-        void shouldNotReportPatternFollowedByAnotherWord(String key) {
-            // The cost of matching only the key's end (see the class Javadoc): pinned so that
-            // widening the match again is a deliberate decision, not an accident.
-            assertThat(rule.check(createConfig(Map.of(key, "c2VjcmV0LXZhbHVl")))).isEmpty();
         }
 
         @Test

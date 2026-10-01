@@ -10,9 +10,9 @@ import java.util.stream.Collectors;
  * infrastructure properties ({@code high-risk-keys}) plus patterns for custom/third-party keys
  * that name a secret ({@code secret-key-patterns}).
  * Always {@link Severity#HIGH} for a concrete value; {@link Severity#INFO} for a blank
- * high-risk key or an unresolved/blank-default placeholder.
+ * high-risk key, an unresolved/blank-default placeholder, or a key that only contains a pattern.
  * <p>
- * A custom key matches only when it <b>ends</b> in a pattern ({@code app.jwt.secret},
+ * A custom key is reported as HIGH only when it <b>ends</b> in a pattern ({@code app.jwt.secret},
  * {@code ...registration.client-secret}), so the key names the secret itself. Matching a
  * pattern anywhere in the key reported, as HIGH, properties whose namespace, map key or package
  * name merely contains the word: checked against Spring Boot 4.1.1's own metadata and a
@@ -20,10 +20,12 @@ import java.util.stream.Collectors;
  * {@code spring.security.oauth2.authorizationserver.client.<id>.token.access-token-time-to-live=5m},
  * {@code spring.security.oauth2.resourceserver.opaquetoken.client-id},
  * {@code spring.cloud.kubernetes.secrets.namespace}. Every SCG006 finding on the reference corpus
- * already ended in a pattern. The accepted cost: a secret whose key carries the word before
- * another one ({@code app.secret-key-base}, {@code app.password-hash}) or in the plural
- * ({@code app.api-keys}) is no longer reported. Patterns are not matched in the plural on
- * purpose: {@code token} would then match {@code max-tokens: 4000}.
+ * already ended in a pattern. A key that contains a pattern without ending in it may still name
+ * a secret ({@code app.secret-key-base}, {@code app.password-hash}, the plural
+ * {@code app.api-keys}), so it is reported as {@link Severity#INFO} rather than silenced: visible
+ * in the report, never failing a build on its own. Booleans, numbers ({@code max-tokens: 4000}),
+ * blank values, ignored value prefixes and placeholders without a default stay silent there, since
+ * none can be a hardcoded secret.
  * <p>
  * Keys under {@code ignored-key-prefixes} ({@code logging.level}, {@code logging.group}) are
  * skipped entirely: their last segment is a logger or package name, which can end in a pattern
@@ -143,8 +145,10 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                     && namesTheSecret(canonicalKey)
                     && !hasIgnoredKeySuffix(canonicalKey);
 
-            //Skips properties that don't match either native keys or secret patterns.
             if (!isKnownHighRiskKey && !isCustomSecretKey) {
+                if (containsSecretPattern(canonicalKey) && !hasIgnoredKeySuffix(canonicalKey)) {
+                    ambiguousKeyFinding(config, entry.getKey(), rawValue).ifPresent(findings::add);
+                }
                 continue;
             }
 
@@ -234,6 +238,37 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         return findings;
     }
 
+    /**
+     * INFO for a key that contains a secret pattern without ending in it: it may name a secret
+     * ({@code app.secret-key-base}, {@code app.password-hash}) or a setting
+     * ({@code spring.cloud.kubernetes.secrets.namespace}), which static analysis can't tell
+     * apart. Reported only for a value that could be a secret: blank values, booleans, numbers,
+     * ignored value prefixes and placeholders without a default are skipped.
+     */
+    private Optional<Finding> ambiguousKeyFinding(EffectiveConfig config, String key, String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmedValue = rawValue.strip();
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(trimmedValue);
+        if (isIgnoredValue(trimmedValue) || resolved.isEmpty()) {
+            return Optional.empty();
+        }
+        String value = resolved.get();
+        if (value.isBlank() || isIgnoredValue(value) || isBoolean(value) || isNumeric(value)) {
+            return Optional.empty();
+        }
+        String message = ("Property '%s' contains a secret-related word but its name doesn't end in it, so static " +
+                "analysis can't tell whether its value is a secret (e.g. 'app.secret-key-base') or a setting " +
+                "(e.g. a namespace or a duration). If it holds a secret, inject it via environment variables " +
+                "or a secret management system.").formatted(key);
+        if (trimmedValue.contains("${")) {
+            message += " The value originates from a static placeholder default ('%s').".formatted(rawValue);
+        }
+        return Optional.of(new Finding(id(), Severity.INFO, message,
+                config.sourceFile().toString(), config.profileLabel()));
+    }
+
     private boolean isIgnoredValue(String value) {
         for (String prefix : ignoredValuePrefixes) {
             if (value.startsWith(prefix)) {
@@ -267,6 +302,19 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             return base;
         }
         return base + " The value originates from a static placeholder default ('%s').".formatted(rawValue);
+    }
+
+    private boolean containsSecretPattern(String canonicalKey) {
+        for (String pattern : secretKeyPatterns) {
+            if (canonicalKey.contains(pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNumeric(String value) {
+        return value.trim().matches("\\d+");
     }
 
     /** Whether the key ends in a secret pattern (e.g. {@code ...keystore.password}), naming the secret itself. */
