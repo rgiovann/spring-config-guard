@@ -41,14 +41,18 @@ Reviewed so far:
   "SCG006 key matching").
 * SCG014, against Spring Boot 4.1.1's `KafkaProperties` (`VALIDATION.md`,
   "SCG014 protocol precedence").
+* SCG007, against the JDBC drivers and kafka-clients (`VALIDATION.md`,
+  "SCG007 credential forms"; ADR-011).
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG007. Where a rule relies on Spring
-Boot behavior, check it against a running app, as for SCG001.
+before starting the next one. Next: SCG012, whose key list has the same
+stale names SCG007 had (`spring.redis.url`, `spring.data.mongodb.uri`;
+ADR-011). Where a rule relies on Spring Boot behavior, check it against a
+running app, as for SCG001.
 
 ### Kafka TLS without hostname verification (candidate rule)
 

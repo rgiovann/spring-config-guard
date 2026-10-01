@@ -741,3 +741,37 @@ On the reference projects only the wording of the 3 "not set" findings
 changes (1 in `spring-boot`, 2 in `spring-cloud-stream-samples`); every
 other finding is byte-identical.
 
+## SCG007 credential forms (JDBC drivers and kafka-clients)
+
+Which credential forms a connection string or JAAS configuration can carry
+was checked against the clients that read them, in the versions Spring
+Boot 4.1.1's dependency management resolves: each JDBC driver's own URL
+parser (or, for H2, a database created with the URL's password, which then
+rejected any other), and kafka-clients 4.2.1's `JaasConfig`.
+
+| # | Value | Read by | SCG007 v1.7.0 | Now |
+|---|---|---|---|---|
+| c01 | `jdbc:mysql://app:s3cr3t@db/app` | MySQL | HIGH | HIGH |
+| c02 | `jdbc:postgresql://db/app?user=app&password=s3cr3t` | PostgreSQL (rejects the user-info form) | silent | HIGH |
+| c03 | `jdbc:mysql://db/app?user=app&password=s3cr3t` | MySQL, MariaDB | silent | HIGH |
+| c04 | `jdbc:sqlserver://db;user=sa;password=s3cr3t` | SQL Server | silent | HIGH |
+| c05 | `jdbc:h2:mem:app;USER=sa;PASSWORD=s3cr3t` | H2 | silent | HIGH |
+| c06 | `jdbc:oracle:thin:scott/s3cr3t@db:1521/orcl` | Oracle | silent | HIGH |
+| c07 | `jdbc:mysql://db:3306/app?serverTimezone=UTC` | no credential | silent | silent |
+| c08 | `jdbc:postgresql://db:5432/app?ApplicationName=a@b` | no credential | HIGH | silent |
+| c09 | `spring.data.redis.url=redis://user:s3cr3t@...` | Spring Boot 4 name | silent | HIGH |
+| c10 | `spring.mongodb.uri=mongodb://app:s3cr3t@...` | Spring Boot 4 name | silent | HIGH |
+| c11 | `spring.flyway.url` with user-info | JDBC | silent | HIGH |
+| c12 | `spring.datasource.hikari.jdbc-url` with user-info | JDBC | silent | HIGH |
+| c13 | `spring.elasticsearch.uris`, credential in the 2nd node | | silent | HIGH |
+| c14 | JAAS `password=s3cr3t`, unquoted | Kafka | silent | HIGH |
+| c15 | JAAS OAuthBearer `clientSecret="s3cr3t"` | Kafka (deprecated option, still read) | silent | HIGH |
+| c16 | `spring.kafka.consumer.properties.sasl.jaas.config` | Kafka per-client map | silent | HIGH |
+| c17 | `spring.kafka.jaas.options.password` | a map entry | SCG006 HIGH | SCG006 HIGH |
+
+SCG007 now detects these forms in every property by the value's shape
+(ADR-011); `HardcodedSecretsRuleTest` and
+`EmbeddedConnectionCredentialsRuleTest` pin them, plus `spring.cloud.config.uri`
+and Eureka's `defaultZone` with user-info. Every reference project above
+reports the same findings, byte for byte, as with the v1.7.0 jar.
+

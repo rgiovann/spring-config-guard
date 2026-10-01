@@ -132,5 +132,15 @@ class EnvironmentPlaceholderTest {
         assertTrue(result.isEmpty());
     }
 
+    @Test
+    @DisplayName("substitute: replaces placeholders with their defaults, or with the marker when they have none, keeping literals")
+    void shouldSubstituteDefaultsAndMarkUnresolved() {
+        assertThat(EnvironmentPlaceholder.substitute("jdbc:mysql://u:s3cr3t@${DB_HOST}/app", "?"))
+                .isEqualTo("jdbc:mysql://u:s3cr3t@?/app");
+        assertThat(EnvironmentPlaceholder.substitute("jdbc:mysql://u:${DB_PASS:dflt}@${DB_HOST:db}:${PORT:3306}/app", "?"))
+                .isEqualTo("jdbc:mysql://u:dflt@db:3306/app");
+        assertThat(EnvironmentPlaceholder.substitute("${A:${B:inner}}-${C}", "?")).isEqualTo("inner-?");
+        assertThat(EnvironmentPlaceholder.substitute("no placeholder", "?")).isEqualTo("no placeholder");
+        assertThat(EnvironmentPlaceholder.substitute("broken ${UNCLOSED", "?")).isEqualTo("broken ${UNCLOSED");
+    }
 }
-

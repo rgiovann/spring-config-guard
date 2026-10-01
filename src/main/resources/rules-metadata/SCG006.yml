@@ -106,8 +106,9 @@ packaged-value-prefixes:
 # Key-suffix list: a key that contains one of the secret-key-patterns above but ends with one
 # of these suffixes is Spring's naming convention for "this property is a network
 # location/endpoint", so its value is an address, not a secret. The address itself is still
-# checked: a password in the URL's user-info is reported as HIGH, a query string as INFO, and a
-# plain URL or path is silent. Confirmed via the same corpus run: "token-uri",
+# checked: a query string is reported as INFO and a plain URL or path is silent. A credential
+# written in the URL (user-info, a password= parameter) is reported by SCG007, which checks every
+# property's value for it. Confirmed via the same corpus run: "token-uri",
 # "token-revocation-uri", and "token-introspection-uri" (OAuth2 Authorization Server endpoint
 # paths, from spring-projects/spring-boot's own oauth2-authorization-server smoke test) all
 # matched the "token" pattern above despite holding a URI path, not a token value.

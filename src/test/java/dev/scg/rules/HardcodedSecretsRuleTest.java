@@ -226,19 +226,16 @@ class HardcodedSecretsRuleTest {
             assertThat(findings).isEmpty();
         }
 
-        @ParameterizedTest(name = "HIGH: ''{0}'' = ''{1}''")
+        @ParameterizedTest(name = "Left to SCG007: ''{0}'' = ''{1}''")
         @CsvSource(delimiter = '|', value = {
                 "app.security.token-url | https://user:s3cr3t@auth.example.com/token",
                 "app.secret-endpoint | https://:s3cr3t@hooks.example.com/notify",
-                "app.security.token-url | ${TOKEN_URL:https://user:s3cr3t@auth.example.com/token}"
+                "app.security.token-url | ${TOKEN_URL:https://user:s3cr3t@auth.example.com/token}",
+                "app.security.token-url | https://auth.example.com/token?password=s3cr3t"
         })
-        @DisplayName("Reports HIGH for a password in the user-info of a URL in a location key")
-        void shouldReportHighForUserInfoPasswordInLocationKey(String key, String value) {
-            assertThat(rule.check(createConfig(Map.of(key, value)))).singleElement().satisfies(finding -> {
-                assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-                assertThat(finding.message()).contains("user-info of the URL in property '" + key + "'");
-                assertThat(finding.message().contains("static placeholder default")).isEqualTo(value.startsWith("${"));
-            });
+        @DisplayName("Leaves a credential written in a location key's URL to SCG007, which checks every value for it")
+        void shouldLeaveWrittenUrlCredentialToScg007(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).isEmpty();
         }
 
         @Test

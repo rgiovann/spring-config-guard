@@ -17,6 +17,32 @@ public final class EnvironmentPlaceholder {
         return resolveSegment(rawValue);
     }
 
+    /**
+     * The value with each placeholder replaced by its static default, or by {@code unresolvedMarker}
+     * when it has none, so the literal parts of a value can still be inspected next to a placeholder
+     * that can't be resolved statically (e.g. a literal password in {@code jdbc:mysql://u:pw@${DB_HOST}/app}).
+     */
+    public static String substitute(String rawValue, String unresolvedMarker) {
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        while (i < rawValue.length()) {
+            int start = rawValue.indexOf(PREFIX, i);
+            if (start < 0) {
+                result.append(rawValue, i, rawValue.length());
+                break;
+            }
+            result.append(rawValue, i, start);
+            int end = findMatchingBrace(rawValue, start + PREFIX.length());
+            if (end < 0) {
+                result.append(rawValue, start, rawValue.length());
+                break;
+            }
+            result.append(resolvePlaceholderBody(rawValue.substring(start + PREFIX.length(), end)).orElse(unresolvedMarker));
+            i = end + 1;
+        }
+        return result.toString();
+    }
+
     private static Optional<String> resolveSegment(String text) {
         StringBuilder result = new StringBuilder();
         int i = 0;

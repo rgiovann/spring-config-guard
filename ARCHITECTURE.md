@@ -868,3 +868,79 @@ Alternatives rejected:
 SCG gains a way to see the environment a configuration runs with (it would
 then know whether the key is set), or a new rule reports absence: it
 follows this ADR, unless its Javadoc explains why not.
+
+---
+
+## ADR-011: SCG007 Detects Embedded Credentials by the Value's Shape, in Every Property
+
+### Status
+Accepted. Supersedes ADR-001 for SCG007, which no longer detects through a
+key catalog; ADR-001 still describes SCG012.
+
+### Context
+SCG007 inspected only the keys in its `uri-based` and `jaas-based` lists,
+and only one credential form per kind. Reviewed against the clients that
+read these values, in the versions Spring Boot 4.1.1 manages
+(`VALIDATION.md`, "SCG007 credential forms"), it reported 1 of 15 real
+credential forms and one false positive:
+
+* the list had gone stale: `spring.redis.url` and `spring.data.mongodb.uri`
+  are deprecated, and Spring Boot 4's `spring.data.redis.url` and
+  `spring.mongodb.uri`, whose descriptions say the URL carries the
+  password, were missing, as were `spring.flyway.url`, the pool-specific
+  JDBC URLs and the Kafka per-client `sasl.jaas.config`. A list never
+  covered Spring Cloud (`spring.cloud.config.uri`, Eureka's `defaultZone`)
+  or the application's own keys either. ADR-001's "revisit if" had
+  happened: the lists drifted and left a real gap, in SCG012's list too;
+* only `scheme://user:password@host` was recognized, while PostgreSQL reads
+  `?password=` (and rejects the user-info form), SQL Server and H2 read
+  `;password=`, Oracle reads `user/password@host`, and Kafka accepts JAAS
+  values unquoted and a `clientSecret` option;
+* an `@` in a URL parameter (`?ApplicationName=a@b`) was read as user-info.
+
+### Decision
+SCG007 looks for embedded credentials in every property by the shape of
+the value (`EmbeddedCredentials`): user-info in any node of a
+comma-separated list, a URL parameter ending in `password`, Oracle's
+`user/password@`, and JAAS `password`/`clientSecret` options, quoted or
+not. URL forms are looked for only in a value starting with `jdbc:` or
+containing `://`, JAAS options only in a value naming a `LoginModule`. A
+written credential is HIGH; placeholders are substituted first, so a
+literal password next to an unresolved host is still found and a
+placeholder in the credential slot is not a written credential.
+
+`SCG007.yml`'s `connection-keys` no longer decides what is inspected: it
+lists the native connection properties for which a value that can't be
+verified statically (an unresolved placeholder, an empty default) is INFO.
+
+The user-info check SCG006 had added for keys ending in
+`-uri`/`-url`/`-endpoint` moves to SCG007, so one credential is reported
+by one rule; SCG006 keeps its INFO for a query string, unless SCG007
+already reports a credential in that URL.
+
+A refreshed key list was rejected: it fixes today's names and drifts again
+at the next rename, and it can't cover keys outside Spring Boot.
+
+### Consequences
+
+**Positive**
+* All 15 verified forms are reported; the `@`-in-a-parameter false
+  positive is gone.
+* No list to keep in step with Spring Boot's renames for detection.
+* Every reference project in `VALIDATION.md` reports the same findings,
+  byte for byte: none of their values has one of these shapes without
+  already being reported.
+
+**Negative / Trade-offs**
+* A value with one of these shapes in any property is reported, e.g. an
+  example connection string kept in a property for documentation. That is
+  a credential written in the file all the same.
+* A credential only in a path segment or in a parameter not ending in
+  `password` (`?token=`) is not SCG007's; SCG006 covers the parameter as
+  INFO when the key names a secret.
+
+### Revisit if
+A client is found that reads a credential from a form `EmbeddedCredentials`
+doesn't know, or a value shape turns out to match non-credentials in real
+configurations.
+

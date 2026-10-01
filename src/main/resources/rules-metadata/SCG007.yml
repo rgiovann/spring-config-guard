@@ -1,32 +1,43 @@
 # SCG007 (EmbeddedConnectionCredentialsRule) configuration.
 #
-# Both lists below hold canonicalized property keys (RelaxedProperties.canonicalize()) whose
-# VALUE is inspected for an embedded plaintext credential — this rule detects by value shape,
-# not by key name, so unlike SCG006 there is no substring/pattern matching here: a key either
-# is one of these connection-string properties, or it isn't checked at all.
-
-# Keys whose value is a connection URI of the form "scheme://user:password@host" (JDBC,
-# R2DBC, MongoDB, Redis, Elasticsearch, RabbitMQ, ActiveMQ, ...). Matched against
-# EMBEDDED_URI_PASSWORD_PATTERN after placeholder resolution.
-uri-based:
+# SCG007 finds an embedded credential by the shape of a value, in every property (see
+# EmbeddedCredentials): a password in a URL's user-info, a password= URL parameter, Oracle's
+# user/password@host, or a password/clientSecret option in a JAAS configuration. No key list
+# decides what is inspected.
+#
+# connection-keys lists the native connection properties, canonicalized
+# (RelaxedProperties.canonicalize()), for which a value that can't be verified statically -- an
+# unresolved placeholder (${DB_URL}) or an empty default (${DB_URL:}) -- is reported as INFO: the
+# URL or JAAS configuration injected at runtime may carry a credential. Current names in Spring
+# Boot 4.1.1's configuration metadata, plus the deprecated names still used by Spring Boot 2/3
+# projects (spring.redis.url, spring.data.mongodb.uri), the Kafka sasl.jaas.config map entries and
+# the Spring Cloud Stream Kafka binders' (ADR-009).
+connection-keys:
   - "spring.datasource.url"
+  - "spring.datasource.hikari.jdbc-url"
+  - "spring.datasource.dbcp2.url"
+  - "spring.datasource.tomcat.url"
   - "spring.r2dbc.url"
+  - "spring.flyway.url"
+  - "spring.liquibase.url"
+  - "spring.mongodb.uri"
   - "spring.data.mongodb.uri"
+  - "spring.data.redis.url"
   - "spring.redis.url"
   - "spring.elasticsearch.uris"
   - "spring.rabbitmq.addresses"
   - "spring.activemq.broker-url"
-
-# Keys whose value is a JAAS configuration string (Kafka SASL) that may embed a
-# password="..." entry inline. Matched against JAAS_PASSWORD_PATTERN after placeholder
-# resolution. The Spring Cloud Stream Kafka and Kafka Streams binders pass their
-# configuration/consumer-properties/producer-properties maps to the Kafka clients as-is, so
-# sasl.jaas.config there is the same JAAS string (ADR-009). A key written inside a named
-# binder's environment (spring.cloud.stream.binders.<name>.environment.*) is matched without
-# that prefix.
-jaas-based:
+  - "spring.artemis.broker-url"
+  - "spring.couchbase.connection-string"
+  - "spring.neo4j.uri"
+  - "spring.ldap.urls"
+  - "spring.pulsar.client.service-url"
+  - "spring.pulsar.admin.service-url"
   - "spring.kafka.properties.sasl.jaas.config"
-  - "spring.kafka.jaas.options"
+  - "spring.kafka.producer.properties.sasl.jaas.config"
+  - "spring.kafka.consumer.properties.sasl.jaas.config"
+  - "spring.kafka.admin.properties.sasl.jaas.config"
+  - "spring.kafka.streams.properties.sasl.jaas.config"
   - "spring.cloud.stream.kafka.binder.configuration.sasl.jaas.config"
   - "spring.cloud.stream.kafka.binder.consumer-properties.sasl.jaas.config"
   - "spring.cloud.stream.kafka.binder.producer-properties.sasl.jaas.config"

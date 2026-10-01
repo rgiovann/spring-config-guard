@@ -3,8 +3,6 @@ package dev.scg.rules;
 import dev.scg.core.*;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -52,8 +50,9 @@ import java.util.stream.Collectors;
  *     ships with the application).</li>
  *     <li>Key-based. {@code ignored-key-suffixes}: a key containing a pattern but ending in
  *     {@code -uri}/{@code -url}/{@code -endpoint} holds an address (OAuth2 Authorization Server's
- *     {@code token-uri} holds a path, not a token). The URL is still checked: a password in its
- *     user-info is HIGH, a query string is INFO, anything else is silent.
+ *     {@code token-uri} holds a path, not a token). The URL is still checked: a query string is
+ *     INFO, anything else is silent. A credential written in the URL (user-info, a
+ *     {@code password=} parameter) is SCG007's, which checks every property's value for it.
  *     {@code public-material-suffixes}: a key that only contains a pattern but ends in
  *     {@code certificate}/{@code certificate-location} names a certificate, public by design, so
  *     it is silent (SAML's {@code ...signing.credentials[0].certificate-location} contains the
@@ -78,9 +77,6 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private List<String> publicMaterialSuffixes;
     private static final String RULE_NAME = "SCG006";
 
-    // <scheme>://<user>:<password>@ — the password group may be empty ("user:@host"), which is
-    // not reported. Stops at '/' so a '@' later in the path isn't read as user-info.
-    private static final Pattern URL_USER_INFO_PASSWORD = Pattern.compile("://[^/@:]*:([^/@]*)@");
 
     @Override
     public String id() {
@@ -312,9 +308,9 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
     /**
      * A key that contains a secret pattern but ends in a location suffix ({@code token-uri},
-     * {@code app.secret-url}) holds an address. A URL can still carry a secret: a password in
-     * its user-info is written in the file (HIGH); a query string may hold a token or an API key
-     * (INFO); a secret in the path itself (a webhook URL) can't be told from an ordinary path
+     * {@code app.secret-url}) holds an address. A URL can still carry a secret: a credential
+     * written in it is reported by SCG007 (EmbeddedCredentials), so it is left to that rule here; a
+     * query string may hold a token or an API key (INFO); a secret in the path itself (a webhook URL) can't be told from an ordinary path
      * without entropy analysis, a generic secret scanner's job, so a URL with neither stays
      * silent.
      */
@@ -331,13 +327,8 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         String origin = trimmedValue.contains("${")
                 ? " The value originates from a static placeholder default ('%s').".formatted(rawValue)
                 : "";
-        Matcher userInfo = URL_USER_INFO_PASSWORD.matcher(value);
-        if (userInfo.find() && !userInfo.group(1).isEmpty()) {
-            return Optional.of(new Finding(id(), Severity.HIGH,
-                    ("Hardcoded credential detected in the user-info of the URL in property '%s'. " +
-                            "Never store credentials in plaintext configuration files; inject them via " +
-                            "environment variables or a secret management system.").formatted(key) + origin,
-                    config.sourceFile().toString(), config.profileLabel()));
+        if (EmbeddedCredentials.find(value).stream().anyMatch(credential -> !credential.isBlank())) {
+            return Optional.empty(); // a credential written in the URL is SCG007's to report
         }
         int query = value.indexOf('?');
         if (query >= 0 && query < value.length() - 1) {
