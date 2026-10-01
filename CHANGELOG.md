@@ -8,6 +8,65 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.7.0
+
+**Added**
+- SCG006 checks the URL in a key that contains a secret pattern but ends in
+  `-uri`/`-url`/`-endpoint` (`app.security.token-url`), which used to be
+  skipped whatever its value: a password in the URL's user-info
+  (`https://user:secret@host`) is HIGH, a query string (`?token=...`) is
+  INFO. A plain URL or path stays silent; a secret in the path itself (a
+  webhook URL) is not detected.
+- SCG006 reports a `classpath:` value in a key naming secret material
+  (`private-key: classpath:server.key`) as INFO: the material is packaged
+  inside the application. It used to be skipped as a mere reference.
+  `file:` values are still skipped, and so is a certificate or its location
+  (public material).
+
+**Fixed**
+- SCG006 matched a secret pattern (`password`, `secret`, `token`,
+  `credential`, ...) anywhere in a key, so a namespace, a map key or a
+  package name containing the word was reported as HIGH, including Spring
+  Boot's own properties: `spring.security.oauth2.authorizationserver.client.<id>.token.access-token-time-to-live=5m`,
+  `spring.security.oauth2.resourceserver.opaquetoken.client-id`,
+  `logging.level.<package>.token=DEBUG`, `spring.cloud.kubernetes.secrets.namespace`.
+  A key is now HIGH only when it ends in a pattern; a key that only
+  contains one is INFO, since it may still name a secret
+  (`app.secret-key-base`); `logging.level` and `logging.group` are skipped.
+  Three `high-risk-keys` absent from Spring Boot 4.1.1 were replaced and 11
+  current ones added.
+- SCG014 evaluated every `security.protocol` key on its own, so an insecure
+  value overridden by a secure one was still reported as HIGH (e.g.
+  `spring.kafka.security.protocol=PLAINTEXT` with
+  `spring.kafka.properties.security.protocol=SSL`). It now resolves the
+  protocol each Kafka client gets as Spring Boot does (client properties
+  map, client key, common properties map, common key) and reports only the
+  keys a client uses. The "not set" finding names the clients left without
+  a protocol, and is no longer raised when every client has its own key.
+
+**Detection changes**
+- **Fewer HIGH findings**: SCG006 keys that only contain a secret pattern
+  move from HIGH to INFO, and SCG014 no longer reports overridden values.
+  With `--fail-on=HIGH`, some builds that failed only on these now pass.
+- **New findings**: SCG006 reports a password in a URL's user-info as HIGH,
+  and a query string or a `classpath:` secret as INFO, in keys it used to
+  skip.
+- Measured on 30 hand-built keys and Spring Boot 4.1.1's configuration
+  metadata (`VALIDATION.md`, "SCG006 key matching") and on Spring Boot's
+  own `KafkaProperties` (`VALIDATION.md`, "SCG014 protocol precedence").
+- On the reference corpus, against `v1.6.0`: 6 SCG006 INFO added in
+  `spring-boot`, all private keys packaged with an application (the SNI
+  integration tests' PEM bundles and the SAML smoke test's
+  `private-key-location`); the 3 SCG014 "not set" findings keep their rule,
+  severity, file and profile, with new wording. Every other finding and
+  coverage warning is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.6.0...v1.7.0`.
+
 ## v1.6.0
 
 **Fixed**
