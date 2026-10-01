@@ -43,16 +43,35 @@ Reviewed so far:
   "SCG014 protocol precedence").
 * SCG007, against the JDBC drivers and kafka-clients (`VALIDATION.md`,
   "SCG007 credential forms"; ADR-011).
+* SCG012, against the JDBC drivers and Spring Boot's Redis configuration
+  (`VALIDATION.md`, "SCG012 driver modes").
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG012, whose key list has the same
-stale names SCG007 had (`spring.redis.url`, `spring.data.mongodb.uri`;
-ADR-011). Where a rule relies on Spring Boot behavior, check it against a
+before starting the next one. Next: the rules that combine keys, SCG003
+first. Where a rule relies on Spring Boot behavior, check it against a
 running app, as for SCG001.
+
+### SCG012 cases left open (decide with measurements)
+
+Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
+
+* **Default modes that allow plaintext.** PostgreSQL's default
+  `sslmode=prefer` and MySQL's default `sslMode=PREFERRED` fall back to an
+  unencrypted connection when the server doesn't offer TLS. Reporting a
+  JDBC URL without an explicit mode would reach almost every PostgreSQL and
+  MySQL URL; measure on the corpus first, and decide between INFO
+  (CLAUDE.md, "Findings") and leaving it to the server's configuration.
+* **Redis `redis://` without `spring.data.redis.ssl.enabled`.** Plaintext
+  only when both hold, so it needs the two keys together (like SCG015 for
+  RabbitMQ), not a scheme alone.
+* **Artemis `tcp://`.** Artemis enables TLS with an `sslEnabled=true`
+  parameter on a `tcp://` URL, unlike ActiveMQ Classic's `ssl://` scheme;
+  confirm in Artemis' client before treating `tcp://` without it as
+  plaintext for `spring.artemis.broker-url`.
 
 ### Kafka TLS without hostname verification (candidate rule)
 

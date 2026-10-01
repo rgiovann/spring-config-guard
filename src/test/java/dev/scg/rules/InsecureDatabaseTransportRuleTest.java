@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.yaml.snakeyaml.Yaml;
 
@@ -199,7 +200,7 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(1);
             Finding finding = findings.getFirst();
-            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("verifyservercertificate=false")
                     .contains("CWE-295");
@@ -220,7 +221,7 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(1);
             Finding finding = findings.getFirst();
-            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("trustservercertificate=true")
                     .contains("CWE-295");
@@ -239,7 +240,7 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(1);
             Finding finding = findings.getFirst();
-            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message()).contains("CWE-295");
         }
 
@@ -258,7 +259,7 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(1);
             Finding finding = findings.getFirst();
-            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("verifypeer=none")
                     .contains("CWE-295");
@@ -663,6 +664,70 @@ class InsecureDatabaseTransportRuleTest {
 
             assertThat(findings).hasSize(2);
             assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
+        }
+    }
+
+    @Nested
+    @DisplayName("Forms confirmed against the JDBC drivers Spring Boot 4.1.1 manages (VALIDATION.md, \"SCG012 driver modes\")")
+    class DriverModes {
+
+        private List<Finding> check(String key, String value) {
+            return rule.check(new EffectiveConfig(mockPath, "default", Map.of(key, value)));
+        }
+
+        @ParameterizedTest(name = "HIGH: {0} = {1}")
+        @CsvSource(delimiter = '|', value = {
+                // Spring Boot 4.1.1's current names, or any key: the parameters are found by the value's shape
+                "spring.mongodb.uri | mongodb://mongo.example.com/app?tls=false",
+                "spring.flyway.url | jdbc:postgresql://db.example.com/app?sslmode=disable",
+                "spring.datasource.hikari.jdbc-url | jdbc:mysql://db.example.com/app?sslMode=DISABLED",
+                "app.reporting.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=disable",
+                "spring.r2dbc.url | r2dbc:postgresql://db.example.com/app?sslMode=disable",
+                // mssql-jdbc: no and optional mean no encryption; MariaDB: false and 0 mean DISABLE
+                "spring.datasource.url | jdbc:sqlserver://db.example.com;databaseName=app;encrypt=optional",
+                "spring.datasource.url | jdbc:sqlserver://db.example.com;databaseName=app;encrypt=no",
+                "spring.datasource.url | jdbc:mariadb://db.example.com/app?sslMode=false",
+                "spring.datasource.url | jdbc:mariadb://db.example.com/app?sslMode=0",
+                // Every node of a list is checked for its scheme, not only the first
+                "spring.elasticsearch.uris | https://es1.example.com:9200,http://es2.example.com:9200"
+        })
+        @DisplayName("Reports HIGH where TLS is disabled")
+        void shouldReportDisabledTls(String key, String value) {
+            assertThat(check(key, value)).singleElement()
+                    .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+        }
+
+        @ParameterizedTest(name = "MEDIUM: {0} = {1}")
+        @CsvSource(delimiter = '|', value = {
+                // pgjdbc: require encrypts without verifying (SslMode.verifyCertificate() is false)
+                "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=require",
+                // MySQL Connector/J: REQUIRED encrypts without verifying
+                "spring.datasource.url | jdbc:mysql://db.example.com/app?sslMode=REQUIRED",
+                // MariaDB: trust accepts any certificate
+                "spring.datasource.url | jdbc:mariadb://db.example.com/app?sslMode=trust"
+        })
+        @DisplayName("Reports MEDIUM where TLS is used without verifying the certificate")
+        void shouldReportUnverifiedTls(String key, String value) {
+            assertThat(check(key, value)).singleElement()
+                    .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+        }
+
+        @ParameterizedTest(name = "Silent: {0} = {1}")
+        @CsvSource(delimiter = '|', value = {
+                "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=verify-full",
+                "spring.datasource.url | jdbc:mysql://db.example.com/app?sslMode=VERIFY_IDENTITY",
+                // The default modes are not reported (PostgreSQL prefer, MySQL PREFERRED)
+                "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=prefer",
+                // redis:// can still use TLS through spring.data.redis.ssl.enabled
+                "spring.data.redis.url | redis://redis.example.com:6379",
+                // A scheme is only checked in the known connection keys: no generic http:// scanner
+                "app.docs.url | http://docs.example.com",
+                // An unresolved placeholder is INFO only for the known connection keys
+                "app.reporting.datasource.url | ${REPORTING_DB_URL}"
+        })
+        @DisplayName("Stays silent for verified TLS, default modes, redis://, and http:// or a placeholder outside the connection keys")
+        void shouldStaySilent(String key, String value) {
+            assertThat(check(key, value)).isEmpty();
         }
     }
 }

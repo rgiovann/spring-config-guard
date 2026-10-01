@@ -9,16 +9,23 @@ import java.util.stream.Collectors;
  * Security rule (SCG012) that detects explicit disabling or degradation of TLS/SSL
  * transport encryption in database and broker connection URIs.
  *
- * <p>Inspects {@code uri-based} connection properties (JDBC, R2DBC, MongoDB, Redis,
- * Elasticsearch, RabbitMQ, ActiveMQ, LDAP, ...) via three mechanisms, kept separate since
- * they're different vulnerability classes or evidence shapes, not one flat "risky value"
- * bucket:
+ * <p>Inspects connection strings via three mechanisms, kept separate since they're different
+ * vulnerability classes or evidence shapes, not one flat "risky value" bucket. The two query
+ * parameter mechanisms apply to <b>every property</b> whose value is a database connection string
+ * ({@code jdbc:}, {@code r2dbc:}, {@code mongodb:}, {@code mongodb+srv:}): those prefixes only
+ * name databases, so the value's shape is enough, and a key list went stale as Spring Boot renamed
+ * properties ({@code spring.mongodb.uri}, {@code spring.flyway.url}, the pool-specific JDBC URLs).
+ * The scheme mechanism stays limited to {@code uri-based} keys: {@code http://} in an arbitrary
+ * property is not a database or broker connection (BACKLOG.md, "Discarded": a generic
+ * {@code http://} scanner).
  * <ul>
  *     <li>{@code risky-query-params}: TLS/SSL disabled or downgradable to cleartext
  *     (e.g., {@code sslmode=disable}, {@code useSSL=false}) — CWE-319.</li>
  *     <li>{@code no-verify-query-params}: TLS is used, but certificate/hostname validation
- *     is explicitly disabled (e.g., {@code verifyServerCertificate=false}) — the wire is
- *     encrypted, but a forged/self-signed certificate lets an attacker MITM anyway — CWE-295.</li>
+ *     is explicitly disabled (e.g., {@code verifyServerCertificate=false}, PostgreSQL's
+ *     {@code sslmode=require}, MySQL's {@code sslMode=REQUIRED}, MariaDB's {@code sslMode=trust})
+ *     — the wire is encrypted, but a forged/self-signed certificate lets an attacker MITM anyway —
+ *     CWE-295.</li>
  *     <li>{@code risky-schemes}: same CWE-319 outcome as {@code risky-query-params}, but the
  *     signal is the URI's own scheme ({@code http://}, {@code amqp://}, {@code tcp://},
  *     {@code ldap://}), not a query parameter — added because Elasticsearch/RabbitMQ/ActiveMQ/
@@ -26,8 +33,11 @@ import java.util.stream.Collectors;
  *     {@code uri-based} alone (as Elasticsearch/RabbitMQ/ActiveMQ originally were) left them as
  *     dead entries that could never actually match either query-param mechanism.</li>
  * </ul>
- * All three are reported at {@link Severity#HIGH}: the practical outcome (an attacker in the
- * network path reads all traffic) is the same regardless of which mechanism detects it.
+ * TLS disabled (query parameter or scheme) is {@link Severity#HIGH}: anyone on the network path
+ * reads the traffic passively. Certificate validation disabled is {@link Severity#MEDIUM}: the
+ * traffic is encrypted, and reading it takes an active man in the middle presenting a forged
+ * certificate. Both are written in the file, so both are certain evidence; the difference is the
+ * attack they allow.
  * <p>
  * {@code sslmode=prefer} is deliberately NOT in {@code risky-query-params}: it's the
  * PostgreSQL JDBC driver's own default when the property is absent entirely (confirmed in
@@ -46,6 +56,9 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
     private Map<String, Set<String>> riskyQueryParams;
     private Map<String, Set<String>> noVerifyQueryParams;
     private Set<String> riskySchemes;
+
+    /** Prefixes that only ever start a database connection string. */
+    private static final List<String> DATABASE_URL_PREFIXES = List.of("jdbc:", "r2dbc:", "mongodb:", "mongodb+srv:");
 
     @Override
     public String id() {
@@ -128,16 +141,19 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
             // -- same fix as EmbeddedConnectionCredentialsRule (SCG007), applied here from the
             // start instead of inheriting the gap.
             String canonicalKey = RelaxedProperties.canonicalRoot(RelaxedProperties.canonicalize(entry.getKey()));
-            if (!uriBasedKeys.contains(canonicalKey)) {
+            boolean isUriKey = uriBasedKeys.contains(canonicalKey);
+            String trimmedValue = rawValue.strip();
+            if (!isUriKey && !isDatabaseUrl(EnvironmentPlaceholder.substitute(trimmedValue, ""))) {
                 continue;
             }
-
-            String trimmedValue = rawValue.strip();
 
             // 1. Resolve environment placeholders
             Optional<String> resolvedValue = EnvironmentPlaceholder.resolve(trimmedValue);
 
-            // Unresolved dynamic placeholder -> INFO
+            // Unresolved dynamic placeholder -> INFO, for the known connection keys only
+            if (resolvedValue.isEmpty() && !isUriKey) {
+                continue;
+            }
             if (resolvedValue.isEmpty()) {
                 findings.add(new Finding(
                         id(),
@@ -163,7 +179,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
             // "http://host:port" with no query string would never reach the other two checks.
             boolean isFromPlaceholderDefault = trimmedValue.contains("${");
 
-            Optional<String> insecureScheme = findSchemeMatch(valueToInspect);
+            Optional<String> insecureScheme = isUriKey ? findSchemeMatch(valueToInspect) : Optional.empty();
             if (insecureScheme.isPresent()) {
                 findings.add(new Finding(
                         id(),
@@ -191,7 +207,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
             if (noVerify.isPresent()) {
                 findings.add(new Finding(
                         id(),
-                        Severity.HIGH,
+                        Severity.MEDIUM,
                         buildNoVerifyMessage(entry.getKey(), rawValue, noVerify.get(), isFromPlaceholderDefault),
                         config.sourceFile().toString(),
                         config.profileLabel()
@@ -210,10 +226,22 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
      * still match here.
      */
     private Optional<String> findSchemeMatch(String uriString) {
-        String lowerCased = uriString.toLowerCase(Locale.ROOT);
-        return riskySchemes.stream()
-                .filter(lowerCased::startsWith)
-                .findFirst();
+        // Every node of a comma-separated list (spring.elasticsearch.uris=https://a,http://b)
+        for (String node : uriString.split(",")) {
+            String lowerCased = node.strip().toLowerCase(Locale.ROOT);
+            Optional<String> match = riskySchemes.stream()
+                    .filter(lowerCased::startsWith)
+                    .findFirst();
+            if (match.isPresent()) {
+                return match;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isDatabaseUrl(String value) {
+        String lowerCased = value.toLowerCase(Locale.ROOT);
+        return DATABASE_URL_PREFIXES.stream().anyMatch(lowerCased::startsWith);
     }
 
     private Optional<String> findMatch(String uriString, Map<String, Set<String>> paramMap) {
@@ -271,7 +299,7 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
     }
 
     private String buildNoVerifyMessage(String key, String rawValue, String matchedParam, boolean isFromPlaceholderDefault) {
-        String base = ("Certificate validation is explicitly disabled in connection property '%s' via parameter '%s'. " +
+        String base = ("Certificate validation is disabled in connection property '%s' via parameter '%s'. " +
                 "The connection is encrypted, but accepting any certificate (forged or self-signed) allows an " +
                 "attacker to man-in-the-middle the connection despite TLS being active (CWE-295).")
                 .formatted(key, matchedParam);

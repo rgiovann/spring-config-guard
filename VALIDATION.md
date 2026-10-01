@@ -775,3 +775,54 @@ SCG007 now detects these forms in every property by the value's shape
 and Eureka's `defaultZone` with user-info. Every reference project above
 reports the same findings, byte for byte, as with the v1.7.0 jar.
 
+## SCG012 driver modes (JDBC drivers and Spring Boot's Redis configuration)
+
+Which values turn TLS off, or keep it on without checking the server's
+certificate, was read from the drivers Spring Boot 4.1.1's dependency
+management resolves: pgjdbc 42.7.13 (`SslMode.requireEncryption()` and
+`verifyCertificate()` for each mode), MySQL Connector/J 9.7 (the `sslMode`
+property description), mssql-jdbc 13.4 (`EncryptOption.valueOfString`) and
+MariaDB Connector/J 3.5 (`SslMode.from`).
+
+* No encryption: PostgreSQL `sslmode=disable`/`allow` (and the default
+  `prefer` doesn't require it), MySQL `sslMode=DISABLED`, SQL Server
+  `encrypt=false`, `no` and `optional`, MariaDB `sslMode=disable`, `false`
+  and `0`.
+* Encryption without certificate validation: PostgreSQL `sslmode=require`,
+  MySQL `sslMode=REQUIRED`, MariaDB `sslMode=trust` (its TLS plugin then
+  installs `MariaDbX509TrustingManager`, whose `checkServerTrusted` accepts
+  any certificate); only `verify-ca`/`verify-full` (MySQL
+  `VERIFY_CA`/`VERIFY_IDENTITY`) check it.
+* Redis: Spring Boot 4.1.1's Lettuce and Jedis configurations enable TLS
+  when `spring.data.redis.ssl.enabled` is true or the URL is `rediss://`,
+  so a `redis://` URL alone doesn't prove plaintext.
+
+| # | Value | v1.7.0 | After the SCG012 review (unreleased) |
+|---|---|---|---|
+| t01 | `spring.datasource.url` `?sslmode=disable` | HIGH | HIGH |
+| t02 | `spring.mongodb.uri` `?tls=false` | silent | HIGH |
+| t03 | `spring.data.redis.url=redis://...` | silent | silent |
+| t04 | `spring.flyway.url` `?sslmode=disable` | silent | HIGH |
+| t05 | `spring.datasource.hikari.jdbc-url` `?sslMode=DISABLED` | silent | HIGH |
+| t06 | `spring.artemis.broker-url=tcp://...` | silent | silent |
+| t07 | SQL Server `encrypt=optional` | silent | HIGH |
+| t08 | SQL Server `encrypt=no` | silent | HIGH |
+| t09 | MariaDB `sslMode=false` | silent | HIGH |
+| t10 | MariaDB `sslMode=trust` | silent | MEDIUM |
+| t11 | PostgreSQL `sslmode=require` | silent | MEDIUM |
+| t12 | MySQL `sslMode=REQUIRED` | silent | MEDIUM |
+| t13 | `spring.elasticsearch.uris=https://es1,http://es2` | silent | HIGH |
+| t14 | PostgreSQL `sslmode=verify-full` | silent | silent |
+
+The query parameters are now looked for in every property whose value
+starts with `jdbc:`, `r2dbc:`, `mongodb:` or `mongodb+srv:`, which covers
+t02, t04 and t05 whatever the key; the scheme check (`http://`, `tcp://`,
+`amqp://`, `ldap://`) stays limited to the known connection keys, now with
+Spring Boot 4.1.1's names, and checks every node of a list (t13).
+Certificate validation turned off is MEDIUM rather than HIGH, including
+`verifyServerCertificate=false` and the other parameters already listed:
+the traffic is encrypted and reading it takes an active man in the middle.
+Every reference project above reports the same findings, byte for byte, as
+with the v1.7.0 jar. t03, t06 and the default modes are left for later
+(BACKLOG.md).
+

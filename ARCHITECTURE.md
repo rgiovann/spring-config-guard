@@ -23,7 +23,10 @@ earlier ADR by referencing it, rather than rewriting history).
 ## ADR-001: Decoupling URI Property Catalogs Between Security Rules (SCG007 vs SCG012)
 
 ### Status
-Accepted
+Accepted. Since ADR-011, SCG007 no longer detects through a key catalog;
+since the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"), SCG012's
+`uri-based` list only drives its scheme check, and its query parameter
+checks apply to any database connection string.
 
 ### Context
 Two rules both need the same catalog of Spring properties whose value is a
