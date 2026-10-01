@@ -26,9 +26,12 @@ import java.util.Set;
  * defers entirely in that case rather than duplicating or second-guessing SCG012 based on
  * {@code ssl.enabled}, which Spring ignores once a scheme is present.
  * <p>
- * Severity {@link Severity#HIGH}: the AMQP handshake itself carries the broker credentials, so
- * an unencrypted connection exposes both those credentials and message payloads to anyone with
- * network visibility — the same risk class as SCG012/SCG014. No profile exemption (Zero-Trust).
+ * Severity {@link Severity#HIGH} for an explicit {@code ssl.enabled=false}: the AMQP handshake
+ * itself carries the broker credentials, so an unencrypted connection exposes both those
+ * credentials and message payloads to anyone with network visibility — the same risk class as
+ * SCG012/SCG014. {@link Severity#MEDIUM} when SSL is only not enabled: the same default applies,
+ * but TLS may be enabled outside the scanned files (ARCHITECTURE.md, ADR-010). No profile
+ * exemption (Zero-Trust).
  * Plain {@link Rule}: the property keys are fixed facts of Spring AMQP's binding, not
  * organization-specific.
  */
@@ -118,13 +121,19 @@ public final class RabbitMqInsecureTransportRule implements Rule {
         return List.of(explicitlyDisabledFinding(config, rawEnabled));
     }
 
+    /**
+     * MEDIUM, not HIGH like an explicit {@code ssl.enabled=false}: the default is unencrypted, but
+     * TLS may be enabled outside these files, through an environment variable SCG can't see
+     * (ARCHITECTURE.md, ADR-010).
+     */
     private Finding notConfiguredFinding(EffectiveConfig config) {
         return new Finding(
                 id(),
-                Severity.HIGH,
+                Severity.MEDIUM,
                 ("RabbitMQ is configured via '%s'/'%s', but '%s' is not explicitly set. " +
                         "Spring Boot defaults to an unencrypted connection unless SSL is explicitly enabled " +
-                        "(or an SSL bundle is configured). Set '%s' to 'true'.")
+                        "(or an SSL bundle is configured). Set '%s' to 'true'. Reported as MEDIUM because " +
+                        "SSL may be enabled outside these files, e.g. by an environment variable.")
                         .formatted(HOST_KEY, ADDRESSES_KEY, SSL_ENABLED_KEY, SSL_ENABLED_KEY),
                 config.sourceFile().toString(),
                 config.profileLabel()

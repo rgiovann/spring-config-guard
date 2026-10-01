@@ -780,3 +780,91 @@ Spring Cloud Stream changes how its binders merge properties or build a
 binder's environment, or another rule needs binder contexts (the helper is
 there to reuse).
 
+
+## ADR-010: A Finding Based on an Absent Key Is Reported One Level Below a Written Value
+
+### Status
+Accepted
+
+### Context
+Some rules report a risk because a key is absent and Spring's or the
+client's default is insecure, not because an insecure value is written:
+SCG014 when Kafka is configured but no `security.protocol` is set (Kafka's
+default is `PLAINTEXT`), for `spring.kafka.*` and, since ADR-009, for the
+Spring Cloud Stream Kafka binders; SCG015 when RabbitMQ is configured but
+`spring.rabbitmq.ssl.enabled` is absent or resolves to an empty default
+(`${RABBIT_SSL:}`). Both were HIGH, the same as an insecure value written in
+the file.
+
+The evidence is not the same. `security.protocol: PLAINTEXT` in the file is
+certain. An absent key is nearly certain, but SCG sees configuration files
+only: production often sets such a key through an environment variable, a
+command-line argument or a Config Server, and SCG can't see any of them.
+On the reference corpus, 31 of the 34 SCG014 findings in
+`spring-cloud-stream-samples` and the one SCG014 finding in `spring-boot`
+were of this kind (`VALIDATION.md`).
+
+Before deciding, every rule was checked for findings based on absence.
+Besides SCG014 and SCG015:
+
+* SCG011, SCG012 and SCG016 stay silent when the key is absent;
+* SCG006 already reports a blank value as INFO;
+* SCG008 reports a default-on feature (SpringDoc) with no explicit disable,
+  already MEDIUM;
+* the other rules report written values only.
+
+### Decision
+A finding whose only evidence is an absent key with an insecure default is
+reported as **MEDIUM**. The same risk with an insecure value written in the
+files stays **HIGH**. INFO keeps its meaning (static analysis can't tell
+whether there is a risk): an absent key is not undeterminable, Spring's
+default is known and insecure, so it is reported, one level lower.
+
+Each such finding's message ends by saying why it is MEDIUM ("... may be set
+outside these files, e.g. by an environment variable"), so a reader doesn't
+mistake it for a lesser risk.
+
+Applied to SCG014 (the `spring.kafka.*` check and the binder check) and to
+SCG015's "not configured" finding. Explicit `PLAINTEXT`/`SASL_PLAINTEXT` and
+`ssl.enabled=false` (literal or as a placeholder's default) stay HIGH.
+
+Alternatives rejected:
+
+* **INFO.** It would no longer fail a CI gate at any `--fail-on` level
+  (INFO never fails the build on its own), hiding a risk that is real in
+  most projects that leave the key out.
+* **Keeping HIGH.** It treats a key set in production through the
+  environment the same as a key written insecurely, so the default gate
+  fails on projects that are configured correctly, and `--policy` becomes
+  the routine answer instead of the exception.
+* **Exempting profiles or merging findings per file.** A profile exemption
+  breaks Zero-Trust (`CLAUDE.md`), and `--policy` already suppresses
+  explicitly. Merging per file doesn't reduce the count: the 31 absence
+  findings in `spring-cloud-stream-samples` are in 26 files, and where a
+  file has several, they are different binders.
+
+### Consequences
+
+**Positive**
+* Severity reflects how certain the evidence is: HIGH means an insecure
+  value is in the files.
+* The default gate (`--fail-on=HIGH`) no longer fails on a project that sets
+  the protocol or SSL through its environment. `--fail-on=MEDIUM` still
+  fails on it.
+* On the reference corpus, only severities change: 31 SCG014 findings in
+  `spring-cloud-stream-samples` and 1 in `spring-boot` go from HIGH to
+  MEDIUM; the other findings and all other runs are byte-identical to
+  v1.5.0 (`VALIDATION.md`).
+
+**Negative / Trade-offs**
+* A user relying on `--fail-on=HIGH` stops failing on these findings. A
+  recalibrated severity is a detection change, not a MAJOR one
+  (`CONTRIBUTING.md`, "Releases"), and the release lists it under
+  **Detection changes**.
+* A project that really runs with the insecure default is now reported one
+  level lower than before.
+
+### Revisit if
+SCG gains a way to see the environment a configuration runs with (it would
+then know whether the key is set), or a new rule reports absence: it
+follows this ADR, unless its Javadoc explains why not.

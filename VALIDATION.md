@@ -27,6 +27,17 @@ No finding was added in any run, and `spring-boot-admin`,
 `spring-petclinic` and `spring-petclinic-microservices-config` (Config
 Server Mode, which never recursed) are unchanged.
 
+**Update after ADR-010:** a finding based only on an absent key with an
+insecure default is now MEDIUM instead of HIGH ([ADR-010](ARCHITECTURE.md#adr-010-a-finding-based-on-an-absent-key-is-reported-one-level-below-a-written-value)).
+Re-running every run below at the same pinned commits, against the v1.5.0
+jar, changes severities only: the one SCG014 finding in `spring-boot`
+(Kafka configured, `security.protocol` never set) and 31 of the 34 SCG014
+findings in `spring-cloud-stream-samples` go from HIGH to MEDIUM. Every
+finding keeps its rule, file and profile, and every other run is
+byte-identical. The `spring-boot` table below predates ADR-006 and ADR-010
+and is kept as recorded; the `spring-cloud-stream-samples` table is
+current.
+
 **Reproducibility:** all four runs below were reproduced against SCG
 commit [`b0d15ec`](https://github.com/rgiovann/spring-config-guard/commit/b0d15ec25b85437b9579e9b76320482a3dc856eb)
 (this repository's `main` at the time of writing); each run's own command
@@ -348,8 +359,8 @@ Run against [spring-cloud/spring-cloud-stream-samples](https://github.com/spring
 `--json --fail-on=NONE`), with SCG commit
 [`018c045`](https://github.com/rgiovann/spring-config-guard/commit/018c04565436100c1501d51ca602b7c7d7c3cb64),
 not `b0d15ec` like the four runs above, then re-run after each fix below:
-the SCG006 fix (3 findings added) and ADR-009 (34 added). Nothing else
-changed. Added as the corpus's only real
+the SCG006 fix (3 findings added), ADR-009 (34 added) and ADR-010 (31
+SCG014 findings from HIGH to MEDIUM). Nothing else changed. Added as the corpus's only real
 Kafka security surface: hardcoded keystore passwords, `SASL_PLAINTEXT`, and
 JAAS credentials configured through the Spring Cloud Stream Kafka binder
 rather than `spring.kafka.*`.
@@ -360,10 +371,11 @@ rather than `spring.kafka.*`.
 | SCG006 | 8 | — | — | 8 |
 | SCG007 | 2 | — | — | 2 |
 | SCG013 | — | 1 | — | 1 |
-| SCG014 | 34 | — | — | 34 |
-| **Total** | **45** | **1** | **0** | **46** |
+| SCG014 | 3 | 31 | — | 34 |
+| **Total** | **14** | **32** | **0** | **46** |
 
-31 of the 34 SCG014 findings report a protocol that isn't set: 2 modules
+31 of the 34 SCG014 findings report a protocol that isn't set, MEDIUM since
+ADR-010: 2 modules
 using `spring.kafka.*`, and, since ADR-009, 29 binders in use (samples that
 configure Kafka only through the Spring Cloud Stream binder, typically
 `brokers: localhost:9092`), where Kafka's default is `PLAINTEXT`. They

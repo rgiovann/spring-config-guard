@@ -68,12 +68,16 @@ class KafkaBinderRulesTest {
         }
 
         @Test
-        @DisplayName("Reports a binder in use with no protocol, since Kafka defaults to PLAINTEXT")
+        @DisplayName("Reports a binder in use with no protocol as MEDIUM, since Kafka defaults to PLAINTEXT (ADR-010)")
         void reportsBinderWithoutProtocol() {
-            assertThat(messages(config(KB + "brokers", "broker.example.com:9092")))
-                    .singleElement().asString()
-                    .contains("Spring Cloud Stream Kafka binder (the default binder)")
-                    .contains("'" + KB + "configuration.security.protocol'");
+            List<Finding> findings = rule.check(config(KB + "brokers", "broker.example.com:9092"));
+
+            assertThat(findings).singleElement().satisfies(finding -> {
+                assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                assertThat(finding.message())
+                        .contains("Spring Cloud Stream Kafka binder (the default binder)")
+                        .contains("'" + KB + "configuration.security.protocol'");
+            });
         }
 
         @Test

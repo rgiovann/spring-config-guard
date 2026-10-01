@@ -42,8 +42,8 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH when host is configured but ssl.enabled is absent (unsafe default)")
-    void shouldReportHighWhenHostConfiguredButSslAbsent() {
+    @DisplayName("Should report MEDIUM when host is configured but ssl.enabled is absent (unsafe default, ADR-010)")
+    void shouldReportMediumWhenHostConfiguredButSslAbsent() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 HOST_KEY, "rabbit.internal"
         ));
@@ -53,13 +53,14 @@ class RabbitMqInsecureTransportRuleTest {
         assertThat(findings).hasSize(1);
         Finding finding = findings.getFirst();
         assertThat(finding.ruleId()).isEqualTo("SCG015");
-        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set");
+        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(finding.message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set")
+                .endsWith("Reported as MEDIUM because SSL may be enabled outside these files, e.g. by an environment variable.");
     }
 
     @Test
-    @DisplayName("Should report HIGH when scheme-less addresses is configured but ssl.enabled is absent")
-    void shouldReportHighWhenSchemeLessAddressesConfiguredButSslAbsent() {
+    @DisplayName("Should report MEDIUM when scheme-less addresses is configured but ssl.enabled is absent")
+    void shouldReportMediumWhenSchemeLessAddressesConfiguredButSslAbsent() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 ADDRESSES_KEY, "rabbit-a:5672,rabbit-b:5672"
         ));
@@ -67,7 +68,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -217,8 +218,8 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH not-configured message when ssl.enabled placeholder resolves to an empty default")
-    void shouldReportHighOnEmptyPlaceholderDefault() {
+    @DisplayName("Should report the MEDIUM not-configured finding when ssl.enabled placeholder resolves to an empty default")
+    void shouldReportMediumOnEmptyPlaceholderDefault() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 HOST_KEY, "rabbit.internal",
                 SSL_ENABLED_KEY, "${RABBIT_SSL:}"
@@ -227,11 +228,12 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
         assertThat(findings.getFirst().message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set");
     }
 
     @Test
-    @DisplayName("Should not throw and report HIGH when ssl.enabled value is null but host is present")
+    @DisplayName("Should not throw and report MEDIUM when ssl.enabled value is null but host is present")
     void shouldNotThrowWhenSslEnabledValueIsNull() {
         Map<String, String> properties = new HashMap<>();
         properties.put(HOST_KEY, "rabbit.internal");
@@ -242,7 +244,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test

@@ -142,6 +142,11 @@ Swagger docs); LOW is present-but-ineffective (`Set-Cookie` via CORS
 uncertainty and never fails the build on its own (see CLAUDE.md's Findings
 section).
 
+A finding whose only evidence is an absent key with an insecure default
+(Kafka with no `security.protocol`) is one level below the same risk
+written in the file: MEDIUM where a written value would be HIGH, with the
+message saying why (ADR-010). Not INFO: Spring's default is known.
+
 ## Testing
 
 Cover, at minimum:

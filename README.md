@@ -123,8 +123,8 @@ should be updated in the same PR that adds or removes a rule.
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
 | SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
 | SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |
-| SCG014 | HIGH / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
-| SCG015 | HIGH / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
+| SCG014 | HIGH / MEDIUM / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
+| SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
 | SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
 | SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
 

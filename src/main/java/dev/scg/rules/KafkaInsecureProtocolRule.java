@@ -27,8 +27,10 @@ import java.util.Set;
  * The Spring Cloud Stream Kafka and Kafka Streams binders are evaluated too, each named binder's
  * {@code environment} as a context of its own ({@link #checkBinders}; ARCHITECTURE.md, ADR-009).
  * <p>
- * Severity {@link Severity#HIGH}: unencrypted transport exposes data — and for
- * {@code SASL_PLAINTEXT}, credentials — to anyone with network visibility. No profile exemption
+ * Severity {@link Severity#HIGH} for an insecure protocol written in the file: unencrypted transport
+ * exposes data — and for {@code SASL_PLAINTEXT}, credentials — to anyone with network visibility.
+ * {@link Severity#MEDIUM} when the protocol is only absent: the same default applies, but the
+ * protocol may be set outside the scanned files (ARCHITECTURE.md, ADR-010). No profile exemption
  * (Zero-Trust). Plain {@link Rule}: the protocol values are fixed facts of the Kafka wire
  * protocol, not organization-specific.
  */
@@ -47,6 +49,15 @@ public final class KafkaInsecureProtocolRule implements Rule {
     );
 
     private static final Set<String> RISKY_CANONICAL_VALUES = Set.of("plaintext", "saslplaintext");
+
+    /**
+     * An unset protocol is MEDIUM, a written insecure one HIGH: Kafka's default is PLAINTEXT, but the
+     * protocol is often set outside these files, through an environment variable SCG can't see
+     * (ARCHITECTURE.md, ADR-010).
+     */
+    private static final Severity ABSENT_PROTOCOL_SEVERITY = Severity.MEDIUM;
+    private static final String ABSENCE_NOTE = "Reported as MEDIUM because the protocol may be set outside "
+            + "these files, e.g. by an environment variable.";
 
     @Override
     public String id() {
@@ -81,11 +92,11 @@ public final class KafkaInsecureProtocolRule implements Rule {
                 springKafkaUnsetReported = true;
                 findings.add(new Finding(
                         id(),
-                        Severity.HIGH,
+                        ABSENT_PROTOCOL_SEVERITY,
                         "Kafka is configured via 'spring.kafka.*' properties, but 'spring.kafka.security.protocol' " +
                                 "is not explicitly set. Unless overridden per client, Kafka clients default to " +
                                 "'PLAINTEXT' (unencrypted/unauthenticated). Set 'spring.kafka.security.protocol' " +
-                                "to 'SSL' or 'SASL_SSL'.",
+                                "to 'SSL' or 'SASL_SSL'. " + ABSENCE_NOTE,
                         config.sourceFile().toString(),
                         config.profileLabel()
                 ));
@@ -180,11 +191,11 @@ public final class KafkaInsecureProtocolRule implements Rule {
                 ? "Kafka Streams binder" : "Kafka binder";
         return new Finding(
                 id(),
-                Severity.HIGH,
+                ABSENT_PROTOCOL_SEVERITY,
                 ("Kafka is used through the Spring Cloud Stream %s (%s), but no security.protocol covers all its " +
                         "clients: neither '%sconfiguration.security.protocol' nor 'spring.kafka.security.protocol' " +
                         "is set. Kafka clients default to 'PLAINTEXT' (unencrypted/unauthenticated). Set one of them " +
-                        "to 'SSL' or 'SASL_SSL'%s.")
+                        "to 'SSL' or 'SASL_SSL'%s. " + ABSENCE_NOTE)
                         .formatted(binderKind, context.label(), binderPrefix,
                                 context.binderName().isPresent() ? ", inside that binder's environment or at the top level" : ""),
                 config.sourceFile().toString(),

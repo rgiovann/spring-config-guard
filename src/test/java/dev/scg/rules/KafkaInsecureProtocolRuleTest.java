@@ -45,8 +45,8 @@ class KafkaInsecureProtocolRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH severity when Kafka is configured but security.protocol is absent (unsafe default)")
-    void shouldReportHighWhenKafkaConfiguredButProtocolAbsent() {
+    @DisplayName("Should report MEDIUM when Kafka is configured but security.protocol is absent (unsafe default, ADR-010)")
+    void shouldReportMediumWhenKafkaConfiguredButProtocolAbsent() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 "spring.kafka.bootstrap-servers", "localhost:9092"
         ));
@@ -56,13 +56,14 @@ class KafkaInsecureProtocolRuleTest {
         assertThat(findings).hasSize(1);
         Finding finding = findings.getFirst();
         assertThat(finding.ruleId()).isEqualTo("SCG014");
-        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.message()).contains("Kafka clients default to 'PLAINTEXT'");
+        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(finding.message()).contains("Kafka clients default to 'PLAINTEXT'")
+                .endsWith("Reported as MEDIUM because the protocol may be set outside these files, e.g. by an environment variable.");
     }
 
     @Test
-    @DisplayName("Should report HIGH for the unsafe default even when the common key is present but blank")
-    void shouldReportHighWhenCommonKeyIsBlank() {
+    @DisplayName("Should report MEDIUM for the unsafe default even when the common key is present but blank")
+    void shouldReportMediumWhenCommonKeyIsBlank() {
         // Distinct from the null case below: exercises isCommonProtocolConfigured()'s own
         // !common.isBlank() branch, which the null test short-circuits past without evaluating.
         // A blank value is not "configured" -- the unset finding must still fire.
@@ -74,7 +75,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
         assertThat(findings.getFirst().message()).contains("'spring.kafka.security.protocol' is not explicitly set");
     }
 
@@ -157,8 +158,8 @@ class KafkaInsecureProtocolRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH for missing common protocol even if a client-specific override (e.g. consumer) is secure")
-    void shouldReportHighWhenCommonProtocolMissingEvenIfConsumerIsSecure() {
+    @DisplayName("Should report MEDIUM for missing common protocol even if a client-specific override (e.g. consumer) is secure")
+    void shouldReportMediumWhenCommonProtocolMissingEvenIfConsumerIsSecure() {
         // Consumer is explicitly secure, but producer/admin/streams fall back to common which is missing -> unsafe default
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 "spring.kafka.bootstrap-servers", "localhost:9092",
@@ -169,7 +170,7 @@ class KafkaInsecureProtocolRuleTest {
 
         assertThat(findings).hasSize(1);
         Finding finding = findings.getFirst();
-        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("'spring.kafka.security.protocol' is not explicitly set");
     }
 
@@ -273,7 +274,7 @@ class KafkaInsecureProtocolRuleTest {
     }
 
     @Test
-    @DisplayName("Should not throw and report HIGH when property value is null but Kafka prefix is present")
+    @DisplayName("Should not throw and report MEDIUM when property value is null but Kafka prefix is present")
     void shouldNotThrowWhenPropertyValueIsNull() {
         Map<String, String> properties = new HashMap<>();
         properties.put("spring.kafka.bootstrap-servers", "localhost:9092");
@@ -284,7 +285,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
