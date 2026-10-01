@@ -8,6 +8,55 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.6.0
+
+**Fixed**
+- SCG001 now resolves which Actuator endpoints are exposed over HTTP as
+  Spring Boot does, checked against a running Spring Boot 4.1.1 app in 18
+  configurations (`VALIDATION.md`, "SCG001 exposure scenarios"). It used to
+  read only `exposure.include` and each endpoint's own `access`/`enabled`;
+  it now also applies `exposure.exclude`, `management.server.port=-1`,
+  `management.endpoints.access.max-permitted`, the global
+  `management.endpoints.access.default` and the legacy
+  `management.endpoints.enabled-by-default`, and `read-only` access leaves
+  write-only endpoints (`shutdown`, `restart`) unreachable.
+
+**Detection changes**
+- **SCG001 no longer reports endpoints Spring doesn't expose** (six false
+  positives in the scenarios above): those listed in `exposure.exclude`
+  (or all of them with `exclude=*`), and every endpoint under
+  `access.default=none`, `max-permitted=none`, `enabled-by-default=false`
+  or `management.server.port=-1`. The finding disappears when no sensitive
+  endpoint is left exposed; otherwise the excluded ones drop out of its
+  message.
+- **SCG001 now reports `heapdump` and `shutdown`** where a global default
+  opens them, though they are restricted by default:
+  `access.default=unrestricted` or `enabled-by-default=true` open both, and
+  `access.default=read-only` opens `heapdump` (three false negatives). With
+  `exposure.include=*` the finding already existed, and these endpoints are
+  now listed in its message; a new finding appears only when no other
+  sensitive endpoint was exposed (e.g. `include=heapdump`).
+- **Lower severity for findings based on an absent key** (ADR-010): when the
+  only evidence is a key that isn't set and whose default is insecure, the
+  finding is MEDIUM instead of HIGH, since the key may be set outside the
+  scanned files, e.g. by an environment variable. Applies to SCG014 (Kafka,
+  or a Spring Cloud Stream Kafka binder, with no `security.protocol`) and
+  SCG015 (RabbitMQ with `ssl.enabled` absent or an empty placeholder
+  default); each message says why it is MEDIUM. An insecure value written
+  in the files (`PLAINTEXT`, `SASL_PLAINTEXT`, `ssl.enabled=false`) stays
+  HIGH. With the default `--fail-on=HIGH`, these findings alone no longer
+  fail the build; `--fail-on=MEDIUM` still fails on them.
+- On the reference corpus, against `v1.5.0`: 31 SCG014 findings in
+  `spring-cloud-stream-samples` and 1 in `spring-boot` go from HIGH to
+  MEDIUM, with the same rule, file and profile. Every other finding and
+  coverage warning is identical; the SCG001 fix changes no finding there.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.5.0...v1.6.0`.
+
 ## v1.5.0
 
 **Added**

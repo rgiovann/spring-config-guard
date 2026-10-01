@@ -603,12 +603,13 @@ arguments, and `/actuator` lists the endpoints it links to.
 
 Before this comparison, SCG001 read only `exposure.include` and each
 endpoint's own `access`/`enabled`: S2, S3, S5, S6, S12 and S14 were false
-positives (reported endpoints Spring doesn't expose), and S10 and S13 false
-negatives (`heapdump` and `shutdown` exposed but not reported). It now
-resolves each endpoint as Spring does, and `ActuatorExposureRuleTest`
-asserts, per scenario, exactly the endpoints listed above. `restart` isn't
-in the app (it needs Spring Cloud Context); its `defaultAccess = NONE` was
-read in `spring-cloud-commons`' source, so it follows `heapdump`.
+positives (reported endpoints Spring doesn't expose), and S10, S13 and S15
+false negatives (`heapdump`, and in S10 and S13 `shutdown`, exposed but not
+reported). It now resolves each endpoint as Spring does, and
+`ActuatorExposureRuleTest` asserts, per scenario, exactly the endpoints
+listed above. `restart` isn't in the app (it needs Spring Cloud Context);
+its `defaultAccess = NONE` was read in `spring-cloud-commons`' source, so it
+follows `heapdump`.
 
 None of the reference projects above uses these keys with a web
 `exposure.include`, so their findings are unchanged.
