@@ -45,7 +45,7 @@ in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG006. Where a rule relies on Spring
+before starting the next one. Next: SCG014. Where a rule relies on Spring
 Boot behavior, check it against a running app, as for SCG001.
 
 ### GitHub Action for the Marketplace
@@ -67,8 +67,8 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
 * **A CI gate first** (exit code and report). PR annotations and a SARIF
   upload for code scanning come later: they place each finding on a file,
   so they depend on "Per-property origin in findings" below.
-* **Order**: release v1.6.0 (the SCG001 fix and ADR-010), review SCG006
-  and SCG014, then create and publish the action. False positives in a CI gate are what
+* **Order**: review SCG014, release the SCG006 and SCG014 changes, then
+  create and publish the action. False positives in a CI gate are what
   drive new users away first.
 
 ### Per-property origin in findings (waiting for a real consumer)
