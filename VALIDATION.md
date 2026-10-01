@@ -650,7 +650,7 @@ pattern is INFO, which never fails a build on its own (checked: exit 0 with
 `--fail-on=LOW`): it may still name a secret, so it stays visible instead of
 being silenced. Measured on the same keys:
 
-| | v1.6.0 | Now |
+| | v1.6.0 | v1.7.0 |
 |---|---|---|
 | 20 non-secrets | 18 HIGH | 1 HIGH, 15 INFO, 4 silent |
 | 6 secrets (controls) | 6 HIGH | 6 HIGH |
@@ -686,11 +686,11 @@ Where SCG006 stays silent was then reviewed case by case (CLAUDE.md,
   without that, SAML's `...credentials[0].certificate-location` gave 4 INFO
   in `spring-boot`.
 
-On 6 more hand-built keys, v1.6.0 was silent on all of them; now
-`https://svc:s3cr3t@...` in `app.security.token-url` is HIGH, a
-`?token=` query and `classpath:certs/server.key` in a `private-key` are
-INFO, and a webhook URL, a GitHub `token-uri` and a SAML
-`certificate-location` stay silent. On the reference corpus this adds 6
+On 6 more hand-built keys, v1.6.0 was silent on all of them; in v1.7.0,
+`https://svc:s3cr3t@...` in `app.security.token-url` is HIGH (from SCG006;
+reported by SCG007 since ADR-011), a `?token=` query and
+`classpath:certs/server.key` in a `private-key` are INFO, and a webhook URL,
+a GitHub `token-uri` and a SAML `certificate-location` stay silent. On the reference corpus this adds 6
 INFO in `spring-boot`, all private keys packaged with an application: the
 `spring.ssl.bundle.pem.*.keystore.private-key` of the two SNI integration
 test apps (4) and the SAML smoke test's `private-key-location` (2). Every
@@ -720,7 +720,7 @@ key (`spring.kafka.consumer.security.protocol`), the common
 SCG014 used to evaluate every key on its own, so an insecure value
 overridden by a secure one was still reported as HIGH:
 
-| Scenario | Spring's result | SCG014 before | Now |
+| Scenario | Spring's result | v1.6.0 | v1.7.0 |
 |---|---|---|---|
 | P1 common typed `PLAINTEXT`, common map `SSL` | `SSL` everywhere | HIGH | none |
 | P2 common typed `SSL`, common map `PLAINTEXT` | `PLAINTEXT` everywhere | HIGH (map) | HIGH (map) |
@@ -749,7 +749,7 @@ Boot 4.1.1's dependency management resolves: each JDBC driver's own URL
 parser (or, for H2, a database created with the URL's password, which then
 rejected any other), and kafka-clients 4.2.1's `JaasConfig`.
 
-| # | Value | Read by | SCG007 v1.7.0 | Now |
+| # | Value | Read by | v1.7.0 | After ADR-011 (unreleased) |
 |---|---|---|---|---|
 | c01 | `jdbc:mysql://app:s3cr3t@db/app` | MySQL | HIGH | HIGH |
 | c02 | `jdbc:postgresql://db/app?user=app&password=s3cr3t` | PostgreSQL (rejects the user-info form) | silent | HIGH |
