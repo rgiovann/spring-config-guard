@@ -78,13 +78,9 @@ secret-key-patterns:
 #     Vault-backed reference, respectively. "ENC(" is Jasypt's convention (the most common
 #     third-party property-encryption library for Spring Boot outside the Spring Cloud
 #     Config ecosystem) for a value encrypted with EncryptablePropertyResolver.
-#   - "classpath:", "classpath*:", "file:": the value is a reference to WHERE secret
-#     material lives (a PEM/keystore/certificate file on the classpath or filesystem), not
-#     the secret material itself -- confirmed via a real-world corpus run (session
-#     2026-09-16) against spring-projects/spring-boot's own smoke tests: SAML's
-#     "private-key-location"/"certificate-location" and the PEM SSL bundle's bare
-#     "private-key" property both conventionally hold a "classpath:..." path, and were
-#     false-positiving as if that path string were the secret. Deliberately does NOT
+#   - "file:": the value is a reference to WHERE secret material lives on the filesystem,
+#     outside the application, not the secret material itself. "classpath:" references are
+#     not ignored but reported as INFO (packaged-value-prefixes below). Deliberately does NOT
 #     include "http://"/"https://": unlike a classpath/file reference, a URL CAN be the
 #     secret itself (e.g. a Slack/Discord webhook URL) -- see HardcodedSecretsRule's class
 #     Javadoc for the related, deliberately-unaddressed limitation.
@@ -94,24 +90,33 @@ ignored-value-prefixes:
   - "{cipher}"
   - "{vault}"
   - "ENC("
-  - "classpath:"
-  - "classpath*:"
   - "file:"
 
-# Key-suffix allowlist: even when a key matches one of the secret-key-patterns above, the
-# finding is suppressed if the canonicalized key ends with one of these suffixes -- Spring's
-# own naming convention for "this property is a network location/endpoint", not a value that
-# could itself hold a secret. Confirmed via the same corpus run: "token-uri",
+# Value prefixes reported as INFO instead of HIGH: the value is a reference to secret material
+# (a PEM key, a keystore, a credentials file) that is packaged inside the application. A
+# reference isn't the secret itself -- SAML's "private-key-location" and the PEM SSL bundle's
+# "private-key" conventionally hold "classpath:..." (spring-projects/spring-boot's smoke tests),
+# which were false-positiving as HIGH -- but a classpath resource ships inside the jar and is
+# usually committed to the repository, so it is not silenced either. Entries must not contain
+# "${".
+packaged-value-prefixes:
+  - "classpath:"
+  - "classpath*:"
+
+# Key-suffix list: a key that contains one of the secret-key-patterns above but ends with one
+# of these suffixes is Spring's naming convention for "this property is a network
+# location/endpoint", so its value is an address, not a secret. The address itself is still
+# checked: a password in the URL's user-info is reported as HIGH, a query string as INFO, and a
+# plain URL or path is silent. Confirmed via the same corpus run: "token-uri",
 # "token-revocation-uri", and "token-introspection-uri" (OAuth2 Authorization Server endpoint
 # paths, from spring-projects/spring-boot's own oauth2-authorization-server smoke test) all
 # matched the "token" pattern above despite holding a URI path, not a token value.
 #
-# Known, deliberately accepted limitation: a property whose key ends in one of these
-# suffixes AND whose value is itself a secret (e.g. a Slack/Discord webhook URL, which
-# embeds its credential as a path segment, not a query param or userinfo) is also silenced
-# by this list. Detecting a secret by entropy inside a URL path segment is the job of a
-# generic secret scanner (GitLeaks, TruffleHog), not this tool's declared scope (Spring Boot
-# property-key semantics) -- see HardcodedSecretsRule's class Javadoc.
+# Known, deliberately accepted limitation: a property whose key ends in one of these suffixes
+# AND whose value is a secret embedded as a path segment (e.g. a Slack/Discord webhook URL) is
+# silent. Detecting a secret by entropy inside a URL path segment is the job of a generic secret
+# scanner (GitLeaks, TruffleHog), not this tool's declared scope (Spring Boot property-key
+# semantics) -- see HardcodedSecretsRule's class Javadoc.
 ignored-key-suffixes:
   - uri
   - url
@@ -125,3 +130,13 @@ ignored-key-suffixes:
 ignored-key-prefixes:
   - logging.level
   - logging.group
+
+# Key suffixes naming public material: a key that contains one of the secret-key-patterns
+# without ending in one, but ends with one of these, is silent. A certificate is public by
+# design, so neither it nor its location is a secret; SAML's
+# "...signing.credentials[0].certificate-location" contains the "credentials" pattern only
+# through its namespace (spring-projects/spring-boot's SAML smoke test). Doesn't apply to a key
+# that ends in a pattern: "server.ssl.certificate-private-key" still names a secret.
+public-material-suffixes:
+  - certificate
+  - certificate-location

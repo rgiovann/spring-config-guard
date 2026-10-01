@@ -3,6 +3,8 @@ package dev.scg.rules;
 import dev.scg.core.*;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -33,31 +35,35 @@ import java.util.stream.Collectors;
  * and their value is never a secret.
  * <p>
  * Also accepted: a key that names a secret but holds a plain file path, e.g.
- * {@code server.ssl.certificate-private-key=/etc/tls/server.key}, is reported. Only
- * {@code classpath:}/{@code file:} values are recognized as locations, since the same family of
- * keys ({@code spring.ssl.bundle.pem.*.private-key}) also accepts the PEM content itself.
+ * {@code server.ssl.certificate-private-key=/etc/tls/server.key}, is reported. Only prefixed
+ * values are recognized as locations, since the same family of keys
+ * ({@code spring.ssl.bundle.pem.*.private-key}) also accepts the PEM content itself.
  * <p>
- * Two suppression mechanisms, both added after a real-world corpus run (session 2026-09-16
- * against spring-projects/spring-boot's own source) surfaced false positives that a
- * synthetic test suite hadn't:
+ * Locations, refined after a real-world corpus run (session 2026-09-16 against
+ * spring-projects/spring-boot's own source) surfaced false positives that a synthetic test suite
+ * hadn't:
  * <ul>
- *     <li>{@code ignored-value-prefixes} (value-based): {@code classpath:}/{@code file:} mean
- *     the value is a *reference* to where secret material lives, not the material itself
- *     (SAML's {@code certificate-location}, the PEM SSL bundle's bare {@code private-key}).</li>
- *     <li>{@code ignored-key-suffixes} (key-based): {@code -uri}/{@code -url}/{@code -endpoint}
- *     mean the property is a network location, not a value (OAuth2 Authorization Server's
- *     {@code token-uri}/{@code token-revocation-uri} matched the {@code token} pattern despite
- *     holding a path, not a token).</li>
+ *     <li>Value-based. {@code ignored-value-prefixes}: {@code file:} points to secret material
+ *     outside the application, and {@code {cipher}}/{@code {vault}}/{@code ENC(} are encrypted or
+ *     managed values, so they are silent. {@code packaged-value-prefixes}: {@code classpath:}
+ *     points to material packaged inside the jar, usually committed to the repository (SAML's
+ *     {@code private-key-location}, the PEM SSL bundle's bare {@code private-key}), so it is
+ *     {@link Severity#INFO}, not HIGH (the value isn't the secret) and not silent (the secret
+ *     ships with the application).</li>
+ *     <li>Key-based. {@code ignored-key-suffixes}: a key containing a pattern but ending in
+ *     {@code -uri}/{@code -url}/{@code -endpoint} holds an address (OAuth2 Authorization Server's
+ *     {@code token-uri} holds a path, not a token). The URL is still checked: a password in its
+ *     user-info is HIGH, a query string is INFO, anything else is silent.
+ *     {@code public-material-suffixes}: a key that only contains a pattern but ends in
+ *     {@code certificate}/{@code certificate-location} names a certificate, public by design, so
+ *     it is silent (SAML's {@code ...signing.credentials[0].certificate-location} contains the
+ *     pattern only through its namespace).</li>
  * </ul>
- * <b>Known, deliberately accepted limitation</b> of the key-suffix mechanism: a property whose
- * key ends in {@code -uri}/{@code -url}/{@code -endpoint} AND whose value is itself a secret
- * (e.g. a Slack/Discord webhook URL, which embeds its credential as a path segment rather than
- * a query param or userinfo) is also silenced. A value-based alternative (checking the value for
- * "no {@code ?}, no {@code @}") was considered and rejected: it would apply to *every*
- * secret-key-patterns match, not just {@code -uri}/{@code -url}/{@code -endpoint} ones, so a
- * property literally named {@code ...secret} or {@code ...password} holding that same kind of
- * webhook URL would also go silent — a broader and more dangerous blind spot than this rule
- * accepts today. Detecting a secret by entropy inside a URL path segment is a generic
+ * <b>Known, deliberately accepted limitation</b> of the key-suffix mechanism: a secret embedded as
+ * a path segment of a URL in such a key (e.g. a Slack/Discord webhook URL) is silent. Applying
+ * the URL checks to <i>every</i> pattern match instead was rejected: a property named
+ * {@code ...secret} or {@code ...password} holding such a webhook URL, reported as HIGH today,
+ * would go silent. Detecting a secret by entropy inside a URL path segment is a generic
  * secret-scanner's job (GitLeaks, TruffleHog), not this tool's declared scope (Spring Boot
  * property-key semantics).
  */
@@ -66,9 +72,15 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private Set<String> highRiskKeys;
     private List<String> secretKeyPatterns;
     private List<String> ignoredValuePrefixes;
+    private List<String> packagedValuePrefixes;
     private List<String> ignoredKeySuffixes;
     private List<String> ignoredKeyPrefixes;
+    private List<String> publicMaterialSuffixes;
     private static final String RULE_NAME = "SCG006";
+
+    // <scheme>://<user>:<password>@ — the password group may be empty ("user:@host"), which is
+    // not reported. Stops at '/' so a '@' later in the path isn't read as user-info.
+    private static final Pattern URL_USER_INFO_PASSWORD = Pattern.compile("://[^/@:]*:([^/@]*)@");
 
     @Override
     public String id() {
@@ -87,13 +99,23 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         List<String> rawHighRisk = metadata.get("high-risk-keys");
         List<String> rawPatterns = metadata.get("secret-key-patterns");
         List<String> rawIgnoredPrefixes = metadata.getOrDefault("ignored-value-prefixes", List.of());
+        List<String> rawPackagedPrefixes = metadata.getOrDefault("packaged-value-prefixes", List.of());
         List<String> rawIgnoredKeySuffixes = metadata.getOrDefault("ignored-key-suffixes", List.of());
         List<String> rawIgnoredKeyPrefixes = metadata.getOrDefault("ignored-key-prefixes", List.of());
+        List<String> rawPublicMaterialSuffixes = metadata.getOrDefault("public-material-suffixes", List.of());
 
         for (String prefix : rawIgnoredPrefixes) {
             if (prefix.contains("${")) {
                 throw new IllegalArgumentException(
                         "Cannot include placeholder prefix '${' in 'ignored-value-prefixes'. " +
+                                "Placeholders must be evaluated by EnvironmentPlaceholder resolution."
+                );
+            }
+        }
+        for (String prefix : rawPackagedPrefixes) {
+            if (prefix.contains("${")) {
+                throw new IllegalArgumentException(
+                        "Cannot include placeholder prefix '${' in 'packaged-value-prefixes'. " +
                                 "Placeholders must be evaluated by EnvironmentPlaceholder resolution."
                 );
             }
@@ -118,11 +140,19 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 .map(String::strip)
                 .toList();
 
+        this.packagedValuePrefixes = rawPackagedPrefixes.stream()
+                .map(String::strip)
+                .toList();
+
         this.ignoredKeySuffixes = rawIgnoredKeySuffixes.stream()
                 .map(RelaxedProperties::canonicalize)
                 .toList();
 
         this.ignoredKeyPrefixes = rawIgnoredKeyPrefixes.stream()
+                .map(RelaxedProperties::canonicalize)
+                .toList();
+
+        this.publicMaterialSuffixes = rawPublicMaterialSuffixes.stream()
                 .map(RelaxedProperties::canonicalize)
                 .toList();
     }
@@ -146,8 +176,11 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                     && !hasIgnoredKeySuffix(canonicalKey);
 
             if (!isKnownHighRiskKey && !isCustomSecretKey) {
-                if (containsSecretPattern(canonicalKey) && !hasIgnoredKeySuffix(canonicalKey)) {
-                    ambiguousKeyFinding(config, entry.getKey(), rawValue).ifPresent(findings::add);
+                if (containsSecretPattern(canonicalKey) && !namesPublicMaterial(canonicalKey)) {
+                    Optional<Finding> finding = hasIgnoredKeySuffix(canonicalKey)
+                            ? locationKeyFinding(config, entry.getKey(), rawValue)
+                            : ambiguousKeyFinding(config, entry.getKey(), rawValue);
+                    finding.ifPresent(findings::add);
                 }
                 continue;
             }
@@ -198,6 +231,11 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
             // If the resolved value (e.g., the placeholder default) is an ignored prefix (e.g., {cipher}), skip the rule.
             if (isIgnoredValue(valueToInspect)) {
+                continue;
+            }
+
+            if (isPackagedValue(valueToInspect)) {
+                findings.add(packagedValueFinding(config, entry.getKey(), rawValue));
                 continue;
             }
 
@@ -258,6 +296,9 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         if (value.isBlank() || isIgnoredValue(value) || isBoolean(value) || isNumeric(value)) {
             return Optional.empty();
         }
+        if (isPackagedValue(value)) {
+            return Optional.of(packagedValueFinding(config, key, rawValue));
+        }
         String message = ("Property '%s' contains a secret-related word but its name doesn't end in it, so static " +
                 "analysis can't tell whether its value is a secret (e.g. 'app.secret-key-base') or a setting " +
                 "(e.g. a namespace or a duration). If it holds a secret, inject it via environment variables " +
@@ -267,6 +308,65 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         }
         return Optional.of(new Finding(id(), Severity.INFO, message,
                 config.sourceFile().toString(), config.profileLabel()));
+    }
+
+    /**
+     * A key that contains a secret pattern but ends in a location suffix ({@code token-uri},
+     * {@code app.secret-url}) holds an address. A URL can still carry a secret: a password in
+     * its user-info is written in the file (HIGH); a query string may hold a token or an API key
+     * (INFO); a secret in the path itself (a webhook URL) can't be told from an ordinary path
+     * without entropy analysis, a generic secret scanner's job, so a URL with neither stays
+     * silent.
+     */
+    private Optional<Finding> locationKeyFinding(EffectiveConfig config, String key, String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmedValue = rawValue.strip();
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(trimmedValue);
+        if (resolved.isEmpty()) {
+            return Optional.empty();
+        }
+        String value = resolved.get();
+        String origin = trimmedValue.contains("${")
+                ? " The value originates from a static placeholder default ('%s').".formatted(rawValue)
+                : "";
+        Matcher userInfo = URL_USER_INFO_PASSWORD.matcher(value);
+        if (userInfo.find() && !userInfo.group(1).isEmpty()) {
+            return Optional.of(new Finding(id(), Severity.HIGH,
+                    ("Hardcoded credential detected in the user-info of the URL in property '%s'. " +
+                            "Never store credentials in plaintext configuration files; inject them via " +
+                            "environment variables or a secret management system.").formatted(key) + origin,
+                    config.sourceFile().toString(), config.profileLabel()));
+        }
+        int query = value.indexOf('?');
+        if (query >= 0 && query < value.length() - 1) {
+            return Optional.of(new Finding(id(), Severity.INFO,
+                    ("The URL in property '%s' carries a query string, which may hold a token or an API key; " +
+                            "static analysis can't tell. If it does, inject it via environment variables or a " +
+                            "secret management system.").formatted(key) + origin,
+                    config.sourceFile().toString(), config.profileLabel()));
+        }
+        return Optional.empty();
+    }
+
+    /** INFO for secret material referenced from the classpath, i.e. packaged inside the application. */
+    private Finding packagedValueFinding(EffectiveConfig config, String key, String rawValue) {
+        return new Finding(id(), Severity.INFO,
+                ("Property '%s' points to secret material packaged with the application ('%s'): a classpath " +
+                        "resource ships inside the jar and is usually committed to the repository. Make sure it " +
+                        "isn't a real key, or load it from outside the application (a file: path or a secret " +
+                        "management system).").formatted(key, rawValue),
+                config.sourceFile().toString(), config.profileLabel());
+    }
+
+    private boolean isPackagedValue(String value) {
+        for (String prefix : packagedValuePrefixes) {
+            if (value.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isIgnoredValue(String value) {
@@ -280,7 +380,8 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
     private void ensureConfigured() {
         if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null
-                || ignoredKeySuffixes == null || ignoredKeyPrefixes == null) {
+                || packagedValuePrefixes == null || ignoredKeySuffixes == null || ignoredKeyPrefixes == null
+                || publicMaterialSuffixes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
     }
@@ -302,6 +403,21 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             return base;
         }
         return base + " The value originates from a static placeholder default ('%s').".formatted(rawValue);
+    }
+
+    /**
+     * Whether the key names public material ({@code ...certificate}, {@code ...certificate-location}),
+     * e.g. SAML's {@code ...signing.credentials[0].certificate-location}, which contains the
+     * {@code credentials} pattern only through its namespace. Applies to keys that don't end in a
+     * pattern: a certificate is public by design, so neither it nor its location is a secret.
+     */
+    private boolean namesPublicMaterial(String canonicalKey) {
+        for (String suffix : publicMaterialSuffixes) {
+            if (canonicalKey.endsWith(suffix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean containsSecretPattern(String canonicalKey) {

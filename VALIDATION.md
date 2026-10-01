@@ -671,6 +671,31 @@ for byte, as with the v1.6.0 jar: all 80 SCG006 findings there were on keys
 ending in a pattern, and no key there only contains one with a value that
 could be a secret.
 
+Where SCG006 stays silent was then reviewed case by case (CLAUDE.md,
+"Findings"), which changed two of them:
+
+* A key containing a pattern but ending in `-uri`/`-url`/`-endpoint`
+  (`token-uri`) was silent whatever its value. Its URL is now checked: a
+  password in the user-info is HIGH, a query string INFO, a plain URL or
+  path silent. A secret in the path itself (a webhook URL) stays silent, an
+  accepted limitation.
+* A `classpath:` value in a key naming secret material was silent as a mere
+  reference. It is INFO now: the material is packaged inside the jar,
+  usually committed. `file:` stays silent. A certificate or its location is
+  silent too (`public-material-suffixes`), since a certificate is public:
+  without that, SAML's `...credentials[0].certificate-location` gave 4 INFO
+  in `spring-boot`.
+
+On 6 more hand-built keys, v1.6.0 was silent on all of them; now
+`https://svc:s3cr3t@...` in `app.security.token-url` is HIGH, a
+`?token=` query and `classpath:certs/server.key` in a `private-key` are
+INFO, and a webhook URL, a GitHub `token-uri` and a SAML
+`certificate-location` stay silent. On the reference corpus this adds 6
+INFO in `spring-boot`, all private keys packaged with an application: the
+`spring.ssl.bundle.pem.*.keystore.private-key` of the two SNI integration
+test apps (4) and the SAML smoke test's `private-key-location` (2). Every
+other reference project is byte-identical to v1.6.0.
+
 `HardcodedSecretsRuleTest` pins these cases. Three
 `high-risk-keys` entries that don't exist in Spring Boot 4.1.1 were replaced
 (`spring.elasticsearch.rest.password`, removed in 3.0;

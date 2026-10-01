@@ -226,6 +226,49 @@ class HardcodedSecretsRuleTest {
             assertThat(findings).isEmpty();
         }
 
+        @ParameterizedTest(name = "HIGH: ''{0}'' = ''{1}''")
+        @CsvSource(delimiter = '|', value = {
+                "app.security.token-url | https://user:s3cr3t@auth.example.com/token",
+                "app.secret-endpoint | https://:s3cr3t@hooks.example.com/notify",
+                "app.security.token-url | ${TOKEN_URL:https://user:s3cr3t@auth.example.com/token}"
+        })
+        @DisplayName("Reports HIGH for a password in the user-info of a URL in a location key")
+        void shouldReportHighForUserInfoPasswordInLocationKey(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).singleElement().satisfies(finding -> {
+                assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                assertThat(finding.message()).contains("user-info of the URL in property '" + key + "'");
+                assertThat(finding.message().contains("static placeholder default")).isEqualTo(value.startsWith("${"));
+            });
+        }
+
+        @Test
+        @DisplayName("Reports INFO for a query string in a URL in a location key, which may hold a token")
+        void shouldReportInfoForQueryStringInLocationKey() {
+            assertThat(rule.check(createConfig(Map.of("app.security.token-url", "https://auth.example.com/token?api_key=abc123"))))
+                    .singleElement().satisfies(finding -> {
+                        assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                        assertThat(finding.message()).contains("query string");
+                    });
+        }
+
+        @ParameterizedTest(name = "Silent: ''{0}''")
+        @ValueSource(strings = {
+                "https://auth.example.com/oauth2/token",
+                "/oauth2/token",
+                "https://user@auth.example.com/token",
+                "https://user:@auth.example.com/token",
+                "https://auth.example.com:8443/token/@me",
+                "https://auth.example.com/token?",
+                "${TOKEN_URL}",
+                "",
+                // Accepted limitation: a secret in the path itself (webhook style)
+                "https://hooks.example.com/services/T000/B000/XXXXXXXXXXXXXXXX"
+        })
+        @DisplayName("Stays silent for a location key whose URL has no password in its user-info and no query string")
+        void shouldStaySilentForPlainUrlInLocationKey(String value) {
+            assertThat(rule.check(createConfig(Map.of("app.security.token-url", value)))).isEmpty();
+        }
+
         @Test
         @DisplayName("Still detects a genuine custom-pattern key that does NOT end in a location suffix (positive control for the key-suffix guard)")
         void shouldStillDetectCustomPatternKeyNotEndingInLocationSuffix() {
@@ -299,7 +342,7 @@ class HardcodedSecretsRuleTest {
 
         @ParameterizedTest(name = "Silent: ''{0}''")
         @ValueSource(strings = {"true", "FALSE", "86400", "", "   ", "${TOKEN_VALUE}", "${TOKEN_VALUE:}",
-                "${TOKEN_TTL:3600}", "classpath:keys/app.key", "{cipher}AQB0"})
+                "${TOKEN_TTL:3600}", "file:/etc/keys/app.key", "{cipher}AQB0"})
         @DisplayName("Stays silent in an ambiguous key for values that can't be a hardcoded secret")
         void shouldStaySilentForNonSecretValuesInAmbiguousKey(String value) {
             assertThat(rule.check(createConfig(Map.of("app.token-value", value)))).isEmpty();
@@ -403,23 +446,52 @@ class HardcodedSecretsRuleTest {
             assertTrue(findings.isEmpty(), "Values with ignored prefixes inside placeholder fallbacks must not trigger findings");
         }
 
-        @ParameterizedTest(name = "Should ignore a resource-location value: {0}")
-        @ValueSource(strings = {
-                "classpath:saml/privatekey.txt",
-                "classpath*:saml/certificate.txt",
-                "file:/etc/secrets/server.key"
+        @ParameterizedTest(name = "Silent, public material: ''{0}'' = ''{1}''")
+        @CsvSource(delimiter = '|', value = {
+                "spring.security.saml2.relyingparty.registration.one.signing.credentials[0].certificate-location | classpath:saml/certificate.txt",
+                "spring.security.saml2.relyingparty.registration.one.assertingparty.verification.credentials[0].certificate-location | /etc/saml/idp.crt",
+                "app.credentials.client-certificate | -----BEGIN CERTIFICATE-----"
         })
-        @DisplayName("Ignores custom-pattern keys whose value is a classpath/file resource reference, not the secret itself")
-        void shouldIgnoreResourceLocationValues(String locationValue) {
-            // Real-world regression: Spring Boot's PEM SSL bundle names its own property
-            // "private-key" (no "-location" suffix at all) yet conventionally holds a
-            // "classpath:..."/"file:..." reference, e.g. spring.ssl.bundle.pem.default.keystore.private-key
-            // -- found via a corpus run against spring-projects/spring-boot (session 2026-09-16).
-            EffectiveConfig config = createConfig(Map.of("spring.ssl.bundle.pem.default.keystore.private-key", locationValue));
+        @DisplayName("Stays silent for a certificate or its location in a key that only contains a pattern: a certificate is public")
+        void shouldStaySilentForPublicMaterial(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).isEmpty();
+        }
 
-            List<Finding> findings = rule.check(config);
+        @Test
+        @DisplayName("Still reports a key naming a secret even when it mentions a certificate (certificate-private-key)")
+        void shouldStillReportPrivateKeyOfCertificate() {
+            assertThat(rule.check(createConfig(Map.of("server.ssl.certificate-private-key", "classpath:server.key"))))
+                    .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        }
 
-            assertThat(findings).isEmpty();
+        @Test
+        @DisplayName("Ignores a file: reference, which points to secret material outside the application")
+        void shouldIgnoreFileReference() {
+            EffectiveConfig config = createConfig(
+                    Map.of("spring.ssl.bundle.pem.default.keystore.private-key", "file:/etc/secrets/server.key"));
+
+            assertThat(rule.check(config)).isEmpty();
+        }
+
+        @ParameterizedTest(name = "INFO for packaged material: ''{0}'' = ''{1}''")
+        @CsvSource(delimiter = '|', value = {
+                // The PEM SSL bundle's bare private-key holds a reference, not the key (found via a
+                // corpus run against spring-projects/spring-boot, session 2026-09-16): not HIGH, but
+                // the key ships inside the jar, so not silent either.
+                "spring.ssl.bundle.pem.default.keystore.private-key | classpath:default/server.key",
+                "spring.ssl.bundle.pem.default.keystore.private-key | classpath*:keys/server.key",
+                "spring.datasource.password | classpath:db-password.txt",
+                "app.jwt.secret | ${JWT_SECRET_FILE:classpath:jwt.key}",
+                // A key that only contains a pattern (SAML's private-key-location, a GCP credentials file)
+                "spring.security.saml2.relyingparty.registration.one.signing.credentials[0].private-key-location | classpath:saml/privatekey.txt",
+                "spring.cloud.gcp.credentials.location | classpath:gcp-service-account.json"
+        })
+        @DisplayName("Reports INFO, not HIGH, for a classpath: reference: the secret is packaged with the application")
+        void shouldReportInfoForClasspathReference(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).singleElement().satisfies(finding -> {
+                assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                assertThat(finding.message()).contains("packaged with the application");
+            });
         }
 
         @Test
@@ -586,6 +658,20 @@ class HardcodedSecretsRuleTest {
             assertThatThrownBy(() -> new HardcodedSecretsRule().configure(invalidMetadata))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Cannot include placeholder prefix '${' in 'ignored-value-prefixes'");
+        }
+
+        @Test
+        @DisplayName("Throws IllegalArgumentException if packaged-value-prefixes contains placeholder prefix '${'")
+        void shouldRejectPlaceholderInPackagedPrefixes() {
+            Map<String, List<String>> invalidMetadata = Map.of(
+                    "high-risk-keys", List.of("spring.datasource.password"),
+                    "secret-key-patterns", List.of("password"),
+                    "packaged-value-prefixes", List.of("${")
+            );
+
+            assertThatThrownBy(() -> new HardcodedSecretsRule().configure(invalidMetadata))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Cannot include placeholder prefix '${' in 'packaged-value-prefixes'");
         }
 
         @Test
