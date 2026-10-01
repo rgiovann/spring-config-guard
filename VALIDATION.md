@@ -749,7 +749,7 @@ Boot 4.1.1's dependency management resolves: each JDBC driver's own URL
 parser (or, for H2, a database created with the URL's password, which then
 rejected any other), and kafka-clients 4.2.1's `JaasConfig`.
 
-| # | Value | Read by | v1.7.0 | After ADR-011 (unreleased) |
+| # | Value | Read by | v1.7.0 | v1.8.0 |
 |---|---|---|---|---|
 | c01 | `jdbc:mysql://app:s3cr3t@db/app` | MySQL | HIGH | HIGH |
 | c02 | `jdbc:postgresql://db/app?user=app&password=s3cr3t` | PostgreSQL (rejects the user-info form) | silent | HIGH |
@@ -797,7 +797,7 @@ MariaDB Connector/J 3.5 (`SslMode.from`).
   when `spring.data.redis.ssl.enabled` is true or the URL is `rediss://`,
   so a `redis://` URL alone doesn't prove plaintext.
 
-| # | Value | v1.7.0 | After the SCG012 review (unreleased) |
+| # | Value | v1.7.0 | v1.8.0 |
 |---|---|---|---|
 | t01 | `spring.datasource.url` `?sslmode=disable` | HIGH | HIGH |
 | t02 | `spring.mongodb.uri` `?tls=false` | silent | HIGH |

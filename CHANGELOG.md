@@ -8,6 +8,59 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.8.0
+
+**Added**
+- SCG007 finds an embedded credential by the shape of the value, in every
+  property, instead of a list of keys: a password in a URL's user-info (in
+  any node of a comma-separated list), a URL parameter ending in `password`
+  (PostgreSQL and MySQL `?password=`, SQL Server and H2 `;password=`,
+  `trustStorePassword=`), Oracle's `user/password@host`, and a JAAS
+  `password` or OAuthBearer `clientSecret` option, quoted or not. It now
+  covers Spring Boot 4's `spring.data.redis.url` and `spring.mongodb.uri`,
+  `spring.flyway.url`, the pool-specific JDBC URLs, the Kafka per-client
+  `sasl.jaas.config`, Spring Cloud (`spring.cloud.config.uri`, Eureka's
+  `defaultZone`) and the application's own keys. A literal password next to
+  an unresolved placeholder (`u:secret@${DB_HOST}`) is found too. See
+  ADR-011.
+- SCG012 looks for its TLS parameters in every property whose value starts
+  with `jdbc:`, `r2dbc:`, `mongodb:` or `mongodb+srv:`, so
+  `spring.mongodb.uri`, `spring.flyway.url` and the pool-specific JDBC URLs
+  are covered whatever their key, and it checks the scheme of every node of
+  a list (`spring.elasticsearch.uris=https://a,http://b`). New values: SQL
+  Server `encrypt=no` and `encrypt=optional`, MariaDB `sslMode=false` and
+  `sslMode=0` (TLS off, HIGH), and PostgreSQL `sslmode=require`, MySQL
+  `sslMode=REQUIRED`, MariaDB `sslMode=trust`, which encrypt without
+  checking the certificate (MEDIUM).
+
+**Fixed**
+- SCG007 read an `@` in a URL parameter (`?ApplicationName=a@b`) as a
+  user-info password and reported HIGH.
+
+**Detection changes**
+- **More findings**: SCG007 and SCG012 report the forms above, which they
+  used to miss. Each was confirmed against the client that reads it, in the
+  versions Spring Boot 4.1.1 manages (`VALIDATION.md`, "SCG007 credential
+  forms" and "SCG012 driver modes").
+- **Lower severity**: SCG012's certificate-validation findings
+  (`verifyServerCertificate=false`, `trustServerCertificate=true`,
+  `tlsInsecure=true` and the others) move from HIGH to MEDIUM: the traffic is
+  encrypted, and reading it takes an active man in the middle. TLS turned
+  off stays HIGH. With `--fail-on=HIGH`, builds that failed only on these
+  now pass.
+- **Rule ID change**: a password in the user-info of a URL in a key ending
+  in `-uri`/`-url`/`-endpoint` that contains a secret pattern, reported by
+  SCG006 since v1.7.0, is reported by SCG007, so one credential is reported
+  once. A `--policy` suppressing it by `SCG006` no longer applies to it.
+- On the reference corpus, against `v1.7.0`: every finding and coverage
+  warning is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.7.0...v1.8.0`.
+
 ## v1.7.0
 
 **Added**
