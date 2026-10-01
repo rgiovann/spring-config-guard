@@ -11,32 +11,48 @@
 # Configuration File) when its value is blank or null. secret-key-patterns matches are
 # deliberately silent on blank values to avoid noise across dev/test/scaffolding files
 # that legitimately leave non-native properties empty.
+# Every entry is a current (non-deprecated) property in Spring Boot 4.1.1's configuration
+# metadata, except the last one, an entry of the spring.kafka.properties map.
 high-risk-keys:
   - spring.datasource.password
   - spring.r2dbc.password
   - spring.flyway.password
   - spring.liquibase.password
+  - spring.sql.init.password
   - spring.data.redis.password
+  - spring.data.redis.sentinel.password
   - spring.rabbitmq.password
+  - spring.activemq.password
+  - spring.artemis.password
   - spring.mail.password
   - spring.security.user.password
   - spring.neo4j.authentication.password
-  # Additional native infrastructure keys (SSL, LDAP, Elasticsearch, Cassandra, Couchbase, Kafka):
+  - spring.mongodb.password
+  - spring.cassandra.password
+  - spring.couchbase.password
+  - spring.elasticsearch.password
+  - spring.elasticsearch.api-key
+  - spring.ldap.password
+  - spring.ldap.embedded.credential.password
   - server.ssl.key-store-password
   - server.ssl.key-password
-  - spring.ldap.embedded.credential
-  - spring.elasticsearch.rest.password
-  - spring.cassandra.password
-  - spring.couchbase.env.ssl.key-store-password
+  - server.ssl.trust-store-password
+  - spring.kafka.ssl.key-store-password
+  - spring.kafka.ssl.key-password
+  - spring.kafka.ssl.trust-store-password
   - spring.kafka.properties.ssl.keystore.password
 
-# Substring allowlist for custom/third-party property keys that aren't native Spring Boot
-# properties but still look like they hold a secret (e.g. "app.jwt.token",
-# "payment.gateway.secret"). A property matches if its canonicalized key CONTAINS one of
-# these entries (also canonicalized) anywhere. Reported with the "custom key pattern"
-# message wording. Keep entries specific/compound (e.g. "signing-key", not bare "key") —
-# a bare "key" would false-positive on benign properties like "key-store" or
-# "key-generator".
+# Patterns for custom/third-party property keys that aren't in high-risk-keys but name a
+# secret (e.g. "app.jwt.token", "payment.gateway.secret"). A property matches if its
+# canonicalized key ENDS with one of these entries (also canonicalized), so the key names the
+# secret itself; a pattern elsewhere in the key (a namespace like
+# "spring.cloud.kubernetes.secrets.namespace", a nested object like
+# "...authorizationserver.client.<id>.token.access-token-time-to-live") does not match.
+# Reported with the "custom key pattern" message wording. Keep entries specific/compound
+# (e.g. "signing-key", not bare "key") — a bare "key" would match "...cache.key" or
+# "...routing-key". Plurals are listed only where needed: "credentials" is a native key ending
+# ("api-key-credentials"), while a plural "tokens" would match "max-tokens: 4000".
+# See HardcodedSecretsRule's class Javadoc for what ending-only matching misses.
 secret-key-patterns:
   - password
   - secret
@@ -49,6 +65,8 @@ secret-key-patterns:
   - encryption-key
   - master-key
   - auth-key
+  - secret-key
+  - credentials
 
 # Value-level allowlist: if a sensitive property's value (raw, or after resolving a
 # ${VAR:default} placeholder) starts with one of these prefixes, it is skipped entirely.
@@ -97,3 +115,12 @@ ignored-key-suffixes:
   - uri
   - url
   - endpoint
+
+# Key-prefix allowlist: a property equal to one of these keys, or under it on a "." boundary,
+# is skipped before any other check. Their last segment is a logger, group or package name
+# chosen by the application, which can end in a pattern above
+# ("logging.level.org.springframework.security.oauth2.server.authorization.token: DEBUG"), and
+# their value is a log level or a list of logger names, never a secret.
+ignored-key-prefixes:
+  - logging.level
+  - logging.group

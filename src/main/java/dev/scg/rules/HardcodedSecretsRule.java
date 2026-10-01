@@ -7,10 +7,33 @@ import java.util.stream.Collectors;
 
 /**
  * SCG006 — detects hardcoded credentials/secrets: an exact-match list of native Spring Boot
- * infrastructure properties ({@code high-risk-keys}) plus a substring allowlist for
- * custom/third-party keys that merely look secret-shaped ({@code secret-key-patterns}).
+ * infrastructure properties ({@code high-risk-keys}) plus patterns for custom/third-party keys
+ * that name a secret ({@code secret-key-patterns}).
  * Always {@link Severity#HIGH} for a concrete value; {@link Severity#INFO} for a blank
  * high-risk key or an unresolved/blank-default placeholder.
+ * <p>
+ * A custom key matches only when it <b>ends</b> in a pattern ({@code app.jwt.secret},
+ * {@code ...registration.client-secret}), so the key names the secret itself. Matching a
+ * pattern anywhere in the key reported, as HIGH, properties whose namespace, map key or package
+ * name merely contains the word: checked against Spring Boot 4.1.1's own metadata and a
+ * hand-built set, 18 of 20 non-secret properties were reported, e.g.
+ * {@code spring.security.oauth2.authorizationserver.client.<id>.token.access-token-time-to-live=5m},
+ * {@code spring.security.oauth2.resourceserver.opaquetoken.client-id},
+ * {@code spring.cloud.kubernetes.secrets.namespace}. Every SCG006 finding on the reference corpus
+ * already ended in a pattern. The accepted cost: a secret whose key carries the word before
+ * another one ({@code app.secret-key-base}, {@code app.password-hash}) or in the plural
+ * ({@code app.api-keys}) is no longer reported. Patterns are not matched in the plural on
+ * purpose: {@code token} would then match {@code max-tokens: 4000}.
+ * <p>
+ * Keys under {@code ignored-key-prefixes} ({@code logging.level}, {@code logging.group}) are
+ * skipped entirely: their last segment is a logger or package name, which can end in a pattern
+ * ({@code logging.level.org.springframework.security.oauth2.server.authorization.token=DEBUG}),
+ * and their value is never a secret.
+ * <p>
+ * Also accepted: a key that names a secret but holds a plain file path, e.g.
+ * {@code server.ssl.certificate-private-key=/etc/tls/server.key}, is reported. Only
+ * {@code classpath:}/{@code file:} values are recognized as locations, since the same family of
+ * keys ({@code spring.ssl.bundle.pem.*.private-key}) also accepts the PEM content itself.
  * <p>
  * Two suppression mechanisms, both added after a real-world corpus run (session 2026-09-16
  * against spring-projects/spring-boot's own source) surfaced false positives that a
@@ -42,6 +65,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private List<String> secretKeyPatterns;
     private List<String> ignoredValuePrefixes;
     private List<String> ignoredKeySuffixes;
+    private List<String> ignoredKeyPrefixes;
     private static final String RULE_NAME = "SCG006";
 
     @Override
@@ -62,6 +86,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         List<String> rawPatterns = metadata.get("secret-key-patterns");
         List<String> rawIgnoredPrefixes = metadata.getOrDefault("ignored-value-prefixes", List.of());
         List<String> rawIgnoredKeySuffixes = metadata.getOrDefault("ignored-key-suffixes", List.of());
+        List<String> rawIgnoredKeyPrefixes = metadata.getOrDefault("ignored-key-prefixes", List.of());
 
         for (String prefix : rawIgnoredPrefixes) {
             if (prefix.contains("${")) {
@@ -94,6 +119,10 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         this.ignoredKeySuffixes = rawIgnoredKeySuffixes.stream()
                 .map(RelaxedProperties::canonicalize)
                 .toList();
+
+        this.ignoredKeyPrefixes = rawIgnoredKeyPrefixes.stream()
+                .map(RelaxedProperties::canonicalize)
+                .toList();
     }
 
     @Override
@@ -106,9 +135,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
             String rawValue = entry.getValue();
 
             String canonicalKey = RelaxedProperties.canonicalize(entry.getKey());
+            if (hasIgnoredKeyPrefix(canonicalKey)) {
+                continue;
+            }
             boolean isKnownHighRiskKey = highRiskKeys.contains(canonicalKey);
             boolean isCustomSecretKey = !isKnownHighRiskKey
-                    && matchesSecretPattern(canonicalKey)
+                    && namesTheSecret(canonicalKey)
                     && !hasIgnoredKeySuffix(canonicalKey);
 
             //Skips properties that don't match either native keys or secret patterns.
@@ -165,16 +197,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 continue;
             }
 
-            // Precision heuristic: custom key matches (substrings) with purely numeric/boolean
-            // resolved values (e.g. token-validity-in-seconds: 86400, or ${TOKEN_TTL:86400})
-            // are configuration metrics, not secrets. Checked against the RESOLVED value so it
-            // applies equally to a bare literal and to a placeholder's static default.
-            // Exception: a key that ENDS in a secret pattern names the secret itself, so a numeric
-            // value there is the secret (ssl.keystore.password: 123456, found in
-            // spring-cloud-stream-samples). Booleans stay skipped even then: require-password: true
-            // is a switch, not a password.
-            if (isCustomSecretKey && isNonSecretPrimitiveValue(valueToInspect)
-                    && !(namesTheSecret(canonicalKey) && isNumeric(valueToInspect))) {
+            // A boolean in a custom key is a switch, not a secret (require-password: true).
+            // Checked against the RESOLVED value so it applies equally to a bare literal and to a
+            // placeholder's static default. A numeric value is reported: the key names the secret,
+            // so the number is the secret (ssl.keystore.password: 123456, found in
+            // spring-cloud-stream-samples).
+            if (isCustomSecretKey && isBoolean(valueToInspect)) {
                 continue;
             }
 
@@ -217,7 +245,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
 
     private void ensureConfigured() {
         if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null
-                || ignoredKeySuffixes == null) {
+                || ignoredKeySuffixes == null || ignoredKeyPrefixes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
     }
@@ -241,15 +269,6 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         return base + " The value originates from a static placeholder default ('%s').".formatted(rawValue);
     }
 
-    private boolean matchesSecretPattern(String canonicalKey) {
-        for (String pattern : secretKeyPatterns) {
-            if (canonicalKey.contains(pattern)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /** Whether the key ends in a secret pattern (e.g. {@code ...keystore.password}), naming the secret itself. */
     private boolean namesTheSecret(String canonicalKey) {
         for (String pattern : secretKeyPatterns) {
@@ -260,8 +279,14 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         return false;
     }
 
-    private static boolean isNumeric(String value) {
-        return value.trim().matches("\\d+");
+    /** Whether the key is one of {@code ignored-key-prefixes} or under it, on a {@code .} boundary. */
+    private boolean hasIgnoredKeyPrefix(String canonicalKey) {
+        for (String prefix : ignoredKeyPrefixes) {
+            if (canonicalKey.equals(prefix) || canonicalKey.startsWith(prefix + ".")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasIgnoredKeySuffix(String canonicalKey) {
@@ -273,16 +298,8 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         return false;
     }
 
-    /**
-     * Checks if the value is a primitive/overt configuration type (integers, booleans)
-     * that does not represent a legitimate secret in custom pattern keys.
-     */
-    private boolean isNonSecretPrimitiveValue(String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
+    private static boolean isBoolean(String value) {
         String trimmed = value.trim();
-        // Captures pure integers (e.g., 86400, 2592000) and booleans (true/false)
-        return trimmed.matches("\\d+") || trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("false");
+        return trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("false");
     }
 }

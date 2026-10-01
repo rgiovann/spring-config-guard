@@ -21,25 +21,32 @@ or in an ADR.
 
 ### Rule-by-rule review of the 17 rules
 
-Apply `.claude/skills/review-security-rule/SKILL.md` to each rule, highest
-severity first. Include in it the rules that combine more than one key
-(SCG008, SCG011): ADR-005 confirmed that a combination split across config
-locations produces no finding for SCG003, but the effect on these two was
-not verified.
+Apply `.claude/skills/review-security-rule/SKILL.md` to each rule, in order
+of how likely a wrong finding is times how many projects it reaches, not by
+rule number: 12 of the 17 rules can report HIGH, so severity alone doesn't
+order them. Planned order: SCG006 (heuristics on key names and values, the
+rule that fires most on the reference corpus), SCG014 (recalibrated by
+ADR-010), SCG007 and SCG012 (heuristics on URI and JAAS text), the rules
+that combine keys (SCG003, SCG008, SCG011), then the rest, single-key rules
+such as SCG002, SCG009 and SCG013 last. For SCG008 and SCG011, check a
+combination split across config locations: ADR-005 confirmed it produces
+no finding for SCG003, but the effect on these two was not verified.
 
-Reviewed so far: SCG001, against a running Spring Boot app (`VALIDATION.md`,
-"SCG001 exposure scenarios"); split across locations, its `show-values`
-finding is missed, a limitation the ADR-005 coverage warning already
-surfaces.
+Reviewed so far:
+
+* SCG001, against a running Spring Boot app (`VALIDATION.md`, "SCG001
+  exposure scenarios"); split across locations, its `show-values` finding is
+  missed, a limitation the ADR-005 coverage warning already surfaces.
+* SCG006, against Spring Boot 4.1.1's configuration metadata (`VALIDATION.md`,
+  "SCG006 key matching").
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG006. Where a rule
-relies on Spring Boot behavior, check it against a running app, as for
-SCG001.
+before starting the next one. Next: SCG006. Where a rule relies on Spring
+Boot behavior, check it against a running app, as for SCG001.
 
 ### GitHub Action for the Marketplace
 

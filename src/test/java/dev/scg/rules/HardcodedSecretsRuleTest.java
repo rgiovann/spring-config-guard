@@ -107,16 +107,18 @@ class HardcodedSecretsRuleTest {
     @DisplayName("Custom Secret Key Patterns Detection")
     class SecretKeyPatternTests {
 
-        @ParameterizedTest(name = "Should ignore custom secret pattern for ''{0}'' with primitive value ''{1}''")
+        @ParameterizedTest(name = "Should ignore ''{0}'' = ''{1}''")
         @CsvSource({
                 "jwt.token-validity-in-seconds, 86400",
                 "jwt.token-validity-in-seconds, 2592000",
                 "jwt.token-validity-in-seconds, 0",
                 "app.security.token-remember-me-enabled, true",
                 "app.security.token-remember-me-enabled, TRUE",
-                "app.security.token-remember-me-enabled, false"
+                "app.security.token-remember-me-enabled, false",
+                "app.require-password, TRUE",
+                "management.endpoints.web.cors.allow-credentials, true"
         })
-        @DisplayName("Silently ignores custom key matches with numeric or boolean primitive values")
+        @DisplayName("Ignores a key that only contains a pattern (a metric) and a boolean in a key that ends in one (a switch)")
         void shouldIgnoreCustomSecretKeyPatternForPrimitiveValues(String propertyKey, String primitiveValue) {
             Map<String, String> props = Map.of(propertyKey, primitiveValue);
             EffectiveConfig config = createConfig(props);
@@ -126,14 +128,15 @@ class HardcodedSecretsRuleTest {
             assertThat(findings).isEmpty();
         }
 
-        @ParameterizedTest(name = "Should ignore custom secret pattern for ''{0}'' with primitive value behind placeholder ''{1}''")
+        @ParameterizedTest(name = "Should ignore ''{0}'' = ''{1}'' behind a placeholder")
         @CsvSource({
                 "jwt.token-validity-in-seconds, ${TOKEN_TTL:86400}",
                 "jwt.token-validity-in-seconds, ${TOKEN_TTL:0}",
                 "app.security.token-remember-me-enabled, ${REMEMBER_ME:true}",
-                "app.security.token-remember-me-enabled, ${REMEMBER_ME:FALSE}"
+                "app.security.token-remember-me-enabled, ${REMEMBER_ME:FALSE}",
+                "app.require-password, ${REQUIRE_PASSWORD:true}"
         })
-        @DisplayName("Silently ignores custom key matches when the placeholder's static default is a numeric or boolean primitive")
+        @DisplayName("Same as above when the value is a placeholder's static default")
         void shouldIgnoreCustomSecretKeyPatternForPrimitiveValuesBehindPlaceholder(String propertyKey, String placeholderValue) {
             Map<String, String> props = Map.of(propertyKey, placeholderValue);
             EffectiveConfig config = createConfig(props);
@@ -169,7 +172,7 @@ class HardcodedSecretsRuleTest {
                 "app.require-password, true",
                 "app.api-key, false"
         })
-        @DisplayName("Still ignores numeric values in keys that don't end in the pattern, and booleans in any key")
+        @DisplayName("Ignores keys that don't end in a pattern, and booleans in keys that do")
         void shouldStillIgnoreMetricsAndSwitches(String propertyKey, String value) {
             assertThat(rule.check(createConfig(Map.of(propertyKey, value)))).isEmpty();
         }
@@ -182,9 +185,11 @@ class HardcodedSecretsRuleTest {
                 "aws.access-key",
                 "db.client.credential",
                 "MY_SERVICE_APIKEY",
-                "auth.user-password"
+                "auth.user-password",
+                "app.jwt.secret-key",
+                "management.elastic.metrics.export.api-key-credentials"
         })
-        @DisplayName("Detects custom property keys containing configured secret patterns")
+        @DisplayName("Detects custom property keys ending in a configured secret pattern")
         void shouldDetectCustomPatternKeys(String customKey) {
             EffectiveConfig config = createConfig(Map.of(customKey, "raw-token-value-99"));
 
@@ -234,6 +239,76 @@ class HardcodedSecretsRuleTest {
 
             assertThat(findings).hasSize(1);
             assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        }
+    }
+
+    @Nested
+    @DisplayName("A pattern elsewhere in the key does not name a secret")
+    class PatternPositionTests {
+
+        @ParameterizedTest(name = "Should ignore ''{0}'' = ''{1}''")
+        @CsvSource(delimiter = '|', value = {
+                // Native Spring Boot 4.1.1 properties (OAuth2AuthorizationServerProperties.Token,
+                // the resource server's opaquetoken, Hikari, embedded LDAP)
+                "spring.security.oauth2.authorizationserver.client.web.token.access-token-time-to-live | 5m",
+                "spring.security.oauth2.authorizationserver.client.web.token.refresh-token-time-to-live | PT1H",
+                "spring.security.oauth2.authorizationserver.client.web.token.authorization-code-time-to-live | 10m",
+                "spring.security.oauth2.authorizationserver.client.web.token.access-token-format | reference",
+                "spring.security.oauth2.authorizationserver.client.web.token.id-token-signature-algorithm | RS256",
+                "spring.security.oauth2.resourceserver.opaquetoken.client-id | resource-server",
+                "spring.datasource.hikari.credentials-provider-class-name | com.example.Provider",
+                "spring.ldap.embedded.credential.username | uid=admin",
+                // Third-party namespaces, map keys and application properties
+                "spring.cloud.kubernetes.secrets.namespace | default",
+                "spring.cloud.kubernetes.secrets.name | db-secret",
+                "spring.cloud.gcp.secretmanager.project-id | my-project",
+                "spring.cloud.stream.bindings.tokenEvents-in-0.destination | token-events",
+                "app.security.password-encoder | bcrypt",
+                "app.jwt.token-prefix | Bearer",
+                "app.jwt.token-validity | 1h"
+        })
+        @DisplayName("Ignores keys where the pattern names a namespace, a map key or a nested object, not the value")
+        void shouldIgnorePatternNotAtTheEnd(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).isEmpty();
+        }
+
+        @ParameterizedTest(name = "Should ignore ''{0}''")
+        @ValueSource(strings = {
+                "logging.level.org.springframework.security.oauth2.server.authorization.token",
+                "logging.level.com.example.PasswordResetService",
+                "logging.group.secret"
+        })
+        @DisplayName("Ignores logging.level and logging.group, whose last segment is a logger or group name")
+        void shouldIgnoreLoggingKeys(String key) {
+            assertThat(rule.check(createConfig(Map.of(key, "DEBUG")))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("The logging prefix is matched on a '.' boundary: a key merely starting with the same text is still checked")
+        void shouldMatchIgnoredPrefixOnSegmentBoundary() {
+            assertThat(rule.check(createConfig(Map.of("logging.levelx.password", "s3cr3t")))).hasSize(1);
+        }
+
+        @ParameterizedTest(name = "Accepted false negative: ''{0}''")
+        @ValueSource(strings = {
+                "app.secret-key-base",
+                "app.password-hash",
+                "app.api-keys"
+        })
+        @DisplayName("Accepted limitation: a secret whose key has the word before another one, or in the plural, is not reported")
+        void shouldNotReportPatternFollowedByAnotherWord(String key) {
+            // The cost of matching only the key's end (see the class Javadoc): pinned so that
+            // widening the match again is a deliberate decision, not an accident.
+            assertThat(rule.check(createConfig(Map.of(key, "c2VjcmV0LXZhbHVl")))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Accepted limitation: a key naming a secret that holds a plain file path is reported")
+        void shouldReportPlainPathInKeyNamingASecret() {
+            // Only classpath:/file: values are recognized as locations; spring.ssl.bundle.pem.*.private-key
+            // also accepts the PEM content itself, so a bare path can't be told apart safely.
+            assertThat(rule.check(createConfig(Map.of("server.ssl.certificate-private-key", "/etc/tls/server.key"))))
+                    .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
         }
     }
 
