@@ -826,3 +826,37 @@ Every reference project above reports the same findings, byte for byte, as
 with the v1.7.0 jar. t03, t06 and the default modes are left for later
 (BACKLOG.md).
 
+## SCG003 CORS scenarios (running Spring Boot 4.1.1 apps)
+
+How Spring answers a credentialed cross-origin request was checked in two
+running Spring Boot 4.1.1 apps: Actuator's CORS in this benchmark app
+(`/actuator/env`, reproducible with `spring-env-benchmark/cors-scenarios.sh`),
+and Spring for GraphQL's in a minimal app with `spring-boot-starter-graphql`
+(`/graphql`). Spring Boot 4.1.1's configuration metadata binds CORS from
+properties for these two only, with the same keys.
+
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.8.0 | After the SCG003 review (unreleased) |
+|---|---|---|---|---|
+| C1 | Actuator `allowed-origins=*` | app doesn't start ("allowedOrigins cannot contain the special value *") | HIGH | LOW |
+| G2 | GraphQL `allowed-origins=*` | 500 on every CORS request | silent | LOW |
+| C2 | Actuator `allowed-origin-patterns=*` | foreign origin echoed with credentials | HIGH | HIGH |
+| G1 | GraphQL `allowed-origin-patterns=*` | foreign origin echoed with credentials | silent | HIGH |
+| C6 | Actuator `allowed-origin-patterns=https://*` | foreign origin echoed with credentials | HIGH | HIGH |
+| C3 | Actuator `allowed-origins=https://*.example.com` | 403: compared literally | MEDIUM | silent |
+| G3 | GraphQL `allowed-origins=https://*.example.com` | 403: compared literally | silent | silent |
+| C4 | Actuator `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | MEDIUM | MEDIUM |
+| G4 | GraphQL `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | silent | MEDIUM |
+| C5 | Actuator `allowed-origins=*`, no credentials | `Access-Control-Allow-Origin: *` without credentials | silent | silent |
+| C8 | `allowed-origin-patterns=${CORS_ORIGINS}` | decided at runtime | HIGH | INFO |
+
+SCG003 now reads both prefixes and each origin key as Spring does: a
+wildcard is only a pattern in `allowed-origin-patterns`; `*` in
+`allowed-origins` with credentials is rejected by Spring, so it is LOW
+(present but ineffective) rather than an exploitable HIGH; an unresolved
+placeholder, in an origin key or in `allow-credentials`, is INFO. The two
+demo fixtures that used `allowed-origins: "*"` with credentials
+(`multi-profile-showcase`'s `prod` profile and `config-location-showcase`)
+now use `allowed-origin-patterns: "*"`, the form that is a real risk; ADR-005
+carries a note on its example. Every reference project above reports the
+same findings as with the v1.8.0 jar.
+

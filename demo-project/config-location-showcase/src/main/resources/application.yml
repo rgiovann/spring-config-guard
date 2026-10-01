@@ -4,4 +4,4 @@ management:
   endpoints:
     web:
       cors:
-        allowed-origins: "*"
+        allowed-origin-patterns: "*"

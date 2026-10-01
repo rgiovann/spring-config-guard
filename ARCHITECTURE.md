@@ -395,6 +395,13 @@ false negative was silent: nothing in the report said the result depended
 on a merge SCG never performed — the same class of trust gap as an
 unfollowed `spring.config.import` (ADR-004).
 
+Note (SCG003 review, `VALIDATION.md`, "SCG003 CORS scenarios"): the example
+above doesn't hold as written. With `allow-credentials: true`, Spring
+rejects `allowed-origins: "*"` (the Actuator endpoint mapping fails at
+startup), so the merged `prod` environment wouldn't run. The risk is real
+with `allowed-origin-patterns: "*"`, which `config-location-showcase` now
+uses; the conclusion is unchanged.
+
 ### Decision
 Keep evaluating directories independently, and make the gap visible.
 `ConfigLocationCoverage.modulesWithMultipleLocations()` reports module

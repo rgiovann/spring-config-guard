@@ -10,6 +10,7 @@ import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
@@ -64,8 +65,8 @@ class CorsWildcardWithCredentialsRuleTest {
 
 
     @Test
-    @DisplayName("Should treat unresolved placeholder as GLOBAL")
-    void shouldTreatUnresolvedPlaceholderAsGlobal() {
+    @DisplayName("Should report an unresolved placeholder as INFO: static analysis can't tell (never HIGH)")
+    void shouldReportUnresolvedPlaceholderAsInfo() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -80,7 +81,7 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).singleElement()
-                .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+                .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
     }
 
     @Test
@@ -105,8 +106,8 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should classify a placeholder resolving to the literal global wildcard as HIGH")
-    void shouldClassifyPlaceholderWithGlobalDefaultAsHigh() {
+    @DisplayName("Should report LOW for a placeholder resolving to '*' in allowed-origins: Spring rejects it with credentials")
+    void shouldReportLowForPlaceholderResolvingToStarInAllowedOrigins() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -122,7 +123,7 @@ class CorsWildcardWithCredentialsRuleTest {
 
         assertThat(findings).singleElement()
                 .extracting(Finding::severity)
-                .isEqualTo(Severity.HIGH);
+                .isEqualTo(Severity.LOW);
     }
 
     @Test
@@ -144,14 +145,14 @@ class CorsWildcardWithCredentialsRuleTest {
 
         assertThat(findings)
                 .filteredOn(finding ->
-                        finding.message().contains("allowed-origins"))
+                        finding.message().contains("allowed-origins'"))
                 .singleElement()
                 .satisfies(finding ->
-                        assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+                        assertThat(finding.severity()).isEqualTo(Severity.LOW));
 
         assertThat(findings)
                 .filteredOn(finding ->
-                        finding.message().contains("allowed-origin-patterns"))
+                        finding.message().contains("domain-scoped wildcard"))
                 .singleElement()
                 .satisfies(finding ->
                         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
@@ -182,8 +183,8 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should classify scoped wildcard in allowed-origins when credentials are enabled")
-    void shouldClassifyScopedWildcardInAllowedOrigins() {
+    @DisplayName("Should stay silent for a domain wildcard in allowed-origins: Spring compares it literally (403 for every origin)")
+    void shouldIgnoreScopedWildcardInAllowedOrigins() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
                 "prod",
@@ -197,10 +198,7 @@ class CorsWildcardWithCredentialsRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings)
-                .singleElement()
-                .satisfies(finding ->
-                        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+        assertThat(findings).isEmpty();
     }
 
     @Test
@@ -275,7 +273,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origins", "*",
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "*",
                         ALLOW_CREDENTIALS_KEY, "true"
                 )
         );
@@ -324,7 +322,7 @@ class CorsWildcardWithCredentialsRuleTest {
                 FAKE_PATH,
                 "prod",
                 Map.of(
-                        "management.endpoints.web.cors.allowed-origins", "*",
+                        ALLOWED_ORIGIN_PATTERNS_KEY, "*",
                         ALLOW_CREDENTIALS_KEY, credentialsValue
                 )
         );
@@ -369,7 +367,7 @@ class CorsWildcardWithCredentialsRuleTest {
     }
 
     @Test
-    @DisplayName("Should handle list-style allowed-origins representation")
+    @DisplayName("Should find '*' in list-style allowed-origins and report it as LOW")
     void shouldHandleListStyleAllowedOrigins() {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
@@ -387,7 +385,7 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(findings)
                 .singleElement()
                 .satisfies(finding -> {
-                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.severity()).isEqualTo(Severity.LOW);
                     assertThat(finding.message())
                             .contains("allowed-origins");
                 });
@@ -491,4 +489,62 @@ class CorsWildcardWithCredentialsRuleTest {
         assertThat(rule.check(config)).isEmpty();
     }
 
+    // Checked against running Spring Boot 4.1.1 apps (VALIDATION.md, "SCG003 CORS scenarios")
+
+    @ParameterizedTest(name = "{0}: {1} = {2} -> {3}")
+    @CsvSource(delimiter = '|', value = {
+            "management.endpoints.web.cors | allowed-origin-patterns | *                     | HIGH",
+            "spring.graphql.cors           | allowed-origin-patterns | *                     | HIGH",
+            "spring.graphql.cors           | allowed-origin-patterns | https://*             | HIGH",
+            "spring.graphql.cors           | allowed-origin-patterns | https://*.example.com | MEDIUM",
+            "spring.graphql.cors           | allowed-origins         | *                     | LOW"
+    })
+    @DisplayName("Spring for GraphQL's CORS properties behave like Actuator's, with credentials enabled")
+    void shouldCoverGraphqlCorsLikeActuator(String prefix, String key, String value, Severity expected) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                prefix + "." + key, value,
+                prefix + ".allow-credentials", "true"));
+
+        assertThat(rule.check(config)).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(expected);
+            assertThat(finding.message()).contains(prefix + ".");
+        });
+    }
+
+    @Test
+    @DisplayName("A literal domain wildcard in spring.graphql.cors.allowed-origins is silent too (Spring answers 403)")
+    void shouldIgnoreLiteralWildcardInGraphqlAllowedOrigins() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.graphql.cors.allowed-origins", "https://*.example.com",
+                "spring.graphql.cors.allow-credentials", "true"));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("allow-credentials from an unresolved placeholder with a wildcard pattern is INFO, not HIGH")
+    void shouldReportUnresolvedCredentialsWithWildcardAsInfo() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                ALLOWED_ORIGIN_PATTERNS_KEY, "*",
+                ALLOW_CREDENTIALS_KEY, "${CORS_CREDENTIALS}"));
+
+        assertThat(rule.check(config)).singleElement()
+                .satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+    }
+
+    @ParameterizedTest(name = "Silent: {0} = {1}")
+    @CsvSource(delimiter = '|', value = {
+            // Nothing to doubt: no wildcard can match, whatever the credentials resolve to
+            "management.endpoints.web.cors.allowed-origin-patterns | https://app.example.com",
+            // '*' in allowed-origins is either rejected (credentials true) or harmless (false)
+            "management.endpoints.web.cors.allowed-origins         | *"
+    })
+    @DisplayName("allow-credentials from an unresolved placeholder stays silent when no outcome is a risk")
+    void shouldStaySilentWhenUnresolvedCredentialsCantMatter(String key, String value) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                key, value,
+                ALLOW_CREDENTIALS_KEY, "${CORS_CREDENTIALS}"));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
 }

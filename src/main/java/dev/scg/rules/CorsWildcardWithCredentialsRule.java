@@ -5,37 +5,36 @@ import dev.scg.core.*;
 import java.util.*;
 
 /**
- * SCG003 — detects the combination of wildcard CORS origin (allowed-origins/
- * allowed-origin-patterns = "*") with allow-credentials=true.
+ * SCG003 — detects a wildcard CORS origin combined with allow-credentials=true, which lets a page
+ * on another origin make credentialed requests and read the responses.
  * <p>
- * Scoped to management.endpoints.web.cors.* (Actuator) only. Spring MVC's
- * own CORS support (for application controllers, not Actuator endpoints)
- * has no native application.yml/.properties binding in vanilla Spring
- * Boot — it's configured programmatically via WebMvcConfigurer,
- * @CrossOrigin, or XML <mvc:cors>. Confirmed against the real Spring Boot
- * source (CorsEndpointProperties.java, spring-projects/spring-boot on
- * GitHub): only management.endpoints.web.cors is a real
- * @ConfigurationProperties-bound prefix. A prior version of this rule
- * also checked spring.mvc.cors.* under the assumption that Spring MVC
- * exposed an equivalent binding — it does not, so those keys never
- * matched anything in a real application and were removed.
+ * Covers the two CORS configurations Spring Boot binds from properties, which share the same
+ * keys and semantics: Actuator's {@code management.endpoints.web.cors.*} and Spring for
+ * GraphQL's {@code spring.graphql.cors.*} (both in Spring Boot 4.1.1's configuration metadata).
+ * Spring MVC's own CORS for application controllers has no property binding: it's configured in
+ * code ({@code WebMvcConfigurer}, {@code @CrossOrigin}), which SCG can't see.
  * <p>
- * Consequence: this rule (and, by the same reasoning, the sibling CORS
- * rules SCG004/SCG005) cannot detect insecure CORS configured
- * programmatically in application controllers — only Actuator's CORS,
- * which is the one surface actually exposed through config files.
+ * The two origin keys are matched as Spring matches them, checked against a running Spring Boot
+ * 4.1.1 app for both prefixes (VALIDATION.md, "SCG003 CORS scenarios"):
+ * <ul>
+ *     <li>{@code allowed-origin-patterns}: {@code *} and {@code https://*} let any origin in with
+ *     credentials (HIGH); a domain pattern ({@code https://*.example.com}) every matching
+ *     subdomain (MEDIUM).</li>
+ *     <li>{@code allowed-origins}: values are compared literally, so {@code https://*.example.com}
+ *     matches no real origin (Spring answers 403) and stays silent. The special value {@code *}
+ *     with credentials is rejected by Spring itself: the Actuator endpoint mapping fails at
+ *     startup, and GraphQL answers every CORS request with 500. It is reported as LOW
+ *     (present but ineffective), since it isn't exploitable but the configuration is broken.</li>
+ * </ul>
+ * A placeholder without a default, in an origin key or in {@code allow-credentials}, can't be
+ * evaluated statically: INFO, never HIGH (CLAUDE.md, "Findings").
  */
 public final class CorsWildcardWithCredentialsRule implements Rule {
 
-    // A list, not a set: iterated to generate findings, in a fixed order.
-    private static final List<String> ORIGIN_KEYS = List.of(
-            "management.endpoints.web.cors.allowed-origins",
-            "management.endpoints.web.cors.allowed-origin-patterns"
-    );
+    /** The CORS prefixes Spring Boot binds from properties, in report order. */
+    private static final List<String> CORS_PREFIXES = List.of("management.endpoints.web.cors", "spring.graphql.cors");
 
-    private static final Set<String> CREDENTIALS_KEYS = Set.of(
-            "management.endpoints.web.cors.allow-credentials"
-    );
+    private enum Credentials { ENABLED, UNRESOLVED, DISABLED }
 
     @Override
     public String id() {
@@ -44,56 +43,83 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
 
     @Override
     public String description() {
-        return "CORS with global or pattern-based wildcard in allowed-origins/patterns combined with allow-credentials=true.";
+        return "CORS wildcard origin pattern combined with allow-credentials=true (Actuator and Spring for GraphQL)";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
-
-        boolean hasCredentialsEnabled = CREDENTIALS_KEYS.stream()
-                .map(key -> RelaxedProperties.get(config.properties(), key))
-                .anyMatch(RelaxedBoolean::isTruthy);
-
-        if (!hasCredentialsEnabled) {
-            return findings;
+        for (String prefix : CORS_PREFIXES) {
+            checkPrefix(config, prefix, findings);
         }
-
-        for (String originKey : ORIGIN_KEYS) {
-            List<String> values = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), originKey);
-
-            WildcardScope wildcardScope = values.stream()
-                    .map(this::classifyWildcard)
-                    .max(WildcardScope::compareTo)
-                    .orElse(WildcardScope.NONE);
-
-            if (wildcardScope == WildcardScope.GLOBAL) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.HIGH,
-                        ("Insecure CORS combination detected in key '%s': a global wildcard pattern allows credentialed " +
-                                "requests from any host (*, https://*, etc.). This combination exposes the application " +
-                                "to severe Cross-Site Request Forgery (CSRF) and session data leakage. " +
-                                "Replace global wildcards with explicit origins or restricted domain patterns.")
-                                .formatted(originKey),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
-            } else if (wildcardScope == WildcardScope.NON_GLOBAL) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.MEDIUM,
-                        ("CORS origin pattern in key '%s' contains a domain-scoped wildcard while credential " +
-                                "sending (allow-credentials) is enabled. This grants credentialed access to every " +
-                                "matching subdomain. Review subdomain ownership and takeover risks, or use explicit origins.")
-                                .formatted(originKey),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
-            }
-        }
-
         return findings;
+    }
+
+    private void checkPrefix(EffectiveConfig config, String prefix, List<Finding> findings) {
+        String credentialsKey = prefix + ".allow-credentials";
+        Credentials credentials = credentials(RelaxedProperties.get(config.properties(), credentialsKey));
+        if (credentials == Credentials.DISABLED) {
+            return;
+        }
+
+        String patternsKey = prefix + ".allowed-origin-patterns";
+        WildcardScope patternScope = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), patternsKey).stream()
+                .map(this::classifyWildcard)
+                .max(WildcardScope::compareTo)
+                .orElse(WildcardScope.NONE);
+
+        if (patternScope == WildcardScope.UNRESOLVED
+                || (credentials == Credentials.UNRESOLVED && patternScope != WildcardScope.NONE)) {
+            findings.add(finding(config, Severity.INFO,
+                    ("CORS key '%s' or '%s' relies on an unresolved environment placeholder. If credentials are " +
+                            "enabled and the origin patterns include a wildcard at runtime, any matching origin can make " +
+                            "credentialed requests; static analysis can't tell. Use explicit origins.")
+                            .formatted(patternsKey, credentialsKey)));
+        } else if (patternScope == WildcardScope.GLOBAL) {
+            findings.add(finding(config, Severity.HIGH,
+                    ("Insecure CORS combination detected in key '%s': a global wildcard pattern allows credentialed " +
+                            "requests from any host (*, https://*, etc.). This combination exposes the application " +
+                            "to severe Cross-Site Request Forgery (CSRF) and session data leakage. " +
+                            "Replace global wildcards with explicit origins or restricted domain patterns.")
+                            .formatted(patternsKey)));
+        } else if (patternScope == WildcardScope.NON_GLOBAL) {
+            findings.add(finding(config, Severity.MEDIUM,
+                    ("CORS origin pattern in key '%s' contains a domain-scoped wildcard while credential " +
+                            "sending (allow-credentials) is enabled. This grants credentialed access to every " +
+                            "matching subdomain. Review subdomain ownership and takeover risks, or use explicit origins.")
+                            .formatted(patternsKey)));
+        }
+
+        String originsKey = prefix + ".allowed-origins";
+        boolean literalWildcardOrigin = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), originsKey).stream()
+                .filter(Objects::nonNull)
+                .map(EnvironmentPlaceholder::resolve)
+                .flatMap(Optional::stream)
+                .flatMap(value -> Arrays.stream(value.split(",")))
+                .anyMatch(origin -> origin.strip().equals("*"));
+        if (credentials == Credentials.ENABLED && literalWildcardOrigin) {
+            findings.add(finding(config, Severity.LOW,
+                    ("CORS key '%s' contains '*' while '%s' is true. Spring rejects this combination: the Actuator " +
+                            "endpoint mapping fails at startup, and GraphQL answers every CORS request with an error, so " +
+                            "it isn't exploitable, but the configuration is broken. List explicit origins, or use " +
+                            "'allowed-origin-patterns' with explicit domains.")
+                            .formatted(originsKey, credentialsKey)));
+        }
+    }
+
+    private static Credentials credentials(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Credentials.DISABLED;
+        }
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
+        if (resolved.isEmpty()) {
+            return Credentials.UNRESOLVED;
+        }
+        return RelaxedBoolean.isTruthy(resolved.get()) ? Credentials.ENABLED : Credentials.DISABLED;
+    }
+
+    private Finding finding(EffectiveConfig config, Severity severity, String message) {
+        return new Finding(id(), severity, message, config.sourceFile().toString(), config.profileLabel());
     }
 
     private WildcardScope classifyWildcard(String value) {
@@ -103,7 +129,7 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
 
         Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
         if (resolved.isEmpty()) {
-            return WildcardScope.GLOBAL;
+            return WildcardScope.UNRESOLVED;
         }
 
         WildcardScope result = WildcardScope.NONE;
@@ -153,9 +179,11 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
         return WildcardScope.NON_GLOBAL;
     }
 
+    /** Ordered by precedence: an unresolved value can't be ruled out, so it outranks the others. */
     private enum WildcardScope {
         NONE,
         NON_GLOBAL,
-        GLOBAL
+        GLOBAL,
+        UNRESOLVED
     }
 }

@@ -38,5 +38,5 @@ management:
   endpoints:
     web:
       cors:
-        allowed-origins: "*"
+        allowed-origin-patterns: "*"
         allow-credentials: true

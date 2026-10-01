@@ -112,7 +112,7 @@ should be updated in the same PR that adds or removes a rule.
 |---|---|---|
 | SCG001 | HIGH / INFO | Sensitive Actuator endpoints exposed over HTTP without restricting access |
 | SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
-| SCG003 | HIGH / MEDIUM | CORS with global or pattern-based wildcard in `allowed-origins`/patterns combined with `allow-credentials=true` |
+| SCG003 | HIGH / MEDIUM / LOW / INFO | CORS wildcard origin pattern combined with `allow-credentials=true` (Actuator and Spring for GraphQL) |
 | SCG004 | MEDIUM / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins |
 | SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
 | SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
@@ -172,7 +172,7 @@ deliberately outside that scope, for different reasons:
 * **Merging across Spring config locations.** Spring merges
   `classpath:/`, `classpath:/config/`, `file:./` and `file:./config/` into
   one `Environment`; SCG evaluates each directory independently, so a risky
-  combination split across two locations (e.g. `allowed-origins: "*"` in
+  combination split across two locations (e.g. `allowed-origin-patterns: "*"` in
   `src/main/resources/application.yml` and `allow-credentials: true` in
   `config/application-prod.yml`) produces no finding. Guessing which
   directories belong to the same application risks silently fusing unrelated
@@ -287,7 +287,7 @@ subdirectories are a good starting tour:
   (`spring-config-guard: N file(s) import external configuration via
   spring.config.import that was not scanned.`) on stderr next to a regular
   scan — identically in console and `--json` format.
-* `demo-project/config-location-showcase/` — `allowed-origins: "*"` in
+* `demo-project/config-location-showcase/` — `allowed-origin-patterns: "*"` in
   `src/main/resources/application.yml` and `allow-credentials: true` in
   `config/application-prod.yml`: Spring would resolve `prod` to the SCG003
   combination, but each directory is evaluated on its own, so the report is

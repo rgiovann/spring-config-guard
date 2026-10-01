@@ -45,15 +45,22 @@ Reviewed so far:
   "SCG007 credential forms"; ADR-011).
 * SCG012, against the JDBC drivers and Spring Boot's Redis configuration
   (`VALIDATION.md`, "SCG012 driver modes").
+* SCG003, against running Spring Boot 4.1.1 apps, Actuator and Spring for
+  GraphQL (`VALIDATION.md`, "SCG003 CORS scenarios").
+
+Found while reviewing SCG003, to check in the rules concerned:
+`spring.graphql.cors.*` is a second CORS binding next to Actuator's, which
+SCG004 and SCG005 don't read either; and `RelaxedBoolean.isTruthy` treats an
+unresolved placeholder as `true`, so a rule using it reports doubt at its
+certain severity (SCG003 now resolves `allow-credentials` itself).
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: the rules that combine keys, SCG003
-first. Where a rule relies on Spring Boot behavior, check it against a
-running app, as for SCG001.
+before starting the next one. Next: SCG008. Where a rule relies on Spring
+Boot behavior, check it against a running app, as for SCG001.
 
 ### SCG012 cases left open (decide with measurements)
 
