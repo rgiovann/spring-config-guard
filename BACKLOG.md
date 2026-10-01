@@ -108,9 +108,10 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
 * **A CI gate first** (exit code and report). PR annotations and a SARIF
   upload for code scanning come later: they place each finding on a file,
   so they depend on "Per-property origin in findings" below.
-* **Order**: release the SCG006 and SCG014 changes, then create and
-  publish the action. False positives in a CI gate are what
-  drive new users away first.
+* **Order**: only after every rule is reviewed and released (the
+  maintainer's decision). So far SCG006 and SCG014 shipped in v1.7.0,
+  SCG007 and SCG012 in v1.8.0. False positives in a CI gate are what drive
+  new users away first.
 
 ### Per-property origin in findings (waiting for a real consumer)
 
