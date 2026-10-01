@@ -297,6 +297,23 @@ two apart when reviewing an existing or proposed rule, see
 `INFO` represents cases where static analysis cannot determine the actual
 risk. It does not independently cause `ExitCodeResolver` to fail the build.
 
+False negatives weigh more than false positives: a missed risk is invisible,
+while a false positive can be checked and suppressed. That never means "when
+in doubt, HIGH" — doubt reported as HIGH fails builds until users suppress
+or disable the rule, which hides real findings too. Map certainty to
+severity:
+
+* Certain evidence (an insecure value written in the files): the rule's
+  severity. A key that is absent and whose default is insecure is one
+  level lower (ADR-010).
+* Doubt (the key or value may or may not be the risk): `INFO`, visible
+  without failing a build — e.g. SCG006 reports a key that only contains a
+  secret pattern (`app.secret-key-base`) as `INFO`.
+* Silence only when the value provably can't be the risk (a boolean
+  switch, a number in a key that doesn't name a secret, a placeholder
+  without a default). Silencing a case needs that argument, not just
+  "it's usually fine".
+
 Output is deterministic: the same input produces byte-identical output on
 every run, since users diff reports and gate CI on them. Reporters sort with
 `Finding.DEFAULT_ORDER`, a total order (severity, source file, profile, rule

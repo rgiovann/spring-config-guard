@@ -93,6 +93,17 @@ anywhere? The latter is an inherent static-analysis limitation (no
 classpath visibility) — document it as a boundary if undocumented, don't
 treat it as a bug to fix.
 
+Then list every place where `check()` stays silent on input that touches
+the rule's subject: a `continue`, an exclusion list (ignored prefixes or
+suffixes, value allowlists), a value heuristic. For each one, apply
+CLAUDE.md's Findings section (false negatives weigh more than false
+positives): is the silence proven, i.e. can the value never be the risk?
+If not, the case is doubt and belongs in `INFO`, not in silence. Example:
+SCG006 used to silence keys that only contain a secret pattern; since
+`app.secret-key-base` may well be a secret, they are `INFO` now. Measure
+before changing: the hand-built cases and the reference corpus (see
+`VALIDATION.md`) show how much `INFO` the change adds.
+
 ## 5. Verify tests validate behavior, not just pass
 
 Confirm coverage matches `add-security-rule`'s testing section. Beyond
