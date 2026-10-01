@@ -298,4 +298,120 @@ class KafkaInsecureProtocolRuleTest {
 
         assertThat(rule.check(config)).hasSize(1);
     }
+
+    // Precedence, confirmed by binding Spring Boot 4.1.1's KafkaProperties and building each client's
+    // configuration: client properties map > client typed key > spring.kafka.properties > common typed key.
+
+    @Test
+    @DisplayName("P1: an insecure common typed key overridden by spring.kafka.properties for every client is not reported")
+    void shouldNotReportCommonKeyOverriddenByCommonMap() {
+        assertThat(rule.check(config(
+                COMMON_KEY, "PLAINTEXT",
+                "spring.kafka.properties.security.protocol", "SSL"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("P2/P3: an insecure spring.kafka.properties value overrides the typed keys below it and is reported once")
+    void shouldReportCommonMapOverridingTypedKeys() {
+        List<Finding> findings = rule.check(config(
+                COMMON_KEY, "SSL",
+                "spring.kafka.consumer.security.protocol", "SSL",
+                "spring.kafka.properties.security.protocol", "PLAINTEXT"));
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).startsWith("'spring.kafka.properties.security.protocol=PLAINTEXT'");
+        });
+    }
+
+    @Test
+    @DisplayName("P4: an insecure client typed key overridden by the client's properties map is not reported; the uncovered clients are")
+    void shouldNotReportClientKeyOverriddenByClientMap() {
+        List<Finding> findings = rule.check(config(
+                "spring.kafka.consumer.security.protocol", "PLAINTEXT",
+                "spring.kafka.consumer.properties.security.protocol", "SSL"));
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(finding.message()).contains("covers the producer, admin, streams clients");
+        });
+    }
+
+    @Test
+    @DisplayName("P5: an insecure common key overridden by every client's own key is not reported")
+    void shouldNotReportCommonKeyOverriddenByEveryClient() {
+        assertThat(rule.check(config(
+                COMMON_KEY, "PLAINTEXT",
+                "spring.kafka.producer.security.protocol", "SSL",
+                "spring.kafka.consumer.security.protocol", "SSL",
+                "spring.kafka.admin.security.protocol", "SSL",
+                "spring.kafka.streams.security.protocol", "SSL"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An insecure common key still reported when one client keeps it")
+    void shouldReportCommonKeyWhenOneClientStillUsesIt() {
+        List<Finding> findings = rule.check(config(
+                COMMON_KEY, "PLAINTEXT",
+                "spring.kafka.producer.security.protocol", "SSL",
+                "spring.kafka.consumer.security.protocol", "SSL",
+                "spring.kafka.admin.security.protocol", "SSL"));
+
+        assertThat(findings).singleElement().satisfies(finding ->
+                assertThat(finding.message()).startsWith("'spring.kafka.security.protocol=PLAINTEXT'"));
+    }
+
+    @Test
+    @DisplayName("Every client covered by its own key, with no common key: nothing to report")
+    void shouldNotReportUnsetWhenEveryClientIsCovered() {
+        assertThat(rule.check(config(
+                "spring.kafka.producer.security.protocol", "SSL",
+                "spring.kafka.consumer.security.protocol", "SSL",
+                "spring.kafka.admin.security.protocol", "SASL_SSL",
+                "spring.kafka.streams.properties.security.protocol", "SSL"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("P7: only the streams client uncovered is still MEDIUM, naming it (a Streams app may have no streams key)")
+    void shouldReportOnlyStreamsClientUncovered() {
+        List<Finding> findings = rule.check(config(
+                "spring.kafka.producer.security.protocol", "SSL",
+                "spring.kafka.consumer.security.protocol", "SSL",
+                "spring.kafka.admin.security.protocol", "SSL"));
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(finding.message()).contains("covers the streams client.");
+        });
+    }
+
+    @Test
+    @DisplayName("An unresolved placeholder overrides an insecure value below it: only the placeholder is reported, as INFO")
+    void shouldNotReportValueOverriddenByUnresolvedPlaceholder() {
+        assertThat(rule.check(config(
+                COMMON_KEY, "PLAINTEXT",
+                "spring.kafka.properties.security.protocol", "${KAFKA_PROTOCOL}")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("spring.kafka.properties.security.protocol");
+                });
+    }
+
+    @Test
+    @DisplayName("Inside a named binder's environment, the same precedence applies to its spring.kafka.* keys")
+    void shouldResolvePrecedenceInsideBinderEnvironment() {
+        String env = "spring.cloud.stream.binders.kafka1.environment.";
+        assertThat(rule.check(config(
+                "spring.cloud.stream.binders.kafka1.type", "kafka",
+                env + "spring.kafka.security.protocol", "PLAINTEXT",
+                env + "spring.kafka.properties.security.protocol", "SSL"))).isEmpty();
+    }
+
+    private static EffectiveConfig config(String... keysAndValues) {
+        Map<String, String> properties = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keysAndValues.length; i += 2) {
+            properties.put(keysAndValues[i], keysAndValues[i + 1]);
+        }
+        return new EffectiveConfig(FAKE_PATH, "prod", properties);
+    }
 }

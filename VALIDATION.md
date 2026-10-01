@@ -704,3 +704,40 @@ other reference project is byte-identical to v1.6.0.
 current ones added. That changes the message wording and reports a blank
 value as INFO for those keys; detection was already HIGH through the
 `password` pattern.
+
+## SCG014 protocol precedence (Spring Boot 4.1.1 `KafkaProperties`)
+
+Which `security.protocol` each Kafka client actually gets was checked by
+binding properties to Spring Boot 4.1.1's own `KafkaProperties` and building
+each client's configuration (`buildConsumerProperties()` and the others),
+with kafka-clients 4.2.1, whose default protocol is `PLAINTEXT`. Precedence,
+highest first: the client's `properties` map
+(`spring.kafka.consumer.properties.security.protocol`), the client's typed
+key (`spring.kafka.consumer.security.protocol`), the common
+`spring.kafka.properties` map, the common typed key
+(`spring.kafka.security.protocol`).
+
+SCG014 used to evaluate every key on its own, so an insecure value
+overridden by a secure one was still reported as HIGH:
+
+| Scenario | Spring's result | SCG014 before | Now |
+|---|---|---|---|
+| P1 common typed `PLAINTEXT`, common map `SSL` | `SSL` everywhere | HIGH | none |
+| P2 common typed `SSL`, common map `PLAINTEXT` | `PLAINTEXT` everywhere | HIGH (map) | HIGH (map) |
+| P3 consumer `SSL`, common map `PLAINTEXT` | `PLAINTEXT` for the other clients | HIGH (map) | HIGH (map) |
+| P4 consumer typed `PLAINTEXT`, consumer map `SSL` | consumer `SSL`, others unset | HIGH + MEDIUM | MEDIUM |
+| P5 common `PLAINTEXT`, every client `SSL` | `SSL` everywhere | HIGH | none |
+| P6 consumer `SSL` only | others unset | MEDIUM | MEDIUM |
+| P7 consumer, producer, admin `SSL` | streams unset | MEDIUM | MEDIUM, naming streams |
+
+SCG014 now resolves the protocol per client in that order and reports only
+the keys a client actually uses, once each; inside a named binder's
+environment too. An unresolved placeholder overrides what is below it,
+since it resolves at runtime or the application doesn't start. The "not
+set" finding names the clients left without a protocol, and the streams
+client counts even without a `spring.kafka.streams.*` key: a Kafka Streams
+application can take its application id from `spring.application.name`.
+On the reference projects only the wording of the 3 "not set" findings
+changes (1 in `spring-boot`, 2 in `spring-cloud-stream-samples`); every
+other finding is byte-identical.
+

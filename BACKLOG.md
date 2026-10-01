@@ -39,14 +39,32 @@ Reviewed so far:
   missed, a limitation the ADR-005 coverage warning already surfaces.
 * SCG006, against Spring Boot 4.1.1's configuration metadata (`VALIDATION.md`,
   "SCG006 key matching").
+* SCG014, against Spring Boot 4.1.1's `KafkaProperties` (`VALIDATION.md`,
+  "SCG014 protocol precedence").
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG014. Where a rule relies on Spring
+before starting the next one. Next: SCG007. Where a rule relies on Spring
 Boot behavior, check it against a running app, as for SCG001.
+
+### Kafka TLS without hostname verification (candidate rule)
+
+Found while reviewing SCG014, which covers only an unencrypted protocol: a
+Kafka client on `SSL`/`SASL_SSL` with `ssl.endpoint.identification.algorithm`
+set to an empty value encrypts but doesn't check that the broker's
+certificate matches its host name, so a man in the middle with any trusted
+certificate can intercept the traffic. A common workaround for certificate
+errors. Checked so far in kafka-clients 4.2.1: the default is `https`, and
+the client passes the configured value straight to
+`SSLParameters.setEndpointIdentificationAlgorithm`. Still to confirm before
+building it: that the JDK skips the check for an empty value (a test
+against a TLS listener whose certificate doesn't match the host), and the
+keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm`,
+the per-client maps, the binder maps), with the same precedence as SCG014.
+Decide then whether it extends SCG014 or is a rule of its own.
 
 ### GitHub Action for the Marketplace
 
@@ -67,8 +85,8 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
 * **A CI gate first** (exit code and report). PR annotations and a SARIF
   upload for code scanning come later: they place each finding on a file,
   so they depend on "Per-property origin in findings" below.
-* **Order**: review SCG014, release the SCG006 and SCG014 changes, then
-  create and publish the action. False positives in a CI gate are what
+* **Order**: release the SCG006 and SCG014 changes, then create and
+  publish the action. False positives in a CI gate are what
   drive new users away first.
 
 ### Per-property origin in findings (waiting for a real consumer)
