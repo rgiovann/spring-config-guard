@@ -40,6 +40,14 @@ high-risk-keys:
   - spring.kafka.ssl.key-store-password
   - spring.kafka.ssl.key-password
   - spring.kafka.ssl.trust-store-password
+  - spring.kafka.ssl.key-store-key
+  - spring.kafka.admin.ssl.key-store-key
+  - spring.kafka.consumer.ssl.key-store-key
+  - spring.kafka.producer.ssl.key-store-key
+  - spring.kafka.streams.ssl.key-store-key
+  - spring.neo4j.authentication.kerberos-ticket
+  - spring.liquibase.license-key
+  - management.datadog.metrics.export.application-key
   - spring.kafka.properties.ssl.keystore.password
 
 # Patterns for custom/third-party property keys that aren't in high-risk-keys but name a

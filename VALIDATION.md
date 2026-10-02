@@ -714,6 +714,28 @@ current ones added. That changes the message wording and reports a blank
 value as INFO for those keys; detection was already HIGH through the
 `password` pattern.
 
+Native secrets no pattern matches were searched for on 2026-10-02, when
+re-checking this section. Every metadata property with no SCG006 finding
+whose name contains `pass`, `pwd`, `secret`, `token`, `cred`, `key`, `auth`,
+`cert`, `private`, `jaas`, `sasl`, `license`, `ticket`, `headers` or
+`signature` was read (146 names, most of them types, aliases, locations,
+URIs or timeouts). Eight were secrets that SCG006 never reported,
+in v1.6.0 or since: `spring.kafka.ssl.key-store-key` and its `admin`,
+`consumer`, `producer` and `streams` variants (a PEM private key, by the
+metadata's own description), `spring.neo4j.authentication.kerberos-ticket`,
+`spring.liquibase.license-key` and
+`management.datadog.metrics.export.application-key` (its pre-3.0 name no
+longer binds). They are now `high-risk-keys`: HIGH for a written value,
+INFO for a `classpath:` value or an unresolved placeholder, as for the
+other entries. Against the metadata (now also `spring-boot-webflux`, whose
+24 properties name no secret), exactly these 8 findings are added; every
+reference project reports the same findings as with the v1.9.0 jar.
+
+Left open: the OTLP `headers` maps (`management.otlp.*.headers`,
+`management.opentelemetry.*.headers`) can hold a credential. An entry named
+after a pattern (`headers.api-key`) is HIGH, but `headers.Authorization`
+and vendor headers such as `X-Honeycomb-Team` are silent.
+
 ## SCG014 protocol precedence (Spring Boot 4.1.1 `KafkaProperties`)
 
 Which `security.protocol` each Kafka client actually gets was checked by
