@@ -948,6 +948,22 @@ now use `allowed-origin-patterns: "*"`, the form that is a real risk; ADR-005
 carries a note on its example. Every reference project above reports the
 same findings as with the v1.8.0 jar.
 
+Re-checked on 2026-10-02 with `cors-scenarios.sh` and the GraphQL app:
+C1–C6 and G1–G4 hold, and so do the fixtures of every row. A pattern was
+classified by whether a literal host follows the wildcard, so these were
+MEDIUM though an attacker can register a matching origin; in the running
+app each echoed it with credentials: `https://*.com` (`https://evil.com`),
+`https://*example.com` (`https://evilexample.com`) and `https://app.*`
+(`https://app.evil.com`). Spring anchors the end of a pattern, so SCG003
+now looks at what follows the last `*`: unless it fixes a domain of at
+least two labels, the pattern is HIGH. `https://*.example.com` and
+`https://*-staging.example.com` stay MEDIUM (the app refused
+`https://a.example.com.evil.com` and `https://x-staging.example.com.evil.com`),
+and so does a public suffix of two labels or more, such as `*.co.uk` or a
+hosting platform's `*.vercel.app`, which SCG can't tell from a company's
+domain. Spring Cloud Gateway's CORS properties are left open (BACKLOG.md).
+The reference projects report the same findings as with the v1.9.0 jar.
+
 ## SCG008 SpringDoc scenarios (running Spring Boot 4.1.1 app)
 
 What each SpringDoc flag turns off was checked in a running app. Method,

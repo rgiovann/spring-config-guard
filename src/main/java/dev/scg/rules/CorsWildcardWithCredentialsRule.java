@@ -18,8 +18,10 @@ import java.util.*;
  * 4.1.1 app for both prefixes (VALIDATION.md, "SCG003 CORS scenarios"):
  * <ul>
  *     <li>{@code allowed-origin-patterns}: {@code *} and {@code https://*} let any origin in with
- *     credentials (HIGH); a domain pattern ({@code https://*.example.com}) every matching
- *     subdomain (MEDIUM).</li>
+ *     credentials (HIGH), and so does a pattern an attacker can register a match for, since Spring
+ *     only anchors its end ({@code https://*.com}, {@code https://*example.com},
+ *     {@code https://app.*}); a domain pattern ({@code https://*.example.com}) lets in every
+ *     matching subdomain (MEDIUM).</li>
  *     <li>{@code allowed-origins}: values are compared literally, so {@code https://*.example.com}
  *     matches no real origin (Spring answers 403) and stays silent. The special value {@code *}
  *     with credentials is rejected by Spring itself: the Actuator endpoint mapping fails at
@@ -175,7 +177,21 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
             return WildcardScope.GLOBAL;
         }
 
-        // 3. Any other pattern containing '*' with a literal host -> NON_GLOBAL (MEDIUM)
+        // 3. Spring anchors the end of the pattern, so what follows the last '*' is the only part
+        // an origin must keep. Unless that suffix fixes a domain of at least two labels after its
+        // first dot, an attacker can register a matching origin -> GLOBAL: https://*.com
+        // (evil.com), https://*example.com (evilexample.com), https://app.* (app.evil.com).
+        // https://*.example.com and https://*-staging.example.com stay under example.com.
+        // A public suffix of two labels or more (https://*.co.uk, or a hosting platform's domain
+        // such as https://*.vercel.app) can't be told from a company's domain without the public
+        // suffix list, so it stays NON_GLOBAL.
+        String suffix = host.substring(host.lastIndexOf('*') + 1);
+        int firstDot = suffix.indexOf('.');
+        if (firstDot == -1 || suffix.indexOf('.', firstDot + 1) == -1) {
+            return WildcardScope.GLOBAL;
+        }
+
+        // 4. A wildcard scoped to a domain -> NON_GLOBAL (MEDIUM)
         return WildcardScope.NON_GLOBAL;
     }
 

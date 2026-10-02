@@ -431,9 +431,15 @@ class CorsWildcardWithCredentialsRuleTest {
             "*",
             "https://*",
             "http://*",
-            "*://*"
+            "*://*",
+            // An attacker can register a matching origin (checked in a running app): evil.com,
+            // evilexample.com, app.evil.com
+            "https://*.com",
+            "https://*example.com",
+            "https://app.*",
+            "https://*.example.com.*"
     })
-    @DisplayName("Should generate HIGH Finding for global wildcard patterns without literal hosts")
+    @DisplayName("Should generate HIGH Finding for patterns without literal hosts, or that an attacker can register a match for")
     void shouldGenerateHighFindingForGlobalWildcards(String pattern) {
         EffectiveConfig config = new EffectiveConfig(
                 FAKE_PATH,
@@ -453,9 +459,10 @@ class CorsWildcardWithCredentialsRuleTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "https://*.empresa.com",
-            "https://*.com",
             "https://*.sub.empresa.com.br",
-            "http://*.internal.net"
+            "http://*.internal.net",
+            "https://*-staging.empresa.com",
+            "https://*.empresa.com:[*]"
     })
     @DisplayName("Should generate MEDIUM Finding for wildcard patterns with literal host parts")
     void shouldGenerateMediumFindingForDomainScopedWildcards(String pattern) {
