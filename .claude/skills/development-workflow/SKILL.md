@@ -156,7 +156,11 @@ that turn up while working, report them to the maintainer.
   2. Check every factual claim in the diff and the message against the
      repository, with the command that proves it: class, package and file
      names, the rules cited and what each does, numbers, dates, quoted
-     text. Nothing written from memory.
+     text. Nothing written from memory. A Spring property cited is checked
+     in the configuration metadata of the Boot version measured: it
+     exists, has the type stated, and is not deprecated at level `error`
+     (no longer bound). A property that is deprecated but still bound is
+     named as such.
   3. Re-read the diff as a reviewer looking for what is wrong (section 5).
   Only then present it. An error found after approval still stops the
   commit: show it with its before and after, and ask again.
