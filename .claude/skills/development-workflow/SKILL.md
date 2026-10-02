@@ -135,8 +135,18 @@ that turn up while working, report them to the maintainer.
 
 * One coherent concern per commit. If the pending work spans more, say so
   and propose separate commits.
-* Propose the commit message (`CLAUDE.md`, "Commit Messages") and **wait for
-  explicit approval** before committing or pushing.
+* **No commit and no push without the maintainer's explicit approval of
+  that commit.** Before every commit, in this order: show the diff, explain
+  in plain words what changes and why, and present the full commit message
+  (`CLAUDE.md`, "Commit Messages"). Then stop and wait. Commit and push only
+  after an explicit "yes" to what was shown.
+  * A conditional go-ahead ("if X holds, commit") is not approval: report
+    whether X holds, with the evidence, and ask again. Never judge the
+    condition alone.
+  * An approval covers only the diff and message shown. Any change after it
+    (a fix, an extra file, a reworded message) needs the gate again.
+  * A request to make a commit ("make a commit for this") is a request to
+    prepare one: it still goes through the gate above.
 * Never start a second change while one is still unreviewed.
 * After approval: commit, push to `main`, then check the CI run for that
   commit and report its result. No `Co-Authored-By` trailer.

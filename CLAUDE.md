@@ -372,6 +372,12 @@ follow `.claude/skills/development-workflow/SKILL.md`: planning checkpoints,
 verification evidence, recording decisions in the repository, reporting, and
 the commit/push approval gate.
 
+**Never commit or push without explicit approval.** Before each commit, show
+the diff, explain what changes, and present the full commit message; commit
+and push only after the maintainer explicitly approves what was shown. A
+conditional go-ahead or a request to "make a commit" is not approval. Details
+in the skill's section 7.
+
 Prefer the smallest correct change.
 
 After a meaningful code change, perform validation appropriate to its scope,
