@@ -8,6 +8,78 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.10.0
+
+**Added**
+- SCG011 reads WebFlux's session cookie keys
+  (`server.reactive.session.cookie.secure`, `http-only`, `same-site`), which
+  set the cookie a WebFlux application sends; it used to read only the
+  servlet keys.
+- SCG011 reports disabled server SSL whatever the TLS material: a PEM
+  certificate (`server.ssl.certificate`), an SSL bundle (`server.ssl.bundle`)
+  or server-name bundles, not only a key-store. It also reports disabled
+  management SSL when the management connector inherits `server.ssl.*`
+  (`management.server.ssl.enabled=false` with no management key-store).
+- SCG006 reports eight native secrets that no pattern matched:
+  `spring.kafka.ssl.key-store-key` and its `admin`, `consumer`, `producer`
+  and `streams` variants (a PEM private key),
+  `spring.neo4j.authentication.kerberos-ticket`,
+  `spring.liquibase.license-key` and
+  `management.datadog.metrics.export.application-key`.
+- SCG007 finds a password in a MySQL host specification
+  (`jdbc:mysql://(host=db,user=app,password=...)/app`,
+  `jdbc:mysql://address=(host=db)(password=...)/app`), which Connector/J
+  reads.
+- SCG012 reports pgjdbc's `sslfactory=org.postgresql.ssl.NonValidatingFactory`,
+  which accepts any server certificate, as MEDIUM.
+
+**Fixed**
+- SCG011 reported management SSL turned off as HIGH where it has no effect:
+  with a negative `management.server.port` (the management server is off)
+  or one equal to `server.port` (or to 8080 when that isn't set), as Spring
+  Boot's `ManagementPortType` decides. It is silent there now; an unresolved
+  placeholder in either port is INFO. Its SSL message no longer suggests
+  removing the key-store settings, which would only hide the evidence.
+- SCG006 reported a boolean written `on`, `yes`, `off` or `no` in a key
+  ending in a secret pattern (`management.endpoints.web.cors.allow-credentials: on`)
+  as a HIGH secret. Spring reads all of them as booleans, so they are
+  switches now, like `true` and `false`.
+- SCG003 classified an origin pattern only by whether a literal host follows
+  the wildcard, so `https://*.com`, `https://*example.com` and
+  `https://app.*` were MEDIUM, though an attacker can register a matching
+  origin: a running app sent credentials to `evil.com`, `evilexample.com`
+  and `app.evil.com`. They are HIGH now.
+- The coverage warning for config files in more than one Spring config
+  location said only that a risk split across locations is not detected; it
+  now also says a finding can be one that a setting in another location
+  turns off.
+
+**Detection changes**
+- **More findings**: SCG011, SCG006, SCG007 and SCG012 report the forms
+  listed under Added, which they used to miss.
+- **Higher severity**: SCG003's origin patterns that an attacker can match
+  go from MEDIUM to HIGH.
+- **Lower severity or fewer findings**: SCG011's session cookie checks
+  (`secure`, `http-only`) go from HIGH to MEDIUM, like `same-site`: none
+  exposes the cookie without a second weakness, and on Tomcat and Jetty
+  `secure=false` has no effect, which the message now says. SCG011 is silent
+  for management SSL on a disabled or shared management port, and SCG006
+  for `on`/`yes`/`off`/`no`. With `--fail-on=HIGH`, builds that failed only
+  on SCG011's cookie findings now pass.
+- Each change was checked in running Spring Boot 4.1.1 apps (SCG003,
+  SCG011), against the client that reads the value (SCG007, SCG012) or
+  against Spring Boot 4.1.1's configuration metadata (SCG006); see each
+  rule's section in `VALIDATION.md`. The scenario apps are now in
+  `spring-env-benchmark`.
+- On the reference corpus, against `v1.9.0`: every finding is identical;
+  only the coverage warning's wording changes.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.9.0...v1.10.0`.
+
 ## v1.9.0
 
 **Added**

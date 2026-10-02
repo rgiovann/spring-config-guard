@@ -1031,7 +1031,7 @@ TLS material on its first run).
 
 Server and management SSL (Tomcat):
 
-| # | Properties | Spring 4.1.1 | v1.9.0 | (unreleased) |
+| # | Properties | Spring 4.1.1 | v1.9.0 | v1.10.0 |
 |---|---|---|---|---|
 | T1–T5 | `key-store`, `enabled=false` / `off` / `no` / `0` / `FALSE` | HTTP | HIGH | HIGH |
 | T6 | `key-store`, `enabled=disabled` | does not start | silent | silent |
@@ -1059,7 +1059,7 @@ management key-store turns TLS off on it. The falsy values that disable SSL
 Session cookie, servlet keys (`server.servlet.session.cookie.*`); the cookie
 attributes each app set:
 
-| # | Properties | Tomcat | Jetty | Spring Session | v1.9.0 | (unreleased) |
+| # | Properties | Tomcat | Jetty | Spring Session | v1.9.0 | v1.10.0 |
 |---|---|---|---|---|---|---|
 | K0 | TLS, defaults | `Secure; HttpOnly` | `Secure` | `Secure; HttpOnly; SameSite=Lax` | silent | silent |
 | K1/K2 | TLS, `secure=false` / `off` | `Secure; HttpOnly` | `Secure` | `HttpOnly; SameSite=Lax` | HIGH | MEDIUM |
@@ -1079,7 +1079,7 @@ same way at random, and none did once the script waited for Spring Boot's
 
 Session cookie, WebFlux (`server.reactive.session.cookie.*`):
 
-| # | Properties | WebFlux (Netty) | v1.9.0 | (unreleased) |
+| # | Properties | WebFlux (Netty) | v1.9.0 | v1.10.0 |
 |---|---|---|---|---|
 | R0 | TLS, defaults | `Secure; HttpOnly` | silent | silent |
 | R1 | TLS, `secure=false` | `HttpOnly` | silent | MEDIUM |
@@ -1097,7 +1097,7 @@ the key only takes effect with Spring Session.
 Split across config locations (ADR-005), checked with fixtures, each with the
 coverage warning on stderr:
 
-| # | `src/main/resources` | `config/` | Spring | (unreleased) |
+| # | `src/main/resources` | `config/` | Spring | v1.10.0 |
 |---|---|---|---|---|
 | L1 | `server.ssl.key-store` | `application-prod.yml`: `enabled: false` | HTTP in `prod` | silent (false negative) |
 | L1b | `server.ssl.key-store` | `application.yml`: `enabled: false` | HTTP | silent (false negative) |
