@@ -860,3 +860,46 @@ now use `allowed-origin-patterns: "*"`, the form that is a real risk; ADR-005
 carries a note on its example. Every reference project above reports the
 same findings as with the v1.8.0 jar.
 
+## SCG008 SpringDoc scenarios (running Spring Boot 4.1.1 app)
+
+What each SpringDoc flag turns off was checked in a running app. Method,
+to reproduce: a minimal Spring Boot 4.1.1 app with
+`spring-boot-starter-webmvc`, `springdoc-openapi-starter-webmvc-ui` 3.1.1
+(the line for Spring Boot 4) and one `@RestController`
+(`GET /api/orders/{id}`); each scenario starts it with the flags as
+command-line arguments, waits until the previous run has released the port
+and the new one has logged `Started`, and requests `/v3/api-docs` (checking
+that it lists `/api/orders/{id}`), `/swagger-ui/index.html` and
+`/swagger-ui.html`.
+
+| # | Flags | `/v3/api-docs` | Swagger UI | v1.8.0 | After the SCG008 review (unreleased) |
+|---|---|---|---|---|---|
+| S1 | none (defaults) | 200, lists the API | 200 | silent (no `springdoc.*` key) | silent |
+| S2 | `api-docs.enabled=false` | 404 | 404 | MEDIUM | silent |
+| S9 | `api-docs.enabled=FALSE` | 404 | 404 | MEDIUM | silent |
+| S11 | `api-docs.enabled=false`, `swagger-ui.enabled=true` | 404 | 404 | MEDIUM | silent |
+| S3 | `swagger-ui.enabled=false` | 200, lists the API | 404 | MEDIUM | MEDIUM |
+| S4 | both `false` | 404 | 404 | silent | silent |
+| S5–S7 | `api-docs.enabled=off`, `no`, `0` | 200, lists the API | 200 | MEDIUM | MEDIUM |
+| S8 | `swagger-ui.path=/docs` | 200, lists the API | 200 (at `/docs`) | MEDIUM | MEDIUM |
+| P1 | `api-docs.enabled=false`, `swagger-ui.enabled=${X}` | (off, as S2) | | INFO | silent |
+| P2 | `api-docs.enabled=${X}` | decided at runtime | | INFO | INFO |
+| P3 | `swagger-ui.enabled=${X}` | 200 (only the UI depends on `X`) | | INFO | MEDIUM |
+
+`springdoc.api-docs.enabled=false` turns SpringDoc off entirely, the UI
+included even when it is explicitly enabled; only `false`, in any case,
+disables (SpringDoc reads the flags through `@ConditionalOnProperty`, so
+`off`, `no` and `0` don't). P1–P3 follow from that and weren't run
+separately: once `api-docs` is off nothing is served, and while it is on
+the spec is served whatever `swagger-ui` says.
+
+Split across config locations (ADR-005), checked with fixtures: the UI
+path in `src/main/resources` and `api-docs.enabled=false` in `config/`
+(Spring: all off) leaves one MEDIUM in `src/main/resources`, a false
+positive the multi-location coverage warning surfaces; `api-docs.enabled=false`
+in `src/main/resources` overridden by `true` in `config/` (Spring: on)
+leaves one MEDIUM in `config/`, correct. SCG008 can't miss a split risk:
+re-enabling SpringDoc takes a `springdoc.*` key, which triggers the rule in
+that location. Every reference project above reports the same findings as
+with the v1.8.0 jar.
+

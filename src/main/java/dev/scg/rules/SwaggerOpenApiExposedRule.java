@@ -12,11 +12,24 @@ import java.util.Optional;
  *
  * <p>SpringDoc OpenAPI is opt-out (enabled by default when present on the classpath).
  * This rule triggers when any {@code springdoc.*} configuration property is detected in the effective
- * configuration, proving the application uses SpringDoc, and neither {@code springdoc.api-docs.enabled}
- * nor {@code springdoc.swagger-ui.enabled} is explicitly resolved to {@code false}.</p>
+ * configuration, proving the application uses SpringDoc. What each flag turns off was checked in a
+ * running Spring Boot 4.1.1 app with SpringDoc 3.1.1 (VALIDATION.md, "SCG008 SpringDoc scenarios"):</p>
+ * <ul>
+ *     <li>{@code springdoc.api-docs.enabled=false} turns SpringDoc off entirely: the spec and the
+ *     Swagger UI both answer 404. Silent, whatever {@code springdoc.swagger-ui.enabled} says.</li>
+ *     <li>{@code springdoc.swagger-ui.enabled=false} alone turns off the UI only: the spec at
+ *     {@code /v3/api-docs} is still served (MEDIUM).</li>
+ *     <li>Only {@code false}, in any case, disables: SpringDoc reads the flags through
+ *     {@code @ConditionalOnProperty}, so {@code off}, {@code no} and {@code 0} leave everything on.</li>
+ * </ul>
  *
- * <p>If environment placeholders (e.g., {@code ${ENABLE_SWAGGER}}) are used without static defaults
- * or resolve to empty values, an {@code INFO} finding is generated to alert on runtime uncertainty.</p>
+ * <p>An environment placeholder without a static default (e.g., {@code ${ENABLE_DOCS}}), or one that
+ * resolves to an empty value, in {@code springdoc.api-docs.enabled} is INFO: that flag decides whether
+ * anything is exposed. In {@code springdoc.swagger-ui.enabled} it only decides whether the UI is, so the
+ * spec's exposure is still reported as MEDIUM.</p>
+ *
+ * <p>Split across config locations (ADR-005), this rule can only err towards a false positive:
+ * re-enabling SpringDoc takes a {@code springdoc.*} key, which triggers the rule in that location.</p>
  *
  * <p>Additionally, {@code springdoc.show-actuator=true} is evaluated as an aggravating factor that
  * expands the exposure surface by documenting Actuator endpoints in the OpenAPI spec.</p>
@@ -62,47 +75,33 @@ public final class SwaggerOpenApiExposedRule implements Rule {
         String rawSwaggerUi = RelaxedProperties.get(props, SWAGGER_UI_ENABLED_KEY);
         String rawShowActuator = RelaxedProperties.get(props, SHOW_ACTUATOR_KEY);
 
-        // 3. Evaluate Placeholder resolution / uncertainty for api-docs and swagger-ui
+        // 3. springdoc.api-docs.enabled decides whether SpringDoc runs at all
         FlagState apiDocsState = evaluateFlagState(rawApiDocs);
-        FlagState swaggerUiState = evaluateFlagState(rawSwaggerUi);
-
-        // Check if either flag is in UNRESOLVED or EMPTY_FALLBACK state -> Emit INFO finding
-        if (apiDocsState.isUncertain() || swaggerUiState.isUncertain()) {
-            String uncertainKey = apiDocsState.isUncertain() ? API_DOCS_ENABLED_KEY : SWAGGER_UI_ENABLED_KEY;
-            String rawVal = apiDocsState.isUncertain() ? rawApiDocs : rawSwaggerUi;
-
+        if (apiDocsState.isDisabled()) {
+            return List.of(); // spec and UI both off (checked: 404 on both)
+        }
+        if (apiDocsState.isUncertain()) {
             findings.add(new Finding(
                     id(),
                     Severity.INFO,
                     ("SpringDoc property '%s' relies on an unresolved environment placeholder or empty fallback '%s'. " +
                             "Static analysis cannot verify if Swagger/OpenAPI endpoints are disabled at runtime; " +
-                            "ensure 'springdoc.api-docs.enabled' and 'springdoc.swagger-ui.enabled' are explicitly set to 'false' wherever exposure isn't intended.")
-                            .formatted(uncertainKey, rawVal),
+                            "set 'springdoc.api-docs.enabled' to 'false' wherever exposure isn't intended.")
+                            .formatted(API_DOCS_ENABLED_KEY, rawApiDocs),
                     config.sourceFile().toString(),
                     config.profileLabel()
             ));
-            return findings; // Early return on uncertainty
+            return findings;
         }
 
-        // 4. Check if BOTH flags are explicitly resolved to "false" -> Safe, stay silent!
-        boolean isApiDocsDisabled = apiDocsState.isDisabled();
-        boolean isSwaggerUiDisabled = swaggerUiState.isDisabled();
-
-        if (isApiDocsDisabled && isSwaggerUiDisabled) {
-            return List.of();
-        }
-
-        // 5. Aggravating factor: springdoc.show-actuator=true
-        FlagState showActuatorState = evaluateFlagState(rawShowActuator);
-        boolean isActuatorExposedInSwagger = showActuatorState.isEnabled();
-
-        // 6. Build MEDIUM Finding for exposure
-        String message = buildExposureMessage(isApiDocsDisabled, isSwaggerUiDisabled, isActuatorExposedInSwagger);
+        // 4. The spec is served; springdoc.swagger-ui.enabled only decides the UI
+        FlagState swaggerUiState = evaluateFlagState(rawSwaggerUi);
+        boolean isActuatorExposedInSwagger = evaluateFlagState(rawShowActuator).isEnabled();
 
         findings.add(new Finding(
                 id(),
                 Severity.MEDIUM,
-                message,
+                buildExposureMessage(swaggerUiState, rawSwaggerUi, isActuatorExposedInSwagger),
                 config.sourceFile().toString(),
                 config.profileLabel()
         ));
@@ -138,16 +137,17 @@ public final class SwaggerOpenApiExposedRule implements Rule {
         return FlagState.OTHER_VALUE;
     }
 
-    private String buildExposureMessage(boolean isApiDocsDisabled, boolean isSwaggerUiDisabled, boolean isActuatorExposed) {
+    private String buildExposureMessage(FlagState swaggerUiState, String rawSwaggerUi, boolean isActuatorExposed) {
         StringBuilder msg = new StringBuilder();
         msg.append("SpringDoc OpenAPI is enabled by default when present on the classpath, regardless of profile. ");
 
-        if (!isApiDocsDisabled && !isSwaggerUiDisabled) {
-            msg.append("Both OpenAPI docs ('springdoc.api-docs.enabled') and Swagger UI ('springdoc.swagger-ui.enabled') remain exposed. ");
-        } else if (!isApiDocsDisabled) {
-            msg.append("OpenAPI docs ('springdoc.api-docs.enabled') remain exposed. ");
+        if (swaggerUiState.isDisabled()) {
+            msg.append("The OpenAPI docs ('springdoc.api-docs.enabled') remain exposed; only the Swagger UI is disabled. ");
+        } else if (swaggerUiState.isUncertain()) {
+            msg.append(("The OpenAPI docs ('springdoc.api-docs.enabled') remain exposed; whether the Swagger UI is too " +
+                    "depends on the unresolved value '%s' of 'springdoc.swagger-ui.enabled'. ").formatted(rawSwaggerUi));
         } else {
-            msg.append("Swagger UI ('springdoc.swagger-ui.enabled') remains exposed. ");
+            msg.append("Both OpenAPI docs ('springdoc.api-docs.enabled') and Swagger UI ('springdoc.swagger-ui.enabled') remain exposed. ");
         }
 
         msg.append("Exposing API documentation increases the attack surface by revealing internal routes, schemas, and parameters. ");
@@ -156,7 +156,7 @@ public final class SwaggerOpenApiExposedRule implements Rule {
             msg.append("AGGRAVATING FACTOR: 'springdoc.show-actuator' is set to 'true', exposing sensitive Spring Actuator endpoints inside the OpenAPI documentation. ");
         }
 
-        msg.append("Explicitly set both 'springdoc.api-docs.enabled=false' and 'springdoc.swagger-ui.enabled=false' unless exposing it in this profile is a deliberate, justified choice.");
+        msg.append("Set 'springdoc.api-docs.enabled=false', which turns off both the docs and the UI, unless exposing it in this profile is a deliberate, justified choice.");
 
         return msg.toString();
     }
