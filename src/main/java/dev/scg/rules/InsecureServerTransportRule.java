@@ -60,7 +60,6 @@ public final class InsecureServerTransportRule implements Rule {
     private static final List<String> TLS_MATERIAL_KEYS = List.of("key-store", "certificate", "bundle");
     private static final String SERVER_NAME_BUNDLES_KEY = "server-name-bundles";
     private static final String SAME_SITE_NONE = "none";
-    private static final Set<String> FALSY_VALUES = Set.of("false", "no", "off", "0");
 
     /** Spring Boot's {@code ManagementPortType}, plus the case static analysis can't decide. */
     private enum ManagementPort { DISABLED, SAME, DIFFERENT, UNRESOLVED }
@@ -306,21 +305,18 @@ public final class InsecureServerTransportRule implements Rule {
     }
 
     /**
-     * Deliberately NOT {@code !RelaxedBoolean.isTruthy(value)}. TRUTHY_VALUES and this
-     * method's FALSY_VALUES are not complements of each other over the space of all
+     * Deliberately NOT {@code !RelaxedBoolean.isTruthy(value)}. Spring's true and false
+     * literals are not complements of each other over the space of all
      * possible strings — an unrecognized literal (typo, garbage, a value Spring's own
      * StringToBooleanConverter would reject at startup) belongs to neither set. Negating
      * isTruthy() would silently sweep that third bucket into "risk," misreporting a
      * value nobody wrote as a false literal ("SSL is explicitly disabled via '...=Flase'").
      * This rule's risk direction is the opposite of isTruthy's (falsy = risk here, not
-     * truthy = risk), so it needs its own positive-membership test against the specific
-     * falsy literals, not a negation of the truthy one.
+     * truthy = risk), so it needs a positive-membership test against the specific
+     * falsy literals ({@link RelaxedBoolean#isFalseLiteral}), not a negation of the truthy one.
      */
     private static boolean isExplicitlyFalsy(String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        return FALSY_VALUES.contains(value.strip().toLowerCase(Locale.ROOT));
+        return RelaxedBoolean.isFalseLiteral(value);
     }
 
     private Finding unresolvedPlaceholderFinding(String key, String rawValue, EffectiveConfig config) {

@@ -731,6 +731,14 @@ other entries. Against the metadata (now also `spring-boot-webflux`, whose
 24 properties name no secret), exactly these 8 findings are added; every
 reference project reports the same findings as with the v1.9.0 jar.
 
+A boolean written as `on`, `yes`, `off` or `no` in a key ending in a
+pattern (`management.endpoints.web.cors.allow-credentials: on`) was
+reported HIGH from v1.6.0 to v1.9.0, since only `true`/`false` counted as
+switches; Spring's `StringToBooleanConverter` reads all of them, so they
+are now switches too (found in the second review of SCG003, 2026-10-02).
+`1` and `0`, which Spring also reads as booleans, are still reported in
+such a key, as a numeric secret.
+
 Left open (`BACKLOG.md`): the OTLP `headers` maps
 (`management.otlp.metrics.export.headers`,
 `management.opentelemetry.tracing.export.otlp.headers` and

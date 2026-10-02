@@ -453,8 +453,12 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         return false;
     }
 
+    /**
+     * A word Spring reads as a boolean ({@code true}, {@code on}, {@code yes} and their opposites):
+     * a switch such as {@code allow-credentials: on}, not a secret. {@code 1}/{@code 0}, which Spring
+     * also reads as booleans, are left to the numeric check, so a numeric secret isn't missed.
+     */
     private static boolean isBoolean(String value) {
-        String trimmed = value.trim();
-        return trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("false");
+        return (RelaxedBoolean.isTrueLiteral(value) || RelaxedBoolean.isFalseLiteral(value)) && !isNumeric(value);
     }
 }

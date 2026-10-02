@@ -116,7 +116,12 @@ class HardcodedSecretsRuleTest {
                 "app.security.token-remember-me-enabled, TRUE",
                 "app.security.token-remember-me-enabled, false",
                 "app.require-password, TRUE",
-                "management.endpoints.web.cors.allow-credentials, true"
+                "management.endpoints.web.cors.allow-credentials, true",
+                // Every word Spring reads as a boolean is a switch, not only true/false
+                "management.endpoints.web.cors.allow-credentials, on",
+                "spring.graphql.cors.allow-credentials, YES",
+                "app.require-password, off",
+                "app.require-password, no"
         })
         @DisplayName("Ignores a key that only contains a pattern (a metric) and a boolean in a key that ends in one (a switch)")
         void shouldIgnoreCustomSecretKeyPatternForPrimitiveValues(String propertyKey, String primitiveValue) {
@@ -154,6 +159,8 @@ class HardcodedSecretsRuleTest {
                 "spring.cloud.stream.kafka.binder.configuration.ssl.key.password, 123456",
                 "app.payment.api-key, 99887766",
                 "app.vault.secret, 0000",
+                // Spring reads 1/0 as booleans too, but a number in a key naming the secret is reported
+                "app.vault.secret, 1",
                 "app.db.password, ${DB_PASSWORD:1234}"
         })
         @DisplayName("Reports a numeric value when the key ends in a secret pattern, naming the secret itself")

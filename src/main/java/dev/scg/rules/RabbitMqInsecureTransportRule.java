@@ -5,7 +5,6 @@ import dev.scg.core.*;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * SCG015 — detects RabbitMQ connections left without TLS when expressed via
@@ -43,8 +42,6 @@ public final class RabbitMqInsecureTransportRule implements Rule {
     private static final String ADDRESSES_KEY = "spring.rabbitmq.addresses";
     private static final String SSL_ENABLED_KEY = "spring.rabbitmq.ssl.enabled";
     private static final String SSL_BUNDLE_KEY = "spring.rabbitmq.ssl.bundle";
-
-    private static final Set<String> TRUTHY_VALUES = Set.of("true", "yes", "on", "1");
 
     @Override
     public String id() {
@@ -107,7 +104,7 @@ public final class RabbitMqInsecureTransportRule implements Rule {
         }
 
         String value = resolved.get().strip();
-        if (TRUTHY_VALUES.contains(value.toLowerCase(Locale.ROOT))) {
+        if (RelaxedBoolean.isTrueLiteral(value)) {
             return List.of();
         }
 
