@@ -75,6 +75,25 @@ rules (SCG002, SCG004, SCG005, SCG009, SCG010, SCG013, SCG015, SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
+### Rewrite VALIDATION.md once every rule is reviewed
+
+`VALIDATION.md` has grown into a history: columns per release, "used to /
+now" paragraphs, dated correction notes, numbers measured against earlier
+jars. It is heavy to read. After the last rule is reviewed (first and
+second reviews both), rewrite it to state only what holds now:
+
+* per rule, the scenario table(s) and one or two paragraphs: what was
+  checked, against what (a running app, a driver, the metadata), and how to
+  re-run it;
+* the public repositories SCG is run against, with their pinned commits and
+  current findings;
+* no earlier releases, fix history or before/after comparisons; that
+  record stays in `CHANGELOG.md` and the git history.
+
+Adjust what depends on the current shape in the same change: step 4 of
+the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
+columns) and the section names cited in the skills and in code comments.
+
 ### SCG012 cases left open (decide with measurements)
 
 Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
