@@ -68,7 +68,7 @@ public final class Main {
         int multiLocationCount = ConfigLocationCoverage.modulesWithMultipleLocations(effectiveConfigs).size();
         if (multiLocationCount > 0) {
             System.err.printf(
-                    "spring-config-guard: %d application(s) have config files in more than one Spring config location, evaluated independently -- risks split across locations are not detected.%n",
+                    "spring-config-guard: %d application(s) have config files in more than one Spring config location, evaluated independently -- a risk split across locations can be missed, and a finding can be one that a setting in another location already turns off.%n",
                     multiLocationCount);
         }
 

@@ -35,7 +35,8 @@ class DemoProjectShowcaseTest {
     private static final String CONFIG_LOCATION_DIR = "demo-project/config-location-showcase";
     private static final String CONFIG_LOCATION_WARNING =
             "spring-config-guard: 1 application(s) have config files in more than one Spring config location, "
-                    + "evaluated independently -- risks split across locations are not detected.";
+                    + "evaluated independently -- a risk split across locations can be missed, and a finding can be "
+                    + "one that a setting in another location already turns off.";
 
     @Test
     @DisplayName("multi-profile-showcase reports the 11 expected findings across base/dev/prod")

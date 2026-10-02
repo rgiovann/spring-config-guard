@@ -414,7 +414,7 @@ roots `R` with config files in two or more of:
 `Main` prints unconditionally to stderr when the count is above zero:
 
 ```
-spring-config-guard: N application(s) have config files in more than one Spring config location, evaluated independently -- risks split across locations are not detected.
+spring-config-guard: N application(s) have config files in more than one Spring config location, evaluated independently -- a risk split across locations can be missed, and a finding can be one that a setting in another location already turns off.
 ```
 
 Same shape as ADR-004's warning, for the same reasons: outside the rule
