@@ -920,8 +920,9 @@ How Spring answers a credentialed cross-origin request was checked in two
 running Spring Boot 4.1.1 apps: Actuator's CORS in this benchmark app
 (`/actuator/env`, reproducible with `spring-env-benchmark/cors-scenarios.sh`),
 and Spring for GraphQL's in a minimal app with `spring-boot-starter-graphql`
-(`/graphql`). Spring Boot 4.1.1's configuration metadata binds CORS from
-properties for these two only, with the same keys.
+(`/graphql`, reproducible with `spring-env-benchmark/graphql-cors-scenarios.sh`).
+Spring Boot 4.1.1's configuration metadata binds CORS from properties for
+these two only, with the same keys.
 
 | # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.8.0 | v1.9.0 |
 |---|---|---|---|---|
@@ -974,7 +975,7 @@ to reproduce: a minimal Spring Boot 4.1.1 app with
 command-line arguments, waits until the previous run has released the port
 and the new one has logged `Started`, and requests `/v3/api-docs` (checking
 that it lists `/api/orders/{id}`), `/swagger-ui/index.html` and
-`/swagger-ui.html`.
+`/swagger-ui.html` (reproducible with `spring-env-benchmark/springdoc-scenarios.sh`).
 
 | # | Flags | `/v3/api-docs` | Swagger UI | v1.8.0 | v1.9.0 |
 |---|---|---|---|---|---|
@@ -1020,10 +1021,13 @@ Netty) whose endpoint touches the `WebSession`. A self-signed PKCS#12
 key-store and the same key as PEM files serve as TLS material. Each scenario
 starts one app with the properties as command-line arguments on port 9443
 (a separate management port, when set, is 9444), waits until the previous
-run has released both ports and the new one has logged `Started` (or failed),
+run has released both ports and the new one has logged Spring Boot's
+`Started ... in` line (or failed),
 then requests the session endpoint and `/actuator/health` over HTTPS, falling
 back to HTTP, and records the scheme each port answers on and the session
-cookie's attributes.
+cookie's attributes (reproducible with
+`spring-env-benchmark/server-transport-scenarios.sh`, which generates the
+TLS material on its first run).
 
 Server and management SSL (Tomcat):
 
@@ -1067,8 +1071,11 @@ attributes each app set:
 Tomcat and Jetty mark their session cookie `Secure` on every HTTPS request,
 whatever `secure` says; only Spring Session drops it. Jetty's session cookie
 carries no `HttpOnly` even by default, so K3 changes nothing there. (The
-Jetty runs of K6 and K7 didn't answer in the first review; their cells were
-filled when it was re-run on 2026-10-02.)
+Jetty runs of K6 and K7 didn't answer in the first review. Its script
+waited for any `Started ` log line, and Jetty writes its own before its
+connector is up: re-run that way on 2026-10-02, other Jetty rows failed the
+same way at random, and none did once the script waited for Spring Boot's
+`Started ... in` line, which filled these two cells.)
 
 Session cookie, WebFlux (`server.reactive.session.cookie.*`):
 
