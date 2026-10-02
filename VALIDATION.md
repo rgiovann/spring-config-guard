@@ -889,6 +889,23 @@ Every reference project above reports the same findings, byte for byte, as
 with the v1.7.0 jar. t03, t06 and the default modes are left for later
 (BACKLOG.md).
 
+Re-checked on 2026-10-02 against the same driver versions: t01–t14 hold,
+and so do the modes above, read again from each driver (pgjdbc's
+`SslMode`, mssql-jdbc's `EncryptOption`, MariaDB's `SslMode.from` and the
+empty `checkServerTrusted` of `MariaDbX509TrustingManager`, Connector/J's
+`sslMode` description) and Spring Boot 4.1.1's Redis configuration (Lettuce
+and Jedis enable TLS from the SSL bundle or from a `rediss://` URL).
+MySQL's legacy `useSSL=false`, still accepted and translated to
+`sslMode=DISABLED`, is HIGH; R2DBC `sslMode=disable` is HIGH. One
+parameter was missed: pgjdbc's
+`sslfactory=org.postgresql.ssl.NonValidatingFactory`, whose trust manager's
+`checkServerTrusted` is empty, so any certificate is accepted. It is now
+MEDIUM, with the other modes that encrypt without verifying; the
+reference projects report the same findings as with the v1.9.0 jar. Left
+open (BACKLOG.md): an explicit `sslmode=prefer`, MySQL `requireSSL=false`
+(translated to `PREFERRED`, yet HIGH today), and the transports SCG012
+doesn't look at (Neo4j, Cassandra, Pulsar, Couchbase).
+
 ## SCG003 CORS scenarios (running Spring Boot 4.1.1 apps)
 
 How Spring answers a credentialed cross-origin request was checked in two

@@ -704,7 +704,9 @@ class InsecureDatabaseTransportRuleTest {
                 // MySQL Connector/J: REQUIRED encrypts without verifying
                 "spring.datasource.url | jdbc:mysql://db.example.com/app?sslMode=REQUIRED",
                 // MariaDB: trust accepts any certificate
-                "spring.datasource.url | jdbc:mariadb://db.example.com/app?sslMode=trust"
+                "spring.datasource.url | jdbc:mariadb://db.example.com/app?sslMode=trust",
+                // pgjdbc: NonValidatingFactory's trust manager accepts any certificate
+                "spring.datasource.url | jdbc:postgresql://db.example.com/app?ssl=true&sslfactory=org.postgresql.ssl.NonValidatingFactory"
         })
         @DisplayName("Reports MEDIUM where TLS is used without verifying the certificate")
         void shouldReportUnverifiedTls(String key, String value) {
@@ -716,6 +718,8 @@ class InsecureDatabaseTransportRuleTest {
         @CsvSource(delimiter = '|', value = {
                 "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=verify-full",
                 "spring.datasource.url | jdbc:mysql://db.example.com/app?sslMode=VERIFY_IDENTITY",
+                // pgjdbc's default factory verifies the certificate
+                "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory",
                 // The default modes are not reported (PostgreSQL prefer, MySQL PREFERRED)
                 "spring.datasource.url | jdbc:postgresql://db.example.com/app?sslmode=prefer",
                 // redis:// can still use TLS through spring.data.redis.ssl.enabled

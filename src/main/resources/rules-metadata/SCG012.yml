@@ -92,8 +92,10 @@ risky-query-params:
 # Also the modes that encrypt without checking the certificate, confirmed in each driver (in the
 # versions Spring Boot 4.1.1 manages): pgjdbc's sslmode=require (SslMode.verifyCertificate() is
 # false; only verify-ca/verify-full verify), MySQL Connector/J's sslMode=REQUIRED (only
-# VERIFY_CA/VERIFY_IDENTITY verify), MariaDB's sslMode=trust. Reported as MEDIUM: the traffic is
-# encrypted, and reading it takes an active man in the middle.
+# VERIFY_CA/VERIFY_IDENTITY verify), MariaDB's sslMode=trust, and pgjdbc's
+# sslfactory=org.postgresql.ssl.NonValidatingFactory (its trust manager's checkServerTrusted is
+# empty, so any certificate is accepted). Reported as MEDIUM: the traffic is encrypted, and
+# reading it takes an active man in the middle.
 no-verify-query-params:
   - "sslmode=require"
   - "sslmode=required"
@@ -104,6 +106,7 @@ no-verify-query-params:
   - "tlsallowinvalidcertificates=true"
   - "tlsallowinvalidhostnames=true"
   - "verifypeer=none"
+  - "sslfactory=org.postgresql.ssl.nonvalidatingfactory"
 
 # URI scheme prefixes (lowercase, matched against the start of the value) meaning the
 # connection itself is unencrypted -- no secure counterpart needs to be listed: "https://"
