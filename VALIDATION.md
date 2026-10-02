@@ -1061,13 +1061,14 @@ attributes each app set:
 | K1/K2 | TLS, `secure=false` / `off` | `Secure; HttpOnly` | `Secure` | `HttpOnly; SameSite=Lax` | HIGH | MEDIUM |
 | K3 | HTTP, `http-only=false` | (none) | (none) | `SameSite=Lax` | HIGH | MEDIUM |
 | K4/K5 | HTTP, `same-site=None` / `none` | `HttpOnly; SameSite=None` | `SameSite=None` | `HttpOnly; SameSite=None` | MEDIUM | MEDIUM |
-| K6 | HTTP, defaults | `HttpOnly` | — | `HttpOnly; SameSite=Lax` | silent | silent |
-| K7 | TLS, `same-site=None`, `secure=false` | `Secure; HttpOnly; SameSite=None` | — | `HttpOnly; SameSite=None` | HIGH + MEDIUM | MEDIUM + MEDIUM |
+| K6 | HTTP, defaults | `HttpOnly` | (none) | `HttpOnly; SameSite=Lax` | silent | silent |
+| K7 | TLS, `same-site=None`, `secure=false` | `Secure; HttpOnly; SameSite=None` | `Secure; SameSite=None` | `HttpOnly; SameSite=None` | HIGH + MEDIUM | MEDIUM + MEDIUM |
 
 Tomcat and Jetty mark their session cookie `Secure` on every HTTPS request,
 whatever `secure` says; only Spring Session drops it. Jetty's session cookie
-carries no `HttpOnly` even by default, so K3 changes nothing there. The
-Jetty runs of K6 and K7 didn't answer and are not counted.
+carries no `HttpOnly` even by default, so K3 changes nothing there. (The
+Jetty runs of K6 and K7 didn't answer in the first review; their cells were
+filled when it was re-run on 2026-10-02.)
 
 Session cookie, WebFlux (`server.reactive.session.cookie.*`):
 
@@ -1100,3 +1101,11 @@ coverage warning on stderr:
 
 Every reference project above reports the same findings as with the v1.9.0
 jar: none has an SCG011 finding.
+
+Re-checked on 2026-10-02: the Tomcat, Spring Session, Jetty and WebFlux
+apps were run again for every row (one app per scenario, waiting for the
+ports to be free and for `Started`), and one fixture per row was run
+against the v1.9.0 jar and the current code. Every cell holds, L1–L4
+included. Left open (BACKLOG.md): weak TLS protocols
+(`server.ssl.enabled-protocols`, `server.ssl.protocol`) and
+`server.servlet.session.tracking-modes=url`, silent today.
