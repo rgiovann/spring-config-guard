@@ -104,6 +104,9 @@ Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
   JDBC URL without an explicit mode would reach almost every PostgreSQL and
   MySQL URL; measure on the corpus first, and decide between INFO
   (CLAUDE.md, "Findings") and leaving it to the server's configuration.
+  The same decision covers these modes written explicitly: `sslmode=prefer`
+  (silent today) and MySQL's legacy `requireSSL=false`, which Connector/J
+  translates to `sslMode=PREFERRED` but SCG012 reports as HIGH.
 * **Redis `redis://` without `spring.data.redis.ssl.enabled`.** Plaintext
   only when both hold, so it needs the two keys together (like SCG015 for
   RabbitMQ), not a scheme alone.
@@ -111,6 +114,31 @@ Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
   parameter on a `tcp://` URL, unlike ActiveMQ Classic's `ssl://` scheme;
   confirm in Artemis' client before treating `tcp://` without it as
   plaintext for `spring.artemis.broker-url`.
+
+### Transports SCG012 doesn't look at (decide scope with measurements)
+
+Found in the second review of SCG012 (`VALIDATION.md`, "SCG012 driver
+modes"): these settings, written explicitly, are silent today. What each is
+noted to mean comes from its name and Spring Boot 4.1.1's metadata, not yet
+from its client.
+
+* Neo4j: `spring.neo4j.uri=neo4j+ssc://...` or `bolt+ssc://...` (TLS that
+  accepts self-signed certificates),
+  `spring.neo4j.security.trust-strategy=trust-all-certificates` (the
+  default is `trust-system-ca-signed-certificates`) and
+  `spring.neo4j.security.hostname-verification-enabled=false`.
+* Cassandra: `spring.cassandra.ssl.verify-hostname=false`.
+* Pulsar: `pulsar://` in `spring.pulsar.client.service-url` and `http://`
+  in `spring.pulsar.admin.service-url` (plaintext; TLS is `pulsar+ssl://`,
+  `https://`).
+* Couchbase: `couchbase://` in `spring.couchbase.connection-string`,
+  plaintext unless SSL is enabled (`spring.couchbase.env.ssl.enabled`, or
+  an SSL bundle, which enables it): several keys together, like Redis
+  above.
+
+Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
+properties) before reporting, then decide whether they extend SCG012 or
+form a rule of their own.
 
 ### Kafka TLS without hostname verification (candidate rule)
 
