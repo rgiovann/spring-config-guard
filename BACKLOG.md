@@ -140,6 +140,18 @@ Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
 properties) before reporting, then decide whether they extend SCG012 or
 form a rule of their own.
 
+### SCG003: Spring Cloud Gateway's CORS (decide with measurements)
+
+Found in the second review of SCG003 (`VALIDATION.md`, "SCG003 CORS
+scenarios"): a gateway's global CORS, set in properties
+(`spring.cloud.gateway.globalcors.cors-configurations.[/**].*`, and a
+`spring.cloud.gateway.server.webflux.` prefix in later releases, to
+confirm), is silent, also with `allowed-origin-patterns: "*"` and
+credentials. It is the other CORS commonly configured in properties, and a
+gateway usually sits in front of the services. Confirm the property names per
+Gateway release and the behavior in a running gateway, then decide whether
+SCG003 reads them like Actuator's and GraphQL's.
+
 ### Kafka TLS without hostname verification (candidate rule)
 
 Found while reviewing SCG014, which covers only an unencrypted protocol: a
