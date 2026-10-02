@@ -66,9 +66,17 @@ log:
     `dev.scg.cli`);
   * `report` — console and JSON output (`dev.scg.report`);
   * `policy` — the policy file (`dev.scg.policy`);
-  * `release`, `ci` — release workflow and CI.
+  * `release`, `ci` — release workflow and CI;
+  * `benchmark` — `spring-env-benchmark/` (the Spring Boot app SCG is
+    checked against), its scenario scripts and `ActuatorEnvComparisonTest`;
+  * `demo` — the fixtures in `demo-project/` and `demo-project-clean/`, and
+    the tests that run them (`DemoProjectShowcaseTest`,
+    `ConfigServerShowcaseTest`).
 
-  When code and its documentation change together, scope by the code.
+  When code and its documentation change together, scope by the code; so
+  does a rule fix that brings its scenario script or fixture along
+  (`fix(SCG003)`), while `benchmark` or `demo` is for a commit that changes
+  only those.
   For documentation alone, scope by the document: `docs(backlog)`,
   `docs(validation)`, `docs(readme)`, `docs(adr)`, `docs(changelog)`,
   `docs(claude)`, `docs(skills)`.
