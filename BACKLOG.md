@@ -58,6 +58,17 @@ Reviewed so far:
   different locations; a false positive when `config/` re-enables SSL), all
   surfaced by the ADR-005 coverage warning.
 
+Each of these eight had a second, full review on 2026-10-02. Six found
+something the first had missed (cases the rule got wrong in SCG006, SCG007,
+SCG012 and SCG003; documentation gaps or errors in SCG001 and SCG011);
+SCG014 and SCG008 held. The fixes shipped in v1.10.0.
+`review-security-rule` was changed in response (inventory from the sources
+of truth, an attacker's round, the scope boundary and done criteria in the
+first review). To check that change: once the remaining nine rules have had
+their first review with it, pick two of them at random and give them a
+second, full review. If it finds nothing that matters, the procedure holds;
+if it does, adjust the skill.
+
 Found while reviewing SCG003, to check in the rules concerned:
 `spring.graphql.cors.*` is a second CORS binding next to Actuator's, which
 SCG004 and SCG005 don't read either; and `RelaxedBoolean.isTruthy` treats an
