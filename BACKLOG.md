@@ -152,6 +152,21 @@ gateway usually sits in front of the services. Confirm the property names per
 Gateway release and the behavior in a running gateway, then decide whether
 SCG003 reads them like Actuator's and GraphQL's.
 
+### SCG011: weak TLS protocols and session IDs in URLs (decide with measurements)
+
+Found in the second review of SCG011 (`VALIDATION.md`, "SCG011 transport
+scenarios"): these are silent today, and each needs a running app before
+it is reported.
+
+* `server.ssl.enabled-protocols=TLSv1,TLSv1.1` or `server.ssl.protocol=TLSv1`.
+  The JDK disables TLS 1.0/1.1 by default (`jdk.tls.disabledAlgorithms`),
+  so check whether these take effect, fail the handshake or fail the
+  startup on Java 21 before deciding a severity.
+* `server.servlet.session.tracking-modes=url`: the session ID travels in the
+  URL, where logs and the `Referer` header can leak it, and a link carrying
+  one can fix a victim's session. Confirm on Tomcat and Jetty that it is
+  written into URLs and accepted from them.
+
 ### Kafka TLS without hostname verification (candidate rule)
 
 Found while reviewing SCG014, which covers only an unencrypted protocol: a
