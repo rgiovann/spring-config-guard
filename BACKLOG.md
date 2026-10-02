@@ -28,10 +28,7 @@ order them. Planned order: SCG006 (heuristics on key names and values, the
 rule that fires most on the reference corpus), SCG014 (recalibrated by
 ADR-010), SCG007 and SCG012 (heuristics on URI and JAAS text), the rules
 that combine keys (SCG003, SCG008, SCG011), then the rest, single-key rules
-such as SCG002, SCG009 and SCG013 last. For SCG011, check a combination
-split across config locations: ADR-005 confirmed it produces no finding for
-SCG003, and SCG008 can only err towards a false positive (below); SCG011 is
-not verified yet.
+such as SCG002, SCG009 and SCG013 last.
 
 Reviewed so far:
 
@@ -51,6 +48,12 @@ Reviewed so far:
 * SCG008, against a running Spring Boot 4.1.1 app with SpringDoc 3.1.1
   (`VALIDATION.md`, "SCG008 SpringDoc scenarios"); split across locations
   it can only err towards a false positive.
+* SCG011, against running Spring Boot 4.1.1 apps, Tomcat, Jetty, Spring
+  Session and WebFlux (`VALIDATION.md`, "SCG011 transport scenarios"); split
+  across locations it errs both ways (false negatives when the TLS material
+  and `enabled=false`, or the management port and management SSL, are in
+  different locations; a false positive when `config/` re-enables SSL), all
+  surfaced by the ADR-005 coverage warning.
 
 Found while reviewing SCG003, to check in the rules concerned:
 `spring.graphql.cors.*` is a second CORS binding next to Actuator's, which
@@ -64,9 +67,9 @@ rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
-each release's detection changes stay few enough to read. Next: SCG011, the
-last of the rules that combine keys, including a combination split across
-config locations. Where a rule relies on Spring Boot behavior, check it
+each release's detection changes stay few enough to read. Next: the single-key
+rules (SCG002, SCG004, SCG005, SCG009, SCG010, SCG013, SCG015, SCG016,
+SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
 ### SCG012 cases left open (decide with measurements)

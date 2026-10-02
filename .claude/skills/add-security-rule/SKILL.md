@@ -92,13 +92,14 @@ The third — a default present but blank (`${VAR:}`) — is **not** a fixed
 INFO-or-silent choice; it depends on what blank means for that specific
 property:
 
-* **Blank means "unset," and unset is already the safe state** (a boolean
-  flag whose class default is safe — `server.ssl.enabled` defaults to
-  `true`, `cookie.secure` defaults to auto-detect): treat as silent, same
-  as absence. Spring's `Binder` treats an empty-string source as absent
-  for these types, so flagging it as "explicitly disabled" would be a
-  false positive. Precedent: `VerboseLoggingRule` (SCG009),
-  `InsecureServerTransportRule` (SCG011).
+* **Blank means "unset," and unset is already the safe state** (a `Boolean`
+  wrapper flag whose default is safe — `cookie.secure` defaults to
+  auto-detect): treat as silent, same as absence. Spring's `Binder` keeps
+  the default for an empty-string source of these types, so flagging it as
+  "explicitly disabled" would be a false positive. A primitive `boolean`
+  (`server.ssl.enabled`) is different: blank fails the application's
+  startup, which is also silent, for that reason. Precedent:
+  `VerboseLoggingRule` (SCG009), `InsecureServerTransportRule` (SCG011).
 * **Blank is itself a distinct, worth-surfacing state** (a credential
   that's empty *because of* a placeholder default, vs. one that's simply
   never set): treat as `INFO`, worded distinctly from the no-default case.

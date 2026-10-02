@@ -903,3 +903,96 @@ re-enabling SpringDoc takes a `springdoc.*` key, which triggers the rule in
 that location. Every reference project above reports the same findings as
 with the v1.8.0 jar.
 
+
+## SCG011 transport scenarios (running Spring Boot 4.1.1 apps)
+
+What each server transport key does was checked in running apps. Method, to
+reproduce: a minimal Spring Boot 4.1.1 app with `spring-boot-starter-webmvc`,
+`spring-boot-starter-actuator` and one endpoint that creates a session, built
+three times: on Tomcat (the default), on Jetty, and on Tomcat with Spring
+Session (`spring-boot-session`, `@EnableSpringHttpSession` with an in-memory
+`MapSessionRepository`); plus a WebFlux app (`spring-boot-starter-webflux`,
+Netty) whose endpoint touches the `WebSession`. A self-signed PKCS#12
+key-store and the same key as PEM files serve as TLS material. Each scenario
+starts one app with the properties as command-line arguments on port 9443
+(a separate management port, when set, is 9444), waits until the previous
+run has released both ports and the new one has logged `Started` (or failed),
+then requests the session endpoint and `/actuator/health` over HTTPS, falling
+back to HTTP, and records the scheme each port answers on and the session
+cookie's attributes.
+
+Server and management SSL (Tomcat):
+
+| # | Properties | Spring 4.1.1 | v1.9.0 | (unreleased) |
+|---|---|---|---|---|
+| T1–T5 | `key-store`, `enabled=false` / `off` / `no` / `0` / `FALSE` | HTTP | HIGH | HIGH |
+| T6 | `key-store`, `enabled=disabled` | does not start | silent | silent |
+| T7 | `key-store`, `enabled=` or `${X:}` | does not start (`Failed to bind properties under 'server.ssl.enabled' to boolean`) | silent | silent |
+| T8 | PEM `certificate` + `certificate-private-key`, `enabled=false` | HTTP | silent | HIGH |
+| T9 | PEM `certificate` + `certificate-private-key` | HTTPS | silent | silent |
+| T10 | `bundle` (a JKS SSL bundle), `enabled=false` | HTTP | silent | HIGH |
+| T11 | `bundle` | HTTPS | silent | silent |
+| T12 | `enabled=false`, no TLS material | HTTP | silent | silent |
+| M1 | `server.ssl.key-store`, `management.server.port=9444` | management HTTPS (inherits `server.ssl`) | silent | silent |
+| M2 | M1 + `management.server.ssl.enabled=false` | main HTTPS, management HTTP | silent | HIGH |
+| M3 | `management.server.port=9444`, `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | management HTTP | HIGH | HIGH |
+| M4 | `management.server.port=9444`, `management.server.ssl.key-store` | management HTTPS | silent | silent |
+| M5 | M3 with `management.server.port=-1` | management server off | HIGH | silent |
+| M6 | `server.ssl.key-store`, `management.server.port=9443` (= `server.port`), `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | one HTTPS connector, `management.server.ssl.*` ignored | HIGH | silent |
+
+M5 and M6 follow `ManagementPortType.get()`: a negative management port
+disables the management server, and a port equal to `server.port` (or to
+8080 when `server.port` is not set) shares the main connector. A management
+connector of its own takes `management.server.ssl.*` when that is set
+(`ManagementWebServerFactoryCustomizer`), so M2's `enabled=false` without a
+management key-store turns TLS off on it. The falsy values that disable SSL
+(`false`, `off`, `no`, `0`, any case) are the ones the rule matches.
+
+Session cookie, servlet keys (`server.servlet.session.cookie.*`); the cookie
+attributes each app set:
+
+| # | Properties | Tomcat | Jetty | Spring Session | v1.9.0 | (unreleased) |
+|---|---|---|---|---|---|---|
+| K0 | TLS, defaults | `Secure; HttpOnly` | `Secure` | `Secure; HttpOnly; SameSite=Lax` | silent | silent |
+| K1/K2 | TLS, `secure=false` / `off` | `Secure; HttpOnly` | `Secure` | `HttpOnly; SameSite=Lax` | HIGH | MEDIUM |
+| K3 | HTTP, `http-only=false` | (none) | (none) | `SameSite=Lax` | HIGH | MEDIUM |
+| K4/K5 | HTTP, `same-site=None` / `none` | `HttpOnly; SameSite=None` | `SameSite=None` | `HttpOnly; SameSite=None` | MEDIUM | MEDIUM |
+| K6 | HTTP, defaults | `HttpOnly` | — | `HttpOnly; SameSite=Lax` | silent | silent |
+| K7 | TLS, `same-site=None`, `secure=false` | `Secure; HttpOnly; SameSite=None` | — | `HttpOnly; SameSite=None` | HIGH + MEDIUM | MEDIUM + MEDIUM |
+
+Tomcat and Jetty mark their session cookie `Secure` on every HTTPS request,
+whatever `secure` says; only Spring Session drops it. Jetty's session cookie
+carries no `HttpOnly` even by default, so K3 changes nothing there. The
+Jetty runs of K6 and K7 didn't answer and are not counted.
+
+Session cookie, WebFlux (`server.reactive.session.cookie.*`):
+
+| # | Properties | WebFlux (Netty) | v1.9.0 | (unreleased) |
+|---|---|---|---|---|
+| R0 | TLS, defaults | `Secure; HttpOnly` | silent | silent |
+| R1 | TLS, `secure=false` | `HttpOnly` | silent | MEDIUM |
+| R2 | HTTP, `http-only=false` | (none) | silent | MEDIUM |
+| R3 | HTTP, `same-site=None` | `HttpOnly; SameSite=None` | silent | MEDIUM |
+| R4 | TLS, `server.servlet.session.cookie.secure=false` and `http-only=false` | `Secure; HttpOnly` (no effect) | HIGH ×2 | MEDIUM ×2 |
+
+The cookie checks are MEDIUM: none exposes the cookie's value without a
+second weakness (a plain HTTP request, an XSS, a cross-site request). K1/K2
+on Tomcat or Jetty and R4 are findings for a key without effect: SCG doesn't
+see the classpath, so it can't tell them from Spring Session's K1/K2 or a
+servlet app's R4 keys, and the message of the servlet `secure` finding says
+the key only takes effect with Spring Session.
+
+Split across config locations (ADR-005), checked with fixtures, each with the
+coverage warning on stderr:
+
+| # | `src/main/resources` | `config/` | Spring | (unreleased) |
+|---|---|---|---|---|
+| L1 | `server.ssl.key-store` | `application-prod.yml`: `enabled: false` | HTTP in `prod` | silent (false negative) |
+| L1b | `server.ssl.key-store` | `application.yml`: `enabled: false` | HTTP | silent (false negative) |
+| L2 | `key-store`, `enabled: false` | `application-prod.yml`: `enabled: true` | HTTP, HTTPS in `prod` | HIGH in the base profile (correct) |
+| L2b | `key-store`, `enabled: false` | `application.yml`: `enabled: true` | HTTPS | HIGH (false positive) |
+| L3 | `management.server.port: 9444` | `application-prod.yml`: management `key-store`, `enabled: false` | management HTTP in `prod` | silent (false negative) |
+| L4 | management port, `key-store`, `enabled: false` | `application-prod.yml`: `port: -1` | management HTTP, off in `prod` | HIGH in the base profile (correct) |
+
+Every reference project above reports the same findings as with the v1.9.0
+jar: none has an SCG011 finding.

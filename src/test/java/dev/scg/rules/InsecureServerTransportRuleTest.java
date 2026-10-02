@@ -45,8 +45,8 @@ class InsecureServerTransportRuleTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"false", "no", "off", "0", "  FALSE  "})
-    @DisplayName("Should report HIGH when session cookie secure flag is explicitly falsy")
-    void shouldReportHighWhenCookieSecureExplicitlyDisabled(String falsyValue) {
+    @DisplayName("Should report MEDIUM when session cookie secure flag is explicitly falsy")
+    void shouldReportMediumWhenCookieSecureExplicitlyDisabled(String falsyValue) {
         EffectiveConfig config = configOf(Map.of(
                 "server.servlet.session.cookie.secure", falsyValue
         ));
@@ -54,8 +54,9 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
         assertThat(findings.getFirst().message()).contains("Session cookie 'Secure' flag is explicitly disabled");
+        assertThat(findings.getFirst().message()).contains("only takes effect with Spring Session");
     }
 
     @Test
@@ -196,9 +197,10 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(2);
-        assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
-        assertThat(findings).anyMatch(f -> f.message().contains("SSL is explicitly disabled"));
-        assertThat(findings).anyMatch(f -> f.message().contains("Session cookie 'Secure' flag is explicitly disabled"));
+        assertThat(findings).anyMatch(f -> f.severity() == Severity.HIGH
+                && f.message().contains("SSL is explicitly disabled"));
+        assertThat(findings).anyMatch(f -> f.severity() == Severity.MEDIUM
+                && f.message().contains("Session cookie 'Secure' flag is explicitly disabled"));
     }
 
     @Test
@@ -262,8 +264,8 @@ class InsecureServerTransportRuleTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"false", "no", "off", "0", "  FALSE  "})
-    @DisplayName("Should report HIGH when session cookie HttpOnly is explicitly falsy")
-    void shouldReportHighWhenCookieHttpOnlyExplicitlyDisabled(String falsyValue) {
+    @DisplayName("Should report MEDIUM when session cookie HttpOnly is explicitly falsy")
+    void shouldReportMediumWhenCookieHttpOnlyExplicitlyDisabled(String falsyValue) {
         EffectiveConfig config = configOf(Map.of(
                 "server.servlet.session.cookie.http-only", falsyValue
         ));
@@ -271,7 +273,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
         assertThat(findings.getFirst().message()).contains("Session cookie 'HttpOnly' flag is explicitly disabled");
     }
 
@@ -323,8 +325,8 @@ class InsecureServerTransportRuleTest {
         long highCount = findings.stream().filter(f -> f.severity() == Severity.HIGH).count();
         long mediumCount = findings.stream().filter(f -> f.severity() == Severity.MEDIUM).count();
 
-        assertThat(highCount).isEqualTo(4);
-        assertThat(mediumCount).isEqualTo(1);
+        assertThat(highCount).isEqualTo(2);
+        assertThat(mediumCount).isEqualTo(3);
     }
 
     @Test
@@ -374,7 +376,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -487,6 +489,194 @@ class InsecureServerTransportRuleTest {
         ));
 
         assertThat(rule.check(config)).isEmpty();
+    }
+
+    // --- Scenarios checked in running Spring Boot 4.1.1 apps (VALIDATION.md, "SCG011 transport scenarios") ---
+
+    @Test
+    @DisplayName("T8: should report HIGH when SSL is disabled with a PEM certificate")
+    void shouldReportHighWhenSslDisabledWithPemCertificate() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                "server.ssl.certificate", "classpath:cert.pem",
+                "server.ssl.certificate-private-key", "classpath:key.pem",
+                "server.ssl.enabled", "false"
+        )));
+
+        assertThat(findings).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.HIGH);
+            assertThat(f.message()).contains("'server.ssl.certificate'").doesNotContain("remove");
+        });
+    }
+
+    @Test
+    @DisplayName("T10: should report HIGH when SSL is disabled with an SSL bundle")
+    void shouldReportHighWhenSslDisabledWithBundle() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                "server.ssl.bundle", "web",
+                "server.ssl.enabled", "false"
+        )));
+
+        assertThat(findings).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.HIGH);
+            assertThat(f.message()).contains("'server.ssl.bundle'");
+        });
+    }
+
+    @Test
+    @DisplayName("Should report HIGH when SSL is disabled with server-name bundles (SNI)")
+    void shouldReportHighWhenSslDisabledWithServerNameBundles() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                "server.ssl.server-name-bundles[0].server-name", "example.com",
+                "server.ssl.server-name-bundles[0].bundle", "web",
+                "server.ssl.enabled", "false"
+        )));
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("T12: should stay silent when SSL is disabled without any TLS material")
+    void shouldStaySilentWhenSslDisabledWithoutTlsMaterial() {
+        assertThat(rule.check(configOf(Map.of("server.ssl.enabled", "false")))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("M2: should report HIGH when management SSL is disabled on a separate port that inherits server.ssl")
+    void shouldReportHighWhenManagementSslDisabledInheritingServerSsl() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                "server.port", "9443",
+                "server.ssl.key-store", "classpath:keystore.p12",
+                "management.server.port", "9444",
+                "management.server.ssl.enabled", "false"
+        )));
+
+        assertThat(findings).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.HIGH);
+            assertThat(f.message()).contains("Management SSL is explicitly disabled", "'server.ssl.key-store'");
+        });
+    }
+
+    @Test
+    @DisplayName("M1: should stay silent when the separate management port inherits server.ssl")
+    void shouldStaySilentWhenManagementPortInheritsServerSsl() {
+        assertThat(rule.check(configOf(Map.of(
+                "server.port", "9443",
+                "server.ssl.key-store", "classpath:keystore.p12",
+                "management.server.port", "9444"
+        )))).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-1", "-100"})
+    @DisplayName("M5: should stay silent when a negative management port disables the management server")
+    void shouldStaySilentWhenManagementPortIsNegative(String port) {
+        assertThat(rule.check(configOf(Map.of(
+                "management.server.port", port,
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("M6: should stay silent when the management port equals server.port")
+    void shouldStaySilentWhenManagementPortEqualsServerPort() {
+        assertThat(rule.check(configOf(Map.of(
+                "server.port", "9443",
+                "server.ssl.key-store", "classpath:keystore.p12",
+                "management.server.port", "9443",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should stay silent when the management port is 8080 and server.port is not set")
+    void shouldStaySilentWhenManagementPortEqualsDefaultServerPort() {
+        assertThat(rule.check(configOf(Map.of(
+                "management.server.port", "8080",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should report HIGH when the management port is 0 (random), even if server.port is 0")
+    void shouldReportHighWhenManagementPortIsRandom() {
+        assertThat(rule.check(configOf(Map.of(
+                "server.port", "0",
+                "management.server.port", "0",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Should report HIGH when the management port placeholder resolves to a separate port")
+    void shouldReportHighWhenManagementPortPlaceholderHasSeparateDefault() {
+        assertThat(rule.check(configOf(Map.of(
+                "management.server.port", "${MGMT_PORT:9444}",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Should report INFO when the management port is an unresolved placeholder")
+    void shouldReportInfoWhenManagementPortIsUnresolved() {
+        assertThat(rule.check(configOf(Map.of(
+                "management.server.port", "${MGMT_PORT}",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.INFO);
+            assertThat(f.message()).contains("'management.server.port'", "${MGMT_PORT}");
+        });
+    }
+
+    @Test
+    @DisplayName("Should report INFO when server.port is an unresolved placeholder the management port could equal")
+    void shouldReportInfoWhenServerPortIsUnresolved() {
+        assertThat(rule.check(configOf(Map.of(
+                "server.port", "${PORT}",
+                "management.server.port", "9444",
+                "management.server.ssl.key-store", "classpath:mgmt-keystore.p12",
+                "management.server.ssl.enabled", "false"
+        )))).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.INFO);
+            assertThat(f.message()).contains("'server.port'");
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "off"})
+    @DisplayName("R1: should report MEDIUM when the WebFlux session cookie secure flag is falsy")
+    void shouldReportMediumWhenReactiveCookieSecureDisabled(String value) {
+        assertThat(rule.check(configOf(Map.of(
+                "server.reactive.session.cookie.secure", value
+        )))).singleElement().satisfies(f -> {
+            assertThat(f.severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(f.message()).contains("server.reactive.session.cookie.secure", "WebFlux")
+                    .doesNotContain("Spring Session");
+        });
+    }
+
+    @Test
+    @DisplayName("R2/R3: should report MEDIUM for the WebFlux http-only and same-site keys")
+    void shouldReportMediumForReactiveHttpOnlyAndSameSite() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                "server.reactive.session.cookie.http-only", "false",
+                "server.reactive.session.cookie.same-site", "None"
+        )));
+
+        assertThat(findings).hasSize(2).allMatch(f -> f.severity() == Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("Should report INFO when a WebFlux cookie key relies on an unresolved placeholder")
+    void shouldReportInfoForUnresolvedReactiveCookie() {
+        assertThat(rule.check(configOf(Map.of(
+                "server.reactive.session.cookie.secure", "${COOKIE_SECURE}"
+        )))).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
     }
 
     private static EffectiveConfig configOf(Map<String, String> properties, String profileLabel) {

@@ -7,40 +7,42 @@ import java.util.*;
 /**
  * SCG011 — detects insecure transport configuration in Spring Boot's embedded server settings:
  * <ul>
- *     <li>{@code server.ssl.enabled=false} when an explicit {@code server.ssl.key-store} is defined.</li>
- *     <li>{@code server.servlet.session.cookie.secure=false}.</li>
- *     <li>{@code management.server.ssl.enabled=false} when an explicit
- *     {@code management.server.ssl.key-store} is defined and {@code management.server.port} configures
- *     a separate management port.</li>
- *     <li>{@code server.servlet.session.cookie.http-only=false}.</li>
- *     <li>{@code server.servlet.session.cookie.same-site=None} (explicit).</li>
+ *     <li>{@code server.ssl.enabled=false} when TLS material is configured under {@code server.ssl.*}
+ *     ({@code key-store}, a PEM {@code certificate}, a {@code bundle} or {@code server-name-bundles}).</li>
+ *     <li>{@code management.server.ssl.enabled=false} when Actuator runs on its own port and TLS
+ *     material is configured under {@code management.server.ssl.*} or {@code server.ssl.*}.</li>
+ *     <li>{@code session.cookie.secure=false}, {@code session.cookie.http-only=false} and
+ *     {@code session.cookie.same-site=None}, under both {@code server.servlet.*} (servlet stack) and
+ *     {@code server.reactive.*} (WebFlux).</li>
  * </ul>
  * <p>
  * Transport security vulnerabilities allow attackers in the network path to intercept session
  * identifiers or sensitive application traffic (CWE-319, CWE-614), or to steal them via client-side
  * script access (CWE-1004). Spring Boot defaults these settings to safe runtime behaviors, but
- * explicit opt-outs in configuration reintroduce the underlying risk.
+ * explicit opt-outs in configuration reintroduce the underlying risk. The behavior each check relies
+ * on was verified in running Spring Boot 4.1.1 apps (VALIDATION.md, "SCG011 transport scenarios").
  * <p>
- * <b>Management SSL precondition:</b> {@code management.server.ssl.*} only takes effect when
- * {@code management.server.port} configures Actuator to run on its own connector (Spring Boot
- * reference docs, "Customizing the Management Server Port"). Without a separate management port,
- * these properties are silently ignored by Spring Boot itself and Actuator inherits
- * {@code server.ssl.*} instead — so the management-SSL check requires evidence of a separate port
- * before treating an explicit {@code enabled=false} as a real finding.
+ * <b>Management port:</b> {@code management.server.ssl.*} only takes effect when Actuator runs on its
+ * own connector. The rule follows Spring Boot's {@code ManagementPortType.get()}: a negative
+ * {@code management.server.port} disables the management server, and a port equal to
+ * {@code server.port} (or to 8080 when {@code server.port} is not set) shares the main connector;
+ * either way the management SSL properties are ignored and the rule stays silent. A port whose value
+ * can't be known (an unresolved placeholder) is reported as INFO. Without
+ * {@code management.server.ssl.*}, a separate management connector inherits {@code server.ssl.*},
+ * so TLS material there is also evidence that the management connector was meant to use TLS.
  * <p>
  * Follows the project's standard 3-state environment placeholder resolution language:
  * <ul>
  *     <li>Unresolved placeholder → {@link Severity#INFO} warning.</li>
- *     <li>Resolved to a risky value → {@link Severity#HIGH} (or {@link Severity#MEDIUM} for the
- *     SameSite=None check — see below).</li>
+ *     <li>Resolved to a risky value → {@link Severity#HIGH} for disabled server or management SSL,
+ *     {@link Severity#MEDIUM} for the session cookie checks — see below.</li>
  *     <li>Resolved to a safe value or absent → Silent.</li>
  * </ul>
  * <p>
- * SameSite is calibrated to {@link Severity#MEDIUM} rather than {@link Severity#HIGH}: unlike the
- * other checks, an explicit {@code same-site=None} does not by itself expose the cookie's value — it
- * widens the set of cross-site requests the cookie is attached to (CSRF-adjacent attack-surface
- * expansion), the same severity class as this project's other attack-surface-expansion findings
- * (e.g. wildcard CORS), not its credential/session-token-exposure findings.
+ * Disabled SSL is HIGH: all of the connector's traffic, credentials included, travels in cleartext.
+ * The cookie checks are MEDIUM: none of them exposes the cookie's value by itself. Each is defense in
+ * depth that only matters once another weakness exists — a request over plain HTTP ({@code Secure}),
+ * an XSS ({@code HttpOnly}) or a cross-site request forgery ({@code SameSite=None}).
  * <p>
  * Zero-Trust policy: Checked regardless of active profile. Plain {@link Rule}, not {@link ConfigurableRule}.
  */
@@ -48,16 +50,20 @@ public final class InsecureServerTransportRule implements Rule {
 
     private static final String RULE_NAME = "SCG011";
 
-    private static final String SSL_ENABLED_KEY = "server.ssl.enabled";
-    private static final String SSL_KEYSTORE_KEY = "server.ssl.key-store";
-    private static final String COOKIE_SECURE_KEY = "server.servlet.session.cookie.secure";
-    private static final String MANAGEMENT_SSL_ENABLED_KEY = "management.server.ssl.enabled";
-    private static final String MANAGEMENT_SSL_KEYSTORE_KEY = "management.server.ssl.key-store";
+    private static final String SERVER_SSL_PREFIX = "server.ssl";
+    private static final String MANAGEMENT_SSL_PREFIX = "management.server.ssl";
+    private static final String SERVER_PORT_KEY = "server.port";
     private static final String MANAGEMENT_SERVER_PORT_KEY = "management.server.port";
-    private static final String COOKIE_HTTP_ONLY_KEY = "server.servlet.session.cookie.http-only";
-    private static final String COOKIE_SAME_SITE_KEY = "server.servlet.session.cookie.same-site";
+    private static final String SERVLET_COOKIE_PREFIX = "server.servlet.session.cookie";
+    private static final String REACTIVE_COOKIE_PREFIX = "server.reactive.session.cookie";
+    private static final int DEFAULT_SERVER_PORT = 8080;
+    private static final List<String> TLS_MATERIAL_KEYS = List.of("key-store", "certificate", "bundle");
+    private static final String SERVER_NAME_BUNDLES_KEY = "server-name-bundles";
     private static final String SAME_SITE_NONE = "none";
     private static final Set<String> FALSY_VALUES = Set.of("false", "no", "off", "0");
+
+    /** Spring Boot's {@code ManagementPortType}, plus the case static analysis can't decide. */
+    private enum ManagementPort { DISABLED, SAME, DIFFERENT, UNRESOLVED }
 
     @Override
     public String id() {
@@ -73,205 +79,230 @@ public final class InsecureServerTransportRule implements Rule {
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
 
-        checkDisabledSslWithKeystore(config, findings);
-        checkInsecureSessionCookie(config, findings);
-        checkDisabledManagementSslWithKeystore(config, findings);
-        checkInsecureCookieHttpOnly(config, findings);
-        checkInsecureCookieSameSite(config, findings);
+        checkDisabledServerSsl(config, findings);
+        checkDisabledManagementSsl(config, findings);
+        checkSessionCookie(config, SERVLET_COOKIE_PREFIX, findings);
+        checkSessionCookie(config, REACTIVE_COOKIE_PREFIX, findings);
 
         return findings;
     }
 
-    private void checkDisabledSslWithKeystore(EffectiveConfig config, List<Finding> findings) {
-        String keystore = RelaxedProperties.get(config.properties(), SSL_KEYSTORE_KEY);
-        if (keystore == null || keystore.isBlank()) {
+    private void checkDisabledServerSsl(EffectiveConfig config, List<Finding> findings) {
+        Optional<String> material = tlsMaterialKey(config, SERVER_SSL_PREFIX);
+        if (material.isEmpty()) {
             return;
         }
 
-        String rawSslEnabled = RelaxedProperties.get(config.properties(), SSL_ENABLED_KEY);
-        if (rawSslEnabled == null || rawSslEnabled.isBlank()) {
+        String enabledKey = SERVER_SSL_PREFIX + ".enabled";
+        String raw = RelaxedProperties.get(config.properties(), enabledKey);
+        Optional<Finding> unresolved = unresolvedFinding(enabledKey, raw, config);
+        if (unresolved.isPresent()) {
+            findings.add(unresolved.get());
             return;
         }
 
-        Optional<String> resolvedSsl = EnvironmentPlaceholder.resolve(rawSslEnabled.strip());
-        if (resolvedSsl.isEmpty()) {
-            findings.add(unresolvedPlaceholderFinding(SSL_ENABLED_KEY, rawSslEnabled, config));
-            return;
-        }
-
-        // A resolved-but-blank value (e.g. "${COOKIE_SECURE:}") is a fully resolved value,
-        // not an unresolved placeholder -- it does not hit the INFO branch above. Spring
-        // Boot's Binder treats an empty-string source as absent, so the property keeps its
-        // class default (Ssl.enabled=true, cookie.secure=null/auto-detect) -- both safe.
-        // Treating it as "explicitly disabled" here would misreport a config that never
-        // stated a concrete value.
-        String resolvedValue = resolvedSsl.get().strip();
-        if (resolvedValue.isBlank()) {
-            return;
-        }
-
-        if (isExplicitlyFalsy(resolvedSsl.get())) {
+        if (isExplicitlyFalsy(resolvedOrNull(raw))) {
             findings.add(new Finding(
                     id(),
                     Severity.HIGH,
-                    ("SSL is explicitly disabled via '%s=%s' despite '%s' being configured. " +
-                            "This leaves the embedded server listening in cleartext HTTP while retaining unused " +
-                            "keystore properties. Enable SSL or remove key-store settings.")
-                            .formatted(SSL_ENABLED_KEY, rawSslEnabled, SSL_KEYSTORE_KEY),
+                    ("SSL is explicitly disabled via '%s=%s' despite TLS material being configured ('%s'). " +
+                            "The embedded server listens in cleartext HTTP, so all of its traffic can be read " +
+                            "and altered on the network path (CWE-319). Enable SSL.")
+                            .formatted(enabledKey, raw, material.get()),
                     config.sourceFile().toString(),
                     config.profileLabel()
             ));
         }
     }
 
-    private void checkInsecureSessionCookie(EffectiveConfig config, List<Finding> findings) {
-        String raw = RelaxedProperties.get(config.properties(), COOKIE_SECURE_KEY);
+    private void checkDisabledManagementSsl(EffectiveConfig config, List<Finding> findings) {
+        String enabledKey = MANAGEMENT_SSL_PREFIX + ".enabled";
+        String raw = RelaxedProperties.get(config.properties(), enabledKey);
+        Optional<Finding> unresolvedEnabled = unresolvedFinding(enabledKey, raw, config);
+        if (unresolvedEnabled.isEmpty() && !isExplicitlyFalsy(resolvedOrNull(raw))) {
+            return;
+        }
+
+        // A separate management connector inherits server.ssl.* unless management.server.ssl.* is
+        // set (ManagementWebServerFactoryCustomizer), so TLS material under either prefix shows the
+        // connector was meant to use TLS. Without any, enabled=false states what is already the case.
+        Optional<String> material = tlsMaterialKey(config, MANAGEMENT_SSL_PREFIX)
+                .or(() -> tlsMaterialKey(config, SERVER_SSL_PREFIX));
+        if (material.isEmpty()) {
+            return;
+        }
+
+        String port = RelaxedProperties.get(config.properties(), MANAGEMENT_SERVER_PORT_KEY);
+        switch (managementPort(config)) {
+            case DISABLED, SAME -> {
+                // The management server is off, or shares the main connector and its server.ssl.*:
+                // Spring Boot ignores management.server.ssl.* in both cases.
+            }
+            case UNRESOLVED -> findings.add(unresolvedPlaceholderFinding(
+                    isUnresolved(port) ? MANAGEMENT_SERVER_PORT_KEY : SERVER_PORT_KEY,
+                    isUnresolved(port) ? port : RelaxedProperties.get(config.properties(), SERVER_PORT_KEY),
+                    config));
+            case DIFFERENT -> {
+                if (unresolvedEnabled.isPresent()) {
+                    findings.add(unresolvedEnabled.get());
+                    return;
+                }
+                findings.add(new Finding(
+                        id(),
+                        Severity.HIGH,
+                        ("Management SSL is explicitly disabled via '%s=%s' despite TLS material being " +
+                                "configured ('%s') and Actuator running on its own port ('%s=%s'). The management " +
+                                "endpoints listen in cleartext HTTP, so their traffic can be read and altered on " +
+                                "the network path (CWE-319). Enable management SSL.")
+                                .formatted(enabledKey, raw, material.get(), MANAGEMENT_SERVER_PORT_KEY, port),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            }
+        }
+    }
+
+    /**
+     * Mirrors Spring Boot's {@code ManagementPortType.get()}. A port that doesn't bind to an integer
+     * fails the application's startup, so it is treated as {@link ManagementPort#SAME} (silent).
+     */
+    private ManagementPort managementPort(EffectiveConfig config) {
+        String rawManagementPort = RelaxedProperties.get(config.properties(), MANAGEMENT_SERVER_PORT_KEY);
+        if (isUnresolved(rawManagementPort)) {
+            return ManagementPort.UNRESOLVED;
+        }
+        OptionalInt managementPort = parsePort(rawManagementPort);
+        if (managementPort.isEmpty()) {
+            return ManagementPort.SAME;
+        }
+        int management = managementPort.getAsInt();
+        if (management < 0) {
+            return ManagementPort.DISABLED;
+        }
+        if (management == 0) {
+            // Port 0 is a random port, never shared with the main connector.
+            return ManagementPort.DIFFERENT;
+        }
+
+        String rawServerPort = RelaxedProperties.get(config.properties(), SERVER_PORT_KEY);
+        if (isUnresolved(rawServerPort)) {
+            return ManagementPort.UNRESOLVED;
+        }
+        int server = parsePort(rawServerPort).orElse(DEFAULT_SERVER_PORT);
+        return management == server ? ManagementPort.SAME : ManagementPort.DIFFERENT;
+    }
+
+    private static OptionalInt parsePort(String raw) {
+        String resolved = resolvedOrNull(raw);
+        if (resolved == null || resolved.isBlank()) {
+            return OptionalInt.empty();
+        }
+        try {
+            return OptionalInt.of(Integer.parseInt(resolved.strip()));
+        } catch (NumberFormatException e) {
+            return OptionalInt.empty();
+        }
+    }
+
+    private void checkSessionCookie(EffectiveConfig config, String prefix, List<Finding> findings) {
+        boolean reactive = prefix.equals(REACTIVE_COOKIE_PREFIX);
+
+        String secureKey = prefix + ".secure";
+        String secure = RelaxedProperties.get(config.properties(), secureKey);
+        Optional<Finding> unresolvedSecure = unresolvedFinding(secureKey, secure, config);
+        if (unresolvedSecure.isPresent()) {
+            findings.add(unresolvedSecure.get());
+        } else if (isExplicitlyFalsy(resolvedOrNull(secure))) {
+            String effect = reactive
+                    ? "WebFlux then sends the session cookie without 'Secure', also on HTTPS responses, so a " +
+                            "browser attaches it to plain HTTP requests too, exposing it to network interception (CWE-614)."
+                    : "With Spring Session, the session cookie is then sent without 'Secure', also on HTTPS responses, " +
+                            "so a browser attaches it to plain HTTP requests too, exposing it to network interception " +
+                            "(CWE-614). Tomcat's and Jetty's own session cookie (JSESSIONID) is still marked 'Secure' " +
+                            "on HTTPS requests; the key only takes effect with Spring Session.";
+            findings.add(cookieFinding("Session cookie 'Secure' flag is explicitly disabled via '%s=%s'. "
+                    .formatted(secureKey, secure) + effect, config));
+        }
+
+        String httpOnlyKey = prefix + ".http-only";
+        String httpOnly = RelaxedProperties.get(config.properties(), httpOnlyKey);
+        Optional<Finding> unresolvedHttpOnly = unresolvedFinding(httpOnlyKey, httpOnly, config);
+        if (unresolvedHttpOnly.isPresent()) {
+            findings.add(unresolvedHttpOnly.get());
+        } else if (isExplicitlyFalsy(resolvedOrNull(httpOnly))) {
+            findings.add(cookieFinding(("Session cookie 'HttpOnly' flag is explicitly disabled via '%s=%s'. This " +
+                    "allows client-side scripts to read the session cookie via document.cookie, so an XSS flaw " +
+                    "can steal it (CWE-1004).").formatted(httpOnlyKey, httpOnly), config));
+        }
+
+        String sameSiteKey = prefix + ".same-site";
+        String sameSite = RelaxedProperties.get(config.properties(), sameSiteKey);
+        Optional<Finding> unresolvedSameSite = unresolvedFinding(sameSiteKey, sameSite, config);
+        if (unresolvedSameSite.isPresent()) {
+            findings.add(unresolvedSameSite.get());
+        } else {
+            // A blank value is Spring's own OMITTED state: the attribute is left off the Set-Cookie
+            // header entirely, not defaulted to None.
+            String resolved = resolvedOrNull(sameSite);
+            if (resolved != null && SAME_SITE_NONE.equalsIgnoreCase(resolved.strip())) {
+                findings.add(cookieFinding(("Session cookie 'SameSite' attribute is explicitly set to 'None' via " +
+                        "'%s=%s'. This allows the cookie to be sent on cross-site requests, widening the attack " +
+                        "surface for CSRF-style abuse. Use 'Lax' or 'Strict' unless cross-site delivery is a " +
+                        "deliberate, justified requirement.").formatted(sameSiteKey, sameSite), config));
+            }
+        }
+    }
+
+    private Finding cookieFinding(String message, EffectiveConfig config) {
+        return new Finding(id(), Severity.MEDIUM, message, config.sourceFile().toString(), config.profileLabel());
+    }
+
+    /**
+     * The first key under {@code prefix} that configures TLS material, as written in the file.
+     * A placeholder counts: it still shows TLS was intended.
+     */
+    private static Optional<String> tlsMaterialKey(EffectiveConfig config, String prefix) {
+        Map<String, String> properties = config.properties();
+        if (properties == null) {
+            return Optional.empty();
+        }
+        for (String key : TLS_MATERIAL_KEYS) {
+            String value = RelaxedProperties.get(properties, prefix + "." + key);
+            if (value != null && !value.isBlank()) {
+                return RelaxedProperties.findActualKey(properties, prefix + "." + key);
+            }
+        }
+        String serverNameBundles = RelaxedProperties.canonicalize(prefix + "." + SERVER_NAME_BUNDLES_KEY) + "[";
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            if (RelaxedProperties.canonicalize(entry.getKey()).startsWith(serverNameBundles)
+                    && entry.getValue() != null && !entry.getValue().isBlank()) {
+                return Optional.of(entry.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isUnresolved(String raw) {
+        return raw != null && !raw.isBlank() && EnvironmentPlaceholder.resolve(raw.strip()).isEmpty();
+    }
+
+    /**
+     * The value with its placeholders resolved, or {@code null} when absent or unresolved.
+     * <p>
+     * A resolved-but-blank value (e.g. {@code "${COOKIE_SECURE:}"}) is never treated as an explicit
+     * opt-out. For the cookie flags ({@code Boolean}) the Binder keeps the default, which is safe. For
+     * {@code ssl.enabled} (a primitive {@code boolean}) the application fails to start ("Failed to
+     * bind properties under 'server.ssl.enabled' to boolean"), so nothing is served either.
+     */
+    private static String resolvedOrNull(String raw) {
         if (raw == null || raw.isBlank()) {
-            return;
+            return null;
         }
-
-        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
-        if (resolved.isEmpty()) {
-            findings.add(unresolvedPlaceholderFinding(COOKIE_SECURE_KEY, raw, config));
-            return;
-        }
-        // A resolved-but-blank value (e.g. "${COOKIE_SECURE:}") is a fully resolved value,
-        // not an unresolved placeholder -- it does not hit the INFO branch above. Spring
-        // Boot's Binder treats an empty-string source as absent, so the property keeps its
-        // class default (Ssl.enabled=true, cookie.secure=null/auto-detect) -- both safe.
-        // Treating it as "explicitly disabled" here would misreport a config that never
-        // stated a concrete value.
-        String resolvedValue = resolved.get().strip();
-        if (resolvedValue.isBlank()) {
-            return;
-        }
-
-        if (isExplicitlyFalsy(resolved.get())) {
-            findings.add(new Finding(
-                    id(),
-                    Severity.HIGH,
-                    ("Session cookie 'Secure' flag is explicitly disabled via '%s=%s'. " +
-                            "This allows session cookies (e.g., JSESSIONID) to be transmitted over unencrypted HTTP " +
-                            "connections, making them vulnerable to network interception (CWE-614).")
-                            .formatted(COOKIE_SECURE_KEY, raw),
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
-        }
+        return EnvironmentPlaceholder.resolve(raw.strip()).orElse(null);
     }
 
-    private void checkDisabledManagementSslWithKeystore(EffectiveConfig config, List<Finding> findings) {
-        String managementPort = RelaxedProperties.get(config.properties(), MANAGEMENT_SERVER_PORT_KEY);
-        if (managementPort == null || managementPort.isBlank()) {
-            // management.server.ssl.* only takes effect when Actuator runs on a separate
-            // management port (Spring Boot reference docs, "Customizing the Management Server
-            // Port"). Without this key, management endpoints share the main connector and inherit
-            // server.ssl.* instead -- these properties would be silently ignored by Spring Boot
-            // itself, so their presence alone isn't evidence of a real, active misconfiguration.
-            return;
-        }
-
-        String keystore = RelaxedProperties.get(config.properties(), MANAGEMENT_SSL_KEYSTORE_KEY);
-        if (keystore == null || keystore.isBlank()) {
-            return;
-        }
-
-        String rawManagementSslEnabled = RelaxedProperties.get(config.properties(), MANAGEMENT_SSL_ENABLED_KEY);
-        if (rawManagementSslEnabled == null || rawManagementSslEnabled.isBlank()) {
-            return;
-        }
-
-        Optional<String> resolvedManagementSsl = EnvironmentPlaceholder.resolve(rawManagementSslEnabled.strip());
-        if (resolvedManagementSsl.isEmpty()) {
-            findings.add(unresolvedPlaceholderFinding(MANAGEMENT_SSL_ENABLED_KEY, rawManagementSslEnabled, config));
-            return;
-        }
-
-        String resolvedValue = resolvedManagementSsl.get().strip();
-        if (resolvedValue.isBlank()) {
-            return;
-        }
-
-        if (isExplicitlyFalsy(resolvedManagementSsl.get())) {
-            findings.add(new Finding(
-                    id(),
-                    Severity.HIGH,
-                    ("Management SSL is explicitly disabled via '%s=%s' despite '%s' being configured " +
-                            "on a separate management port ('%s=%s'). This leaves the Actuator management " +
-                            "endpoints listening in cleartext HTTP while retaining unused keystore properties. " +
-                            "Enable SSL or remove key-store settings.")
-                            .formatted(MANAGEMENT_SSL_ENABLED_KEY, rawManagementSslEnabled, MANAGEMENT_SSL_KEYSTORE_KEY,
-                                    MANAGEMENT_SERVER_PORT_KEY, managementPort),
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
-        }
-    }
-
-    private void checkInsecureCookieHttpOnly(EffectiveConfig config, List<Finding> findings) {
-        String raw = RelaxedProperties.get(config.properties(), COOKIE_HTTP_ONLY_KEY);
-        if (raw == null || raw.isBlank()) {
-            return;
-        }
-
-        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
-        if (resolved.isEmpty()) {
-            findings.add(unresolvedPlaceholderFinding(COOKIE_HTTP_ONLY_KEY, raw, config));
-            return;
-        }
-
-        String resolvedValue = resolved.get().strip();
-        if (resolvedValue.isBlank()) {
-            return;
-        }
-
-        if (isExplicitlyFalsy(resolved.get())) {
-            findings.add(new Finding(
-                    id(),
-                    Severity.HIGH,
-                    ("Session cookie 'HttpOnly' flag is explicitly disabled via '%s=%s'. This allows " +
-                            "client-side scripts to read the session cookie (e.g., JSESSIONID) via " +
-                            "document.cookie, making it vulnerable to theft through Cross-Site Scripting " +
-                            "(XSS) (CWE-1004).")
-                            .formatted(COOKIE_HTTP_ONLY_KEY, raw),
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
-        }
-    }
-
-    private void checkInsecureCookieSameSite(EffectiveConfig config, List<Finding> findings) {
-        String raw = RelaxedProperties.get(config.properties(), COOKIE_SAME_SITE_KEY);
-        if (raw == null || raw.isBlank()) {
-            return;
-        }
-
-        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
-        if (resolved.isEmpty()) {
-            findings.add(unresolvedPlaceholderFinding(COOKIE_SAME_SITE_KEY, raw, config));
-            return;
-        }
-
-        String resolvedValue = resolved.get().strip();
-        if (resolvedValue.isBlank()) {
-            // Absence/blank is Spring's own SameSite.OMITTED state -- the attribute is left off
-            // the Set-Cookie header entirely, not defaulted to None. Not this rule's risk to flag.
-            return;
-        }
-
-        if (SAME_SITE_NONE.equalsIgnoreCase(resolvedValue)) {
-            findings.add(new Finding(
-                    id(),
-                    Severity.MEDIUM,
-                    ("Session cookie 'SameSite' attribute is explicitly set to 'None' via '%s=%s'. This " +
-                            "allows the cookie to be sent on cross-site requests, widening the attack " +
-                            "surface for CSRF-style abuse. Use 'Lax' or 'Strict' unless cross-site delivery " +
-                            "is a deliberate, justified requirement.")
-                            .formatted(COOKIE_SAME_SITE_KEY, raw),
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
-        }
+    private Optional<Finding> unresolvedFinding(String key, String raw, EffectiveConfig config) {
+        return isUnresolved(raw) ? Optional.of(unresolvedPlaceholderFinding(key, raw, config)) : Optional.empty();
     }
 
     /**
@@ -285,7 +316,7 @@ public final class InsecureServerTransportRule implements Rule {
      * truthy = risk), so it needs its own positive-membership test against the specific
      * falsy literals, not a negation of the truthy one.
      */
-    private boolean isExplicitlyFalsy(String value) {
+    private static boolean isExplicitlyFalsy(String value) {
         if (value == null || value.isBlank()) {
             return false;
         }
