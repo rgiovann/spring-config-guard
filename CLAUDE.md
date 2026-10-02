@@ -55,8 +55,23 @@ conversation language, in the style already used in this repository's git
 log:
 
 * Title: `type(scope): imperative summary` (Conventional-Commits-style
-  types — `feat`, `fix`, `test`, `docs`, `refactor`, etc. — scoped to
-  `rules`, a specific rule ID, or the affected area).
+  types — `feat`, `fix`, `test`, `docs`, `refactor`, etc.).
+* Scope: the area that changes, named after the code it lives in:
+  * `SCGnnn` — one rule (its class, metadata, tests and docs);
+  * `rules` — several rules, or the helpers they share in `dev.scg.rules`
+    (`RelaxedBoolean`);
+  * `core` — the pipeline: loading, grouping, profile merging,
+    placeholders, the rule engine and the `Rule` contract (`dev.scg.core`);
+  * `cli` — `Main`, flags, stderr warnings, exit codes (`dev.scg`,
+    `dev.scg.cli`);
+  * `report` — console and JSON output (`dev.scg.report`);
+  * `policy` — the policy file (`dev.scg.policy`);
+  * `release`, `ci` — release workflow and CI.
+
+  When code and its documentation change together, scope by the code.
+  For documentation alone, scope by the document: `docs(backlog)`,
+  `docs(validation)`, `docs(readme)`, `docs(adr)`, `docs(changelog)`,
+  `docs(claude)`, `docs(skills)`.
 * Body: a bullet list, not prose paragraphs. Each bullet names a concrete
   change and, where it isn't obvious from the diff, *why* — a design
   decision, a bug that was fixed, a trade-off — not a restatement of the
