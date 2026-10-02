@@ -147,6 +147,19 @@ that turn up while working, report them to the maintainer.
     (a fix, an extra file, a reworded message) needs the gate again.
   * A request to make a commit ("make a commit for this") is a request to
     prepare one: it still goes through the gate above.
+* **Verify before proposing, not after approval.** Errors found only when
+  carrying out an approved commit mean the proposal wasn't checked. Before
+  showing a diff and message:
+  1. Re-read the rules the text must follow: `CLAUDE.md`, "Commit
+     Messages" (title, scope, bullet-list body), and the format of each
+     document the diff touches.
+  2. Check every factual claim in the diff and the message against the
+     repository, with the command that proves it: class, package and file
+     names, the rules cited and what each does, numbers, dates, quoted
+     text. Nothing written from memory.
+  3. Re-read the diff as a reviewer looking for what is wrong (section 5).
+  Only then present it. An error found after approval still stops the
+  commit: show it with its before and after, and ask again.
 * Never start a second change while one is still unreviewed.
 * After approval: commit, push to `main`, then check the CI run for that
   commit and report its result. No `Co-Authored-By` trailer.
