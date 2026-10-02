@@ -675,9 +675,10 @@ non-boolean fields of
 `spring.security.oauth2.authorizationserver.client.<id>.token`, which the
 metadata doesn't list since they sit inside a map; every native secret is
 still HIGH. Every reference project above reports the same findings, byte
-for byte, as with the v1.6.0 jar: all 80 SCG006 findings there were on keys
+for byte, as with the v1.6.0 jar: all 72 SCG006 findings there were on keys
 ending in a pattern, and no key there only contains one with a value that
-could be a secret.
+could be a secret. (Corrected on 2026-10-02: this said 80, the count over
+nine targets that also included three demo projects and the benchmark.)
 
 Where SCG006 stays silent was then reviewed case by case (CLAUDE.md,
 "Findings"), which changed two of them:
