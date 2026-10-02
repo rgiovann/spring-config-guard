@@ -835,7 +835,7 @@ and Spring for GraphQL's in a minimal app with `spring-boot-starter-graphql`
 (`/graphql`). Spring Boot 4.1.1's configuration metadata binds CORS from
 properties for these two only, with the same keys.
 
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.8.0 | After the SCG003 review (unreleased) |
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.8.0 | v1.9.0 |
 |---|---|---|---|---|
 | C1 | Actuator `allowed-origins=*` | app doesn't start ("allowedOrigins cannot contain the special value *") | HIGH | LOW |
 | G2 | GraphQL `allowed-origins=*` | 500 on every CORS request | silent | LOW |
@@ -872,7 +872,7 @@ and the new one has logged `Started`, and requests `/v3/api-docs` (checking
 that it lists `/api/orders/{id}`), `/swagger-ui/index.html` and
 `/swagger-ui.html`.
 
-| # | Flags | `/v3/api-docs` | Swagger UI | v1.8.0 | After the SCG008 review (unreleased) |
+| # | Flags | `/v3/api-docs` | Swagger UI | v1.8.0 | v1.9.0 |
 |---|---|---|---|---|---|
 | S1 | none (defaults) | 200, lists the API | 200 | silent (no `springdoc.*` key) | silent |
 | S2 | `api-docs.enabled=false` | 404 | 404 | MEDIUM | silent |

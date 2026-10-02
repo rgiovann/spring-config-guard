@@ -63,10 +63,11 @@ in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one. Next: SCG011, the last of the rules that
-combine keys, including a combination split across config locations. Where a
-rule relies on Spring Boot behavior, check it against a running app, as for
-SCG001.
+before starting the next one, and release every 2 or 3 reviewed rules, so
+each release's detection changes stay few enough to read. Next: SCG011, the
+last of the rules that combine keys, including a combination split across
+config locations. Where a rule relies on Spring Boot behavior, check it
+against a running app, as for SCG001.
 
 ### SCG012 cases left open (decide with measurements)
 

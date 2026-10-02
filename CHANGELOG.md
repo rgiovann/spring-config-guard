@@ -8,6 +8,49 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.9.0
+
+**Added**
+- SCG003 also reads Spring for GraphQL's CORS properties
+  (`spring.graphql.cors.*`), the other CORS configuration Spring Boot binds
+  from properties, with the same keys and the same results as Actuator's:
+  `allowed-origin-patterns: "*"` or `"https://*"` with credentials is HIGH,
+  a domain pattern MEDIUM.
+
+**Fixed**
+- SCG003 treated both origin keys alike. Checked in running Spring Boot
+  4.1.1 apps (`VALIDATION.md`, "SCG003 CORS scenarios"): in
+  `allowed-origins`, a wildcard other than `*` is compared literally (Spring
+  answers 403), so it is no longer reported; `*` with credentials is
+  rejected by Spring (Actuator's mapping fails at startup, GraphQL answers
+  every CORS request with 500), so it is LOW (present but ineffective)
+  instead of HIGH. An unresolved placeholder, in an origin key or in
+  `allow-credentials`, is INFO instead of HIGH.
+- SCG008 reported "Swagger UI remains exposed" for
+  `springdoc.api-docs.enabled=false`, which turns SpringDoc off entirely:
+  checked in a running Spring Boot 4.1.1 app with SpringDoc 3.1.1, the spec
+  and the UI both answer 404, even with `springdoc.swagger-ui.enabled=true`
+  (`VALIDATION.md`, "SCG008 SpringDoc scenarios"). It is now silent.
+
+**Detection changes**
+- **Fewer or lower findings**: SCG003 drops literal wildcards in
+  `allowed-origins`, reports `allowed-origins: "*"` with credentials as LOW
+  and unresolved placeholders as INFO; SCG008 is silent once
+  `springdoc.api-docs.enabled` is `false`. With `--fail-on=HIGH`, builds
+  that failed only on SCG003's `allowed-origins: "*"` now pass.
+- **More findings**: SCG003 reports Spring for GraphQL's CORS. SCG008
+  reports a placeholder in `springdoc.swagger-ui.enabled` as MEDIUM instead
+  of INFO when the spec is served: only the UI depends on it.
+- On the reference corpus, against `v1.8.0`: every finding and coverage
+  warning is identical. The demo projects' CORS fixtures now use
+  `allowed-origin-patterns: "*"`, the form that is a real risk.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.8.0...v1.9.0`.
+
 ## v1.8.0
 
 **Added**
