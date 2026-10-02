@@ -109,6 +109,20 @@ keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm
 the per-client maps, the binder maps), with the same precedence as SCG014.
 Decide then whether it extends SCG014 or is a rule of its own.
 
+### SCG006: credentials in the OTLP headers maps
+
+Found while re-checking SCG006 (`VALIDATION.md`, "SCG006 key matching"):
+`management.otlp.metrics.export.headers`,
+`management.opentelemetry.tracing.export.otlp.headers` and
+`management.opentelemetry.logging.export.otlp.headers` are maps of HTTP
+headers sent to the telemetry backend, which often carry its credential
+(the metadata describes the two `opentelemetry` ones as "for example auth
+headers"). An entry named after a secret pattern (`headers.api-key`) is
+HIGH, but `headers.Authorization` (`Bearer ...`, `Basic ...`) and vendor
+headers such as `X-Honeycomb-Team` are silent. To decide with measurements:
+recognize the value (`Bearer `/`Basic ` prefixes) or the header names in
+these maps, and at which severity.
+
 ### GitHub Action for the Marketplace
 
 Publish SCG as a GitHub Action (`uses: rgiovann/spring-config-guard-action@v1`)

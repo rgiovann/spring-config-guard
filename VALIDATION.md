@@ -731,10 +731,13 @@ other entries. Against the metadata (now also `spring-boot-webflux`, whose
 24 properties name no secret), exactly these 8 findings are added; every
 reference project reports the same findings as with the v1.9.0 jar.
 
-Left open: the OTLP `headers` maps (`management.otlp.*.headers`,
-`management.opentelemetry.*.headers`) can hold a credential. An entry named
-after a pattern (`headers.api-key`) is HIGH, but `headers.Authorization`
-and vendor headers such as `X-Honeycomb-Team` are silent.
+Left open (`BACKLOG.md`): the OTLP `headers` maps
+(`management.otlp.metrics.export.headers`,
+`management.opentelemetry.tracing.export.otlp.headers` and
+`management.opentelemetry.logging.export.otlp.headers`) can hold a
+credential. An entry named after a pattern (`headers.api-key`) is HIGH, but
+`headers.Authorization` and vendor headers such as `X-Honeycomb-Team` are
+silent.
 
 ## SCG014 protocol precedence (Spring Boot 4.1.1 `KafkaProperties`)
 
