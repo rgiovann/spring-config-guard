@@ -685,7 +685,9 @@ class ActuatorExposureRuleTest {
             "access.default=none, env opted in | management.endpoints.access.default=none,management.endpoint.env.access=unrestricted | env",
             "legacy: enabled-by-default=false, env opted in | management.endpoints.enabled-by-default=false,management.endpoint.env.enabled=true | env",
             "legacy env.enabled=false | management.endpoint.env.enabled=false | threaddump, configprops, beans, loggers",
-            "heapdump opted in | management.endpoint.heapdump.access=unrestricted | env, heapdump, threaddump, configprops, beans, loggers"
+            "heapdump opted in | management.endpoint.heapdump.access=unrestricted | env, heapdump, threaddump, configprops, beans, loggers",
+            "max-permitted=read-only, heapdump opted in | management.endpoints.access.max-permitted=read-only,management.endpoint.heapdump.access=unrestricted | env, heapdump, threaddump, configprops, beans, loggers",
+            "shutdown opted in | management.endpoint.shutdown.access=unrestricted | env, threaddump, shutdown, configprops, beans, loggers"
     })
     @DisplayName("Reports exactly the sensitive endpoints Spring Boot 4.1.1 exposes under include=*")
     void reportsWhatSpringBootExposes(String scenario, String extraProperties, String expectedEndpoints) {
@@ -707,6 +709,24 @@ class ActuatorExposureRuleTest {
                     .extracting(Finding::message).asString()
                     .contains("remain unrestricted: " + expectedEndpoints + ".");
         }
+    }
+
+    /**
+     * VALIDATION.md, "SCG001 exposure scenarios", S16: Spring Boot 4.1.1 refuses to start when an
+     * endpoint sets both access and the legacy enabled, so nothing is exposed. SCG001 doesn't check
+     * that the two exclude each other and reports the endpoints of include=* alone. Pinned so a
+     * change to this behavior is a decision, not an accident.
+     */
+    @Test
+    @DisplayName("S16: access and legacy enabled on one endpoint are not checked for mutual exclusion")
+    void doesNotCheckAccessAndEnabledMutualExclusion() {
+        EffectiveConfig config = configWith(Map.of(
+                "management.endpoints.web.exposure.include", "*",
+                "management.endpoint.env.access", "unrestricted",
+                "management.endpoint.env.enabled", "false"));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::message).asString()
+                .contains("remain unrestricted: env, threaddump, configprops, beans, loggers.");
     }
 
     @Test

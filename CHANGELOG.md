@@ -177,13 +177,16 @@ Full diff: `v1.6.0...v1.7.0`.
   write-only endpoints (`shutdown`, `restart`) unreachable.
 
 **Detection changes**
-- **SCG001 no longer reports endpoints Spring doesn't expose** (six false
-  positives in the scenarios above): those listed in `exposure.exclude`
-  (or all of them with `exclude=*`), and every endpoint under
+- **SCG001 no longer reports endpoints Spring doesn't expose** (false
+  positives in nine of the scenarios above): those listed in
+  `exposure.exclude` (or all of them with `exclude=*`), every endpoint under
   `access.default=none`, `max-permitted=none`, `enabled-by-default=false`
-  or `management.server.port=-1`. The finding disappears when no sensitive
-  endpoint is left exposed; otherwise the excluded ones drop out of its
-  message.
+  or `management.server.port=-1` unless opted in on its own, and write-only
+  endpoints under `max-permitted=read-only`. The finding disappears when no
+  sensitive endpoint is left exposed; otherwise the excluded ones drop out
+  of its message. (Corrected on 2026-10-02: these notes were published with
+  "six false positives"; re-running the scenarios against the v1.5.0 jar
+  found nine. See `VALIDATION.md`, "SCG001 exposure scenarios".)
 - **SCG001 now reports `heapdump` and `shutdown`** where a global default
   opens them, though they are restricted by default:
   `access.default=unrestricted` or `enabled-by-default=true` open both, and

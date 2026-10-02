@@ -3,22 +3,31 @@
 # the reference SCG001 is checked against (VALIDATION.md, "SCG001 exposure scenarios").
 #
 # Each scenario starts this benchmark app with extra properties as command-line arguments (so the
-# fixtures in src/main/resources stay untouched), lists the endpoints /actuator links to, and stops
-# the app. Build the jar first:  mvn -q package -DskipTests   (from this directory)
+# fixtures in src/main/resources stay untouched), waits until the previous app has released the port
+# and the new one has started (or failed), lists the endpoints /actuator links to, and stops the app.
+# Build the jar first:  mvn -q package -DskipTests   (from this directory)
 set -u
 cd "$(dirname "$0")"
 JAR=target/spring-env-benchmark-0.0.1-SNAPSHOT.jar
 INCLUDE=--management.endpoints.web.exposure.include='*'
+LOG=/tmp/scg001-scenario.log
 
 scenario() {
     local name=$1; shift
-    java -jar "$JAR" --spring.profiles.active=prod "$@" > /dev/null 2>&1 &
+    # A previous app still holding the port would answer for this scenario.
+    while (echo > /dev/tcp/localhost/8081) 2>/dev/null; do sleep 1; done
+    java -jar "$JAR" --spring.profiles.active=prod "$@" > "$LOG" 2>&1 &
     local pid=$!
-    for _ in $(seq 1 40); do
-        curl -s -o /dev/null localhost:8081/actuator && break
+    for _ in $(seq 1 60); do
+        grep -q "Started \|APPLICATION FAILED\|Application run failed" "$LOG" && break
         kill -0 "$pid" 2>/dev/null || break
         sleep 1
     done
+    if ! grep -q "Started " "$LOG"; then
+        printf '%-58s app did not start: %s\n' "$name" "$(grep -m1 -A2 'Description:' "$LOG" | tail -1)"
+        kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+        return
+    fi
     local links
     links=$(curl -s localhost:8081/actuator | python3 -c "
 import json, sys

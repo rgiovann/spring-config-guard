@@ -33,8 +33,11 @@ such as SCG002, SCG009 and SCG013 last.
 Reviewed so far:
 
 * SCG001, against a running Spring Boot app (`VALIDATION.md`, "SCG001
-  exposure scenarios"); split across locations, its `show-values` finding is
-  missed, a limitation the ADR-005 coverage warning already surfaces.
+  exposure scenarios"); split across locations it errs both ways: its
+  `show-values` finding is missed when `show-values` is in another location
+  (a false negative), and `exposure.include=*` is still reported when
+  `access.default=none` in another location turns every endpoint off (a
+  false positive), both surfaced by the ADR-005 coverage warning.
 * SCG006, against Spring Boot 4.1.1's configuration metadata (`VALIDATION.md`,
   "SCG006 key matching").
 * SCG014, against Spring Boot 4.1.1's `KafkaProperties` (`VALIDATION.md`,
