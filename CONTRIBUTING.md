@@ -124,9 +124,12 @@ Publishing is automated by `.github/workflows/release.yml`.
 2. Set `pom.xml` to `X.Y.Z` (drop `-SNAPSHOT`).
 3. Update the pinned version in README's CI/CD Integration example (skip
    for a pre-release).
-4. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md`, using the
+4. In `VALIDATION.md`, replace each table column labelled "... (unreleased)"
+   with `vX.Y.Z`: a rule review labels the column with its results that
+   way until they ship.
+5. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md`, using the
    template below.
-5. After approval, the assistant commits and pushes to `main`, then runs
+6. After approval, the assistant commits and pushes to `main`, then runs
    the **Release** workflow manually (Actions tab → Release → Run workflow,
    or the API) from `main`, with the version as input (`X.Y.Z`, no `v`).
    The workflow:
@@ -142,9 +145,9 @@ Publishing is automated by `.github/workflows/release.yml`.
      GitHub release with the section as its notes and
      `target/spring-config-guard.jar` attached — as a pre-release when the
      version has a suffix, so `releases/latest` is never a pre-release.
-6. The assistant checks the workflow run and the published release, and
+7. The assistant checks the workflow run and the published release, and
    reports the link.
-7. Set `pom.xml` to the next `-SNAPSHOT` version.
+8. Set `pom.xml` to the next `-SNAPSHOT` version.
 
 The workflow creates the tag itself because tags can't be pushed from the
 assistant's sessions, and so the tag always points at the commit that was

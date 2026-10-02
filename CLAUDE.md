@@ -40,6 +40,14 @@ When investigating existing behavior or architecture, inspect the code,
 tests and documentation in the repository rather than relying on
 assumptions.
 
+## Language
+
+The conversation with the maintainer may be in Portuguese (pt-BR).
+Everything written to the repository is in English, whatever the
+conversation language: code, comments, Javadoc, tests, documentation
+(`README`, `ARCHITECTURE`, `VALIDATION`, `BACKLOG`, `CHANGELOG`, skills),
+commit messages and release notes.
+
 ## Commit Messages
 
 When asked to draft a commit message, write it in English regardless of the

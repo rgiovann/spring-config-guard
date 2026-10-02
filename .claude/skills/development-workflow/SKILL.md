@@ -71,8 +71,11 @@ and what was **not** run and why.
 
 * **Unit/integration tests**: `mvn test`, reporting the test count.
 * **Before/after findings** for any change to discovery, grouping, merging
-  or rules. Build the jar at the base commit and at the change, run both on
-  the same inputs, and diff the JSON:
+  or rules. Compare the jar of the change with the jar of the last
+  published release, downloaded from the release and checked first (its
+  sha256 must equal the release asset's digest); for a comparison inside
+  unreleased work, build the jar at the base commit. Run both on the same
+  inputs, and diff the JSON, stderr included:
   * `demo-project/` showcases and `demo-project-clean/`;
   * the `VALIDATION.md` repositories at their pinned SHAs. A sparse, blobless
     fetch of `application*` files is enough; include `pom.xml` and
@@ -85,6 +88,12 @@ and what was **not** run and why.
   8081, then `mvn test -Dgroups=benchmark -DexcludedGroups=`
   (`VALIDATION.md`, "ProfileMerger correctness benchmark"). Stop the app
   afterwards.
+* **Scenarios in a running app** (Actuator, CORS, SpringDoc, ...): start one
+  app per scenario, wait until the previous one has released the port and
+  the new one has logged `Started` (or failed, which is a result too), and
+  only then measure. A leftover app answers instead and silently
+  contaminates every following scenario, as in the first run of the SCG003
+  review; `spring-env-benchmark/cors-scenarios.sh` shows the pattern.
 * **Rules**: apply `.claude/skills/review-security-rule/SKILL.md`.
 
 ## 5. Adversarial self-review
@@ -162,6 +171,10 @@ Start with the part that matters most:
 6. Tests added or changed.
 7. Remaining risks.
 8. Where to look in the diff (section 5).
+
+When something in a draft you wrote turns out to be wrong before you show
+it (a claim, a number, a test), say so in the report and show it before and
+after the correction, rather than presenting only the corrected version.
 
 No line-by-line walkthrough. Where a task is genuinely complex, say where the
 complexity is instead of simplifying the explanation. When the maintainer's
