@@ -775,6 +775,18 @@ On the reference projects only the wording of the 3 "not set" findings
 changes (1 in `spring-boot`, 2 in `spring-cloud-stream-samples`); every
 other finding is byte-identical.
 
+Re-checked on 2026-10-02 with the program now kept in the repository
+(`spring-env-benchmark/kafka-precedence`): P1–P7 give the results above.
+Two more scenarios check the steps of P4 and P3 the other way round, with
+the insecure value on top: X1 (consumer map `PLAINTEXT` over consumer typed
+`SSL`) and X2 (consumer typed `PLAINTEXT` over common map `SSL`) both leave
+the consumer on `PLAINTEXT`.
+
+```bash
+cd spring-env-benchmark
+./kafka-precedence-scenarios.sh
+```
+
 ## SCG007 credential forms (JDBC drivers and kafka-clients)
 
 Which credential forms a connection string or JAAS configuration can carry
