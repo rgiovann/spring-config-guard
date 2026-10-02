@@ -18,6 +18,10 @@ import java.util.regex.Pattern;
  *     PostgreSQL, MySQL and MariaDB ({@code ?password=}), SQL Server and H2 ({@code ;password=}),
  *     and key store passwords passed the same way ({@code trustStorePassword=});</li>
  *     <li>Oracle's {@code jdbc:oracle:thin:user/password@host};</li>
+ *     <li>a {@code password} key in a MySQL host specification, after {@code (} or {@code ,}:
+ *     {@code jdbc:mysql://(host=db,user=app,password=...)} and
+ *     {@code jdbc:mysql://address=(host=db)(password=...)}, in any {@code jdbc:mysql} sub-protocol
+ *     ({@code replication}, {@code loadbalance});</li>
  *     <li>a JAAS option {@code password} or {@code clientSecret} (OAuthBearer), quoted or not: Kafka
  *     accepts all three spellings.</li>
  * </ul>
@@ -31,6 +35,8 @@ final class EmbeddedCredentials {
             Pattern.compile("[?&;][A-Za-z0-9._-]*password=([^&;#\\s]*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ORACLE_USER_PASSWORD =
             Pattern.compile("^jdbc:oracle:[a-z0-9]+:[^/@:\\s]+/([^@\\s]*)@", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MYSQL_HOST_PASSWORD =
+            Pattern.compile("[(,]password=([^,)\\s]*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern JAAS_SECRET_OPTION = Pattern.compile(
             "(?<![A-Za-z])(?:password|clientSecret)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s;\"']*))",
             Pattern.CASE_INSENSITIVE);
@@ -65,6 +71,12 @@ final class EmbeddedCredentials {
             Matcher parameter = PASSWORD_PARAMETER.matcher(value);
             while (parameter.find()) {
                 found.add(parameter.group(1));
+            }
+            if (value.strip().toLowerCase(Locale.ROOT).startsWith("jdbc:mysql")) {
+                Matcher hostPassword = MYSQL_HOST_PASSWORD.matcher(value);
+                while (hostPassword.find()) {
+                    found.add(hostPassword.group(1));
+                }
             }
         }
         return found;

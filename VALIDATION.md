@@ -821,6 +821,23 @@ SCG007 now detects these forms in every property by the value's shape
 and Eureka's `defaultZone` with user-info. Every reference project above
 reports the same findings, byte for byte, as with the v1.7.0 jar.
 
+Re-checked on 2026-10-02 against the same client versions (MySQL
+Connector/J 9.7.0, PostgreSQL 42.7.13, MariaDB 3.5.10, SQL Server 13.4.0,
+H2 2.4.240, Oracle 23.26, kafka-clients 4.2.1): c01–c17 hold. These
+forms, not checked against their clients, are reported HIGH too: Redis
+with a password and no user (`redis://:s3cr3t@`) and `rediss://`,
+`mongodb+srv://`, R2DBC, RabbitMQ
+`amqp://`/`amqps://` (also in a list), SQL Server `password={...}`, Oracle
+`@//host`, `?PASSWORD=` in upper case, MariaDB user-info and a SCRAM JAAS
+configuration; kafka-clients' replacement for `clientSecret`,
+`sasl.oauthbearer.client.credentials.client.secret`, is HIGH through
+SCG006. One form was missed, from v1.6.0 to v1.9.0: Connector/J reads a
+password from a MySQL host specification, after `(` or `,`
+(`jdbc:mysql://(host=db,user=app,password=s3cr3t)/app`,
+`jdbc:mysql://address=(host=db)(password=s3cr3t)/app`, in any `jdbc:mysql`
+sub-protocol, the key in any case). It is now HIGH; the reference projects
+report the same findings as with the v1.9.0 jar.
+
 ## SCG012 driver modes (JDBC drivers and Spring Boot's Redis configuration)
 
 Which values turn TLS off, or keep it on without checking the server's

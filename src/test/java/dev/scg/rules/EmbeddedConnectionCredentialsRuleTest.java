@@ -425,6 +425,10 @@ class EmbeddedConnectionCredentialsRuleTest {
                 "spring.datasource.url | jdbc:h2:mem:app;USER=sa;PASSWORD=s3cr3t",
                 "spring.datasource.url | jdbc:oracle:thin:scott/s3cr3t@db.example.com:1521/orcl",
                 "spring.datasource.url | jdbc:mysql://db.example.com/app?trustCertificateKeyStorePassword=changeit",
+                // MySQL host specifications: key-value and address-equals forms, any sub-protocol
+                "spring.datasource.url | jdbc:mysql://(host=db.example.com,port=3306,user=app,password=s3cr3t)/app",
+                "spring.datasource.url | jdbc:mysql://address=(host=db.example.com)(port=3306)(user=app)(password=s3cr3t)/app",
+                "spring.datasource.url | jdbc:mysql:replication://(host=db1.example.com,PASSWORD=s3cr3t),(host=db2.example.com)/app",
                 // Spring Boot 4.1.1's current names, missing from the old key list
                 "spring.data.redis.url | redis://user:s3cr3t@redis.example.com:6379",
                 "spring.mongodb.uri | mongodb://app:s3cr3t@mongo1.example.com,mongo2.example.com/app",
@@ -458,6 +462,8 @@ class EmbeddedConnectionCredentialsRuleTest {
                 "spring.datasource.url | jdbc:postgresql://db.example.com:5432/app?ApplicationName=a@b",
                 "spring.datasource.url | jdbc:mysql://db.example.com:3306/app?serverTimezone=UTC",
                 "spring.datasource.url | jdbc:oracle:thin:@//db.example.com:1521/orcl",
+                "spring.datasource.url | jdbc:mysql://(host=db.example.com,port=3306,user=app)/app",
+                "spring.datasource.url | jdbc:mysql://(host=db.example.com,user=app,password=${DB_PASSWORD})/app",
                 "spring.data.redis.url | redis://user@redis.example.com:6379",
                 // Credential injected at runtime, in a key that isn't a connection key
                 "app.legacy.url | jdbc:mysql://app:${DB_PASSWORD}@db.example.com/app",
