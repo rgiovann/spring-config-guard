@@ -57,6 +57,9 @@ Reviewed so far:
   and `enabled=false`, or the management port and management SSL, are in
   different locations; a false positive when `config/` re-enables SSL), all
   surfaced by the ADR-005 coverage warning.
+* SCG004, against running Spring Boot 4.1.1 apps, Actuator and Spring for
+  GraphQL (`VALIDATION.md`, "SCG004 insecure origin scenarios"); the first
+  review with the updated `review-security-rule`.
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -71,9 +74,17 @@ if it does, adjust the skill.
 
 Found while reviewing SCG003, to check in the rules concerned:
 `spring.graphql.cors.*` is a second CORS binding next to Actuator's, which
-SCG004 and SCG005 don't read either; and `RelaxedBoolean.isTruthy` treats an
+SCG005 doesn't read either (SCG004 now does); and `RelaxedBoolean.isTruthy` treats an
 unresolved placeholder as `true`, so a rule using it reports doubt at its
 certain severity (SCG003 now resolves `allow-credentials` itself).
+
+Found while reviewing SCG004, in SCG003 (`VALIDATION.md`, "SCG004 insecure
+origin scenarios"): a pattern whose wildcard only covers a loopback port or
+`localhost` subdomains (`http://localhost:*`, `http://localhost:[*]`,
+`http://*.localhost`) is HIGH, though the running app refused
+`http://localhost.evil.com`; and `allowed-origins=null` with credentials
+is silent, though the app allowed `Origin: null`, which any page can send
+from a sandboxed iframe.
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
@@ -82,7 +93,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG002, SCG004, SCG005, SCG009, SCG010, SCG013, SCG015, SCG016,
+rules (SCG002, SCG005, SCG009, SCG010, SCG013, SCG015, SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 

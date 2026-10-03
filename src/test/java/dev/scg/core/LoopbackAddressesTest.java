@@ -53,4 +53,25 @@ class LoopbackAddressesTest {
     void failsClosedOnBlankInput(String origin) {
         assertThat(LoopbackAddresses.isLoopback(origin)).isFalse();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"127.0.0.1", "[::1]", "::1", "localhost", "App.Localhost"})
+    @DisplayName("isLoopbackHost recognizes a host alone, IPv6 with or without brackets")
+    void recognizesLoopbackHosts(String host) {
+        assertThat(LoopbackAddresses.isLoopbackHost(host)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"localhost.evil.com", "127.0.0.1.evil.org", "app.local", "evillocalhost"})
+    @DisplayName("isLoopbackHost rejects remote hosts that look local")
+    void rejectsRemoteHosts(String host) {
+        assertThat(LoopbackAddresses.isLoopbackHost(host)).isFalse();
+    }
+
+    @Test
+    @DisplayName("isLocalhostName accepts localhost names only, not loopback IP addresses")
+    void localhostNameExcludesIpAddresses() {
+        assertThat(LoopbackAddresses.isLocalhostName("a.localhost")).isTrue();
+        assertThat(LoopbackAddresses.isLocalhostName("127.0.0.1")).isFalse();
+    }
 }

@@ -1116,3 +1116,52 @@ against the v1.9.0 jar and the current code. Every cell holds, L1–L4
 included. Left open (BACKLOG.md): weak TLS protocols
 (`server.ssl.enabled-protocols`, `server.ssl.protocol`) and
 `server.servlet.session.tracking-modes=url`, silent today.
+
+## SCG004 insecure origin scenarios (running Spring Boot 4.1.1 apps)
+
+How Spring answers a cross-origin request from a plain-HTTP origin was
+checked in the same two apps as SCG003: Actuator's CORS in this benchmark
+app (`/actuator/env`) and Spring for GraphQL's in the `graphql-cors` app
+(`/graphql`), both reproducible with
+`spring-env-benchmark/cors-insecure-origin-scenarios.sh`. How an origin is
+read comes from `CorsConfiguration` in spring-web 7.0.9: `allowed-origins`
+is compared ignoring case; in a pattern, `*` matches any sequence, matching
+is case-sensitive and anchored, and a trailing `:[*]` or `:[8080,8081]` is
+a port list whose comma doesn't separate origins.
+
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | Now |
+|---|---|---|---|---|
+| A1 | `allowed-origins=http://partner.example` | allowed with credentials | MEDIUM | MEDIUM |
+| A2 | the same, no credentials | allowed, without credentials | MEDIUM | LOW |
+| A3 | `allowed-origins=HTTP://PARTNER.EXAMPLE` | allowed with credentials | MEDIUM | MEDIUM |
+| A4 | `allowed-origin-patterns=HTTP://partner.example` | 403: patterns are case-sensitive | MEDIUM | MEDIUM |
+| A5 | `allowed-origin-patterns=*.example.com` | `http://a.example.com` allowed with credentials | silent | MEDIUM |
+| A6 | `allowed-origin-patterns=*://app.example.com` | `http://app.example.com` allowed with credentials | silent | MEDIUM |
+| A7 | `allowed-origin-patterns=http*://app.example.com` | `http://app.example.com` allowed with credentials | silent | MEDIUM |
+| A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | MEDIUM | silent |
+| A9 | `allowed-origin-patterns=http://localhost:[8080,8082]`, a scalar | 403: Spring Boot splits the value on its comma | MEDIUM | silent |
+| A9b | the same, as a YAML list item | ports 8080 and 8082 allowed, 9000: 403 | MEDIUM | silent |
+| A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only (`http://localhost.evil.com`: 403) | MEDIUM | silent |
+| A11 | `allowed-origin-patterns=http://*.localhost` | `http://a.localhost` allowed, `http://a.localhost.evil.com`: 403 | MEDIUM | silent |
+| A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | MEDIUM | MEDIUM |
+| G1 | GraphQL `allowed-origins=http://partner.example` | allowed with credentials | silent | MEDIUM |
+| G2 | GraphQL `allowed-origin-patterns=http://*.example.com`, no credentials | allowed, without credentials | silent | LOW |
+| P1 | `allowed-origins=http://${PARTNER_HOST}` | decided at runtime | INFO | INFO |
+| P2 | `allowed-origins=${APP_ORIGIN},http://partner.example`, no credentials | `http://partner.example` allowed | INFO | LOW and INFO |
+
+SCG004 now reads both prefixes, splits a value as `CorsConfiguration`
+does, and reports a pattern whose scheme is missing or a wildcard (A5–A7).
+A loopback host is silent with any port, port wildcard or port list, and so
+are subdomains of `localhost` (A8–A11). Severity follows
+`allow-credentials`: MEDIUM when it is true; LOW otherwise, since an
+injected script then only reads responses to anonymous requests (SCG003
+reports nothing for `allowed-origins=*` without credentials, its C5, which
+lets every origin in). A
+literal origin next to a placeholder is reported at its own severity (P2);
+an origin is INFO only where the placeholder decides it. A4 is kept as a
+finding: the pattern matches nothing, but it is a broken configuration
+meant to allow plain HTTP. The pattern `*` is left to SCG003.
+
+Every reference project above and every demo fixture reports the same
+findings as with the v1.10.0 jar: none has an `http://` CORS origin. The
+script was run twice with the same results.
