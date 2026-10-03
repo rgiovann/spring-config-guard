@@ -8,6 +8,68 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.11.0
+
+**Added**
+- SCG004 and SCG005 read Spring for GraphQL's CORS keys
+  (`spring.graphql.cors.*`) next to Actuator's, as SCG003 does; a GraphQL
+  origin, method or exposed header used to be silent.
+- SCG004 reports origin patterns whose scheme is missing or a wildcard
+  (`*.example.com`, `*://app.example.com`, `http*://app.example.com`): a
+  running app sent credentials to their `http://` origins.
+- SCG003 reports `null` in `allowed-origins` or `allowed-origin-patterns`
+  with credentials as HIGH (INFO with credentials from an unresolved
+  placeholder). Browsers send `Origin: null` from sandboxed iframes, which
+  any page can embed: in Chromium such an iframe read `/actuator/env` with
+  credentials.
+
+**Fixed**
+- SCG003 and SCG004 reported patterns that only match the local machine
+  (`http://localhost:*`, `http://localhost:[*]`, `http://*.localhost`),
+  SCG003 as HIGH and SCG004 as MEDIUM, though the app refused
+  `http://localhost.evil.com`. Both are silent now. SCG003 is also silent
+  for a wildcard only in the scheme or the port (`*://app.example.com`,
+  `https://app.example.com:*`), which lets in one host; it was MEDIUM.
+- SCG004 split a value on every comma, cutting a port list
+  (`http://localhost:[8080,8082]`) in two; values are now split as
+  Spring's `CorsConfiguration` splits them.
+- SCG004 reported a whole value as INFO when one of its origins used an
+  unresolved placeholder. Each origin is evaluated on its own now: a
+  literal `http://` origin next to it is reported at its severity, and
+  `https://${HOST}` or `http://localhost:${PORT}` are silent.
+- SCG005 reported `allowed-methods` and `exposed-headers` with no origin
+  key, where Spring Boot builds no CORS configuration; it is silent there
+  now.
+- SCG004's message no longer limits the risk to "non-development
+  environments"; SCG005's `allowed-methods=*` message says a JSON POST
+  also needs `allowed-headers`.
+
+**Detection changes**
+- **More findings**: SCG004 and SCG005 for Spring for GraphQL; SCG004 for
+  patterns with a missing or wildcard scheme; SCG003 for the `null`
+  origin, as HIGH, so with the default `--fail-on=HIGH` a project that
+  allows `null` with credentials now fails.
+- **Lower severity**: SCG004 and SCG005 follow `allow-credentials`:
+  MEDIUM when it is true, LOW otherwise (they were MEDIUM), since without
+  credentials an `http://` origin, `allowed-methods=*` or an exposed token
+  header only reaches anonymous responses. SCG005's `exposed-headers=*`
+  goes from MEDIUM to LOW: Chromium ignored it for credentialed requests.
+  With `--fail-on=MEDIUM`, builds that failed only on these now pass.
+- **Fewer findings**: the loopback and single-host patterns above (SCG003,
+  SCG004), a loopback port list (SCG004), and SCG005 without an origin key.
+- Each change was checked in running Spring Boot 4.1.1 apps and in
+  Chromium; see `VALIDATION.md`, "SCG003 CORS scenarios", "SCG004 insecure
+  origin scenarios" and "SCG005 methods and headers scenarios". The
+  scenario scripts are in `spring-env-benchmark`.
+- On the reference corpus and the demo fixtures, against `v1.10.0`: every
+  finding is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.10.0...v1.11.0`.
+
 ## v1.10.0
 
 **Added**

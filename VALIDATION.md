@@ -969,7 +969,7 @@ Re-checked while reviewing SCG004 (its rows A6–A13, "SCG004 insecure
 origin scenarios"), with `cors-scenarios.sh`, `graphql-cors-scenarios.sh`
 and `null-origin-browser-probe.sh`, each run twice with the same results:
 
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | Now |
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | v1.11.0 |
 |---|---|---|---|---|
 | A6 | `allowed-origin-patterns=*://app.example.com` | only `app.example.com`, in any scheme | MEDIUM | silent |
 | A7 | `allowed-origin-patterns=http*://app.example.com` | only `app.example.com` | MEDIUM | silent |
@@ -1161,7 +1161,7 @@ is compared ignoring case; in a pattern, `*` matches any sequence, matching
 is case-sensitive and anchored, and a trailing `:[*]` or `:[8080,8081]` is
 a port list whose comma doesn't separate origins.
 
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | Now |
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | v1.11.0 |
 |---|---|---|---|---|
 | A1 | `allowed-origins=http://partner.example` | allowed with credentials | MEDIUM | MEDIUM |
 | A2 | the same, no credentials | allowed, without credentials | MEDIUM | LOW |
@@ -1210,7 +1210,7 @@ set (`toCorsConfiguration()` returns null otherwise); unset methods default
 to GET and HEAD. Which response headers a script reads is decided by the
 browser, so it was checked against a minimal server.
 
-| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | Now |
+| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | v1.11.0 |
 |---|---|---|---|---|
 | M1 | `allowed-methods=*`, no origin key | no CORS headers at all | MEDIUM | silent |
 | M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM | MEDIUM |
