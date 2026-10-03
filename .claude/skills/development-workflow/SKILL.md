@@ -254,6 +254,11 @@ into its own commit.
 
 ### Both shapes
 
+Every factual claim in a report (a default, a version, what a command or
+the code does) meets section 7's standard: checked with the command that
+proves it, or marked unverified. A decision the maintainer takes rests on
+the report, so an unchecked claim there costs as much as one in a commit.
+
 When something in a draft you wrote turns out to be wrong before you show
 it (a claim, a number, a test), say so in the report and show it before and
 after the correction, rather than presenting only the corrected version.
