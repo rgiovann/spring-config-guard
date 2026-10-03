@@ -200,3 +200,11 @@ technically weak decision, and state the concrete failure scenario
 for a different design. If a decision is technically correct and
 deliberate, say so and leave it alone, even if another approach would also
 have worked.
+
+## Report
+
+Report the review as `development-workflow`'s analysis report (section 8):
+confirmed bugs, documentation and policy, verified correct, decisions
+needed, out of scope, with the classes above mapped onto those sections.
+Findings in other rules go to "out of scope", never into this rule's
+sections.

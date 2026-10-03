@@ -186,8 +186,57 @@ that turn up while working, report them to the maintainer.
 
 ## 8. Reporting
 
-Keep the report proportional to the change; a comment fix gets a few lines.
-Start with the part that matters most:
+Two shapes, by what the report answers: an **analysis** (a rule review, a
+code review, an investigation: what is wrong, what is right, what must be
+decided) or an **implementation** (a change ready for the commit gate: what
+changed and how it was proven). A task that does both reports the analysis
+first and stops for decisions before implementing.
+
+In both, conclusions come first and stay short. Raw data (scenario tables,
+logs, command output, long test lists) never carries the argument: it goes
+to the repository (`VALIDATION.md`, a script, a test) or to a file the
+maintainer can open, and the report cites only the row or line that
+supports each conclusion (e.g. "A8: the app refused
+`http://localhost.evil.com`").
+
+### Analysis report
+
+Five sections, in this order, each kept even when empty ("None"), so an
+empty one reads as checked rather than forgotten:
+
+1. **Confirmed bugs**: wrong behavior in the code under analysis, each with
+   the concrete input, the wrong result measured and its impact (a false
+   negative hides a risk; a false positive fails builds). Only what was
+   reproduced belongs here; a suspicion not yet verified goes to section 4
+   as something to check, or isn't reported.
+2. **Documentation and policy**: Javadoc, README, `VALIDATION.md` or
+   messages that state something false or leave out a boundary users need
+   to know, and code that departs from a `CLAUDE.md` invariant (relaxed
+   binding, placeholders, Zero-Trust, Findings severity).
+3. **Verified correct**: what was checked and holds, one line each with
+   the evidence (e.g. "upper-case `HTTP://` origins: reported, and Spring
+   matches them"). It keeps the maintainer from re-checking it and shows
+   what the analysis covered.
+4. **Decisions needed**: each trade-off the maintainer owns, as options
+   (Option A, Option B, ...) with their pros and cons, and a
+   recommendation (`CLAUDE.md`, "Critical Analysis"). Section 2's
+   checkpoints are decided here.
+5. **Out of scope**: what was found outside the subject (another rule, the
+   pipeline, a neighboring setting), with where it goes: a `BACKLOG.md`
+   item, or a separate change proposed after this one. It never mixes into
+   sections 1 to 4.
+
+For a rule review, `review-security-rule`'s classes map onto these
+sections: implementation bug → 1; inherent static-analysis limitation not
+yet documented → 2; deliberate scope decision and verified Spring Boot or
+library behavior → 3; design preference, or a technically weak decision
+that needs a choice → 4; speculative or non-existent requirement → 3, with
+why it was rejected.
+
+### Implementation report
+
+Keep it proportional to the change; a comment fix gets a few lines. Start
+with the part that matters most:
 
 1. **What you need to understand**: only the concepts, decisions and
    behavior changes the maintainer must own to master this change.
@@ -199,6 +248,12 @@ Start with the part that matters most:
 7. Remaining risks.
 8. Where to look in the diff (section 5).
 
+Anything the change touches beyond what was approved (an extra fix that
+fell out of the same cause) is named in item 1, with the offer to split it
+into its own commit.
+
+### Both shapes
+
 When something in a draft you wrote turns out to be wrong before you show
 it (a claim, a number, a test), say so in the report and show it before and
 after the correction, rather than presenting only the corrected version.
@@ -207,3 +262,6 @@ No line-by-line walkthrough. Where a task is genuinely complex, say where the
 complexity is instead of simplifying the explanation. When the maintainer's
 proposal has a problem, say so directly, as `CLAUDE.md` "Critical Analysis"
 requires: the goal is better decisions, not agreement.
+
+The report is written in the conversation's language; section names may be
+translated.
