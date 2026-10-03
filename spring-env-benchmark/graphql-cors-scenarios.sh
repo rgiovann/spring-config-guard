@@ -45,4 +45,5 @@ scenario "G1 allowed-origin-patterns=*, credentials"              https://evil.e
 scenario "G2 allowed-origins=*, credentials"                      https://evil.example  $C.allowed-origins='*' $C.allow-credentials=true
 scenario "G3 allowed-origins=https://*.example.com, credentials"  https://a.example.com $C.allowed-origins='https://*.example.com' $C.allow-credentials=true
 scenario "G4 allowed-origin-patterns=https://*.example.com, cred." https://a.example.com $C.allowed-origin-patterns='https://*.example.com' $C.allow-credentials=true
+scenario "G5 allowed-origins=null, credentials"                   null                  $C.allowed-origins=null $C.allow-credentials=true
 exit 0

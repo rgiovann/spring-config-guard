@@ -965,6 +965,38 @@ hosting platform's `*.vercel.app`, which SCG can't tell from a company's
 domain. Spring Cloud Gateway's CORS properties are left open (BACKLOG.md).
 The reference projects report the same findings as with the v1.9.0 jar.
 
+Re-checked while reviewing SCG004 (its rows A6–A13, "SCG004 insecure
+origin scenarios"), with `cors-scenarios.sh`, `graphql-cors-scenarios.sh`
+and `null-origin-browser-probe.sh`, each run twice with the same results:
+
+| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | Now |
+|---|---|---|---|---|
+| A6 | `allowed-origin-patterns=*://app.example.com` | only `app.example.com`, in any scheme | MEDIUM | silent |
+| A7 | `allowed-origin-patterns=http*://app.example.com` | only `app.example.com` | MEDIUM | silent |
+| A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | HIGH | silent |
+| A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only | HIGH | silent |
+| A11 | `allowed-origin-patterns=http://*.localhost` | `localhost` subdomains only | HIGH | silent |
+| A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | HIGH | HIGH |
+| N1 | `allowed-origins=null` | `Origin: null` allowed with credentials | silent | HIGH |
+| N2 | `allowed-origins=NULL` | the same: compared ignoring case | silent | HIGH |
+| N3 | `allowed-origin-patterns=null` | the same | silent | HIGH |
+| N4 | `allowed-origins=null`, no credentials | allowed, without credentials | silent | silent |
+| N5 | `allowed-origins: null` unquoted in YAML | no CORS headers: YAML null is no value | silent | silent |
+| G5 | GraphQL `allowed-origins=null` | allowed with credentials | silent | HIGH |
+
+SCG003 classified a pattern by a host cut at its first `:`, so a wildcard
+port left a host without `*`, read as a wildcard of one label (HIGH). It
+now takes the host as SCG004 does (`CorsOrigins`): a wildcard only in the
+scheme or the port lets one host in, and a host whose matches are all
+`localhost` names is no attacker's origin; both are silent, and SCG004
+reports the plain-HTTP remote hosts among them. `null` is the origin a
+browser sends from a sandboxed iframe, which any page can embed: in
+Chromium, a page's sandboxed iframe read `/actuator/env` with credentials
+when `allowed-origins=null`, and was blocked with another origin. It is
+HIGH with credentials, INFO with credentials from an unresolved
+placeholder, and silent without them, like `*` (C5). Every reference
+project and demo fixture reports the same findings as with the v1.10.0 jar.
+
 ## SCG008 SpringDoc scenarios (running Spring Boot 4.1.1 app)
 
 What each SpringDoc flag turns off was checked in a running app. Method,

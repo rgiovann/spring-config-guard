@@ -112,7 +112,7 @@ should be updated in the same PR that adds or removes a rule.
 |---|---|---|
 | SCG001 | HIGH / INFO | Sensitive Actuator endpoints exposed over HTTP without restricting access |
 | SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
-| SCG003 | HIGH / MEDIUM / LOW / INFO | CORS wildcard origin pattern combined with `allow-credentials=true` (Actuator and Spring for GraphQL) |
+| SCG003 | HIGH / MEDIUM / LOW / INFO | CORS wildcard or `null` origin combined with `allow-credentials=true` (Actuator and Spring for GraphQL) |
 | SCG004 | MEDIUM / LOW / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins (Actuator and Spring for GraphQL) |
 | SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
 | SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |

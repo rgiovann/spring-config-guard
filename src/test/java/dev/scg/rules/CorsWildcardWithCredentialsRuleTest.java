@@ -554,4 +554,99 @@ class CorsWildcardWithCredentialsRuleTest {
 
         assertThat(rule.check(config)).isEmpty();
     }
+
+    private List<Finding> checkWithCredentials(String key, String value, String credentials) {
+        Map<String, String> properties = new java.util.LinkedHashMap<>();
+        properties.put(key, value);
+        properties.put(ALLOW_CREDENTIALS_KEY, credentials);
+        return rule.check(new EffectiveConfig(FAKE_PATH, "prod", properties));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost:*", "http://localhost:[*]", "http://*.localhost",
+            "http://127.0.0.1:*", "http://[::1]:[*]", "http://*.app.localhost"})
+    @DisplayName("A8, A10, A11: a pattern whose matches are all on the local machine is silent")
+    void loopbackPatternsAreSilent(String pattern) {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY, pattern, "true")).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"*://app.example.com", "http*://app.example.com", "https://app.example.com:*",
+            "https://app.example.com:[8443,9443]"})
+    @DisplayName("A6, A7: a wildcard only in the scheme or the port lets a single host in and is silent")
+    void wildcardOnlyInSchemeOrPortIsSilent(String pattern) {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY, pattern, "true")).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost*", "https://*localhost"})
+    @DisplayName("A13: a wildcard host that isn't confined to localhost names stays HIGH")
+    void wildcardHostsOutsideLocalhostStayHigh(String pattern) {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY, pattern, "true"))
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("A loopback port list in a YAML list item is one pattern, not split on its comma")
+    void loopbackPortListInListItemIsSilent() {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY + "[0]", "http://localhost:[8080,8082]", "true"))
+                .isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "NULL", "https://app.example.com, null"})
+    @DisplayName("N1, N2: 'null' in allowed-origins with credentials is HIGH, in any case")
+    void nullOriginWithCredentialsIsHigh(String origins) {
+        List<Finding> findings = checkWithCredentials("management.endpoints.web.cors.allowed-origins", origins, "true");
+
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).contains("'null'", "sandboxed iframes", "management.endpoints.web.cors.allowed-origins");
+        });
+    }
+
+    @Test
+    @DisplayName("N3: 'null' as a pattern with credentials is HIGH")
+    void nullPatternWithCredentialsIsHigh() {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY, "null", "true"))
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("'NULL' as a pattern is silent: patterns are case-sensitive, so it matches no origin")
+    void upperCaseNullPatternIsSilent() {
+        assertThat(checkWithCredentials(ALLOWED_ORIGIN_PATTERNS_KEY, "NULL", "true")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("N4: 'null' without credentials is silent, like '*' without credentials")
+    void nullOriginWithoutCredentialsIsSilent() {
+        assertThat(checkWithCredentials("management.endpoints.web.cors.allowed-origins", "null", "false")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("'null' with allow-credentials from an unresolved placeholder is INFO")
+    void nullOriginWithUnresolvedCredentialsIsInfo() {
+        assertThat(checkWithCredentials("management.endpoints.web.cors.allowed-origins", "null", "${CORS_CREDENTIALS}"))
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.INFO);
+    }
+
+    @Test
+    @DisplayName("N8: 'null' in spring.graphql.cors.allowed-origins with credentials is HIGH")
+    void graphqlNullOriginWithCredentialsIsHigh() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.graphql.cors.allowed-origins", "null",
+                "spring.graphql.cors.allow-credentials", "true"));
+
+        assertThat(rule.check(config)).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).contains("spring.graphql.cors.allowed-origins");
+        });
+    }
 }

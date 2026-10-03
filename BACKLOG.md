@@ -78,14 +78,6 @@ SCG005 doesn't read either (SCG004 now does); and `RelaxedBoolean.isTruthy` trea
 unresolved placeholder as `true`, so a rule using it reports doubt at its
 certain severity (SCG003 now resolves `allow-credentials` itself).
 
-Found while reviewing SCG004, in SCG003 (`VALIDATION.md`, "SCG004 insecure
-origin scenarios"): a pattern whose wildcard only covers a loopback port or
-`localhost` subdomains (`http://localhost:*`, `http://localhost:[*]`,
-`http://*.localhost`) is HIGH, though the running app refused
-`http://localhost.evil.com`; and `allowed-origins=null` with credentials
-is silent, though the app allowed `Origin: null`, which any page can send
-from a sandboxed iframe.
-
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
 rule reviewed.
