@@ -5,12 +5,14 @@ package dev.scg.rules;
 
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
-import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,291 +23,176 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
     private final CorsPermissiveMethodsAndHeadersRule rule = new CorsPermissiveMethodsAndHeadersRule();
     private static final Path FAKE_PATH = Path.of("application.yml");
 
-    private static final String ALLOWED_METHODS_KEY = "management.endpoints.web.cors.allowed-methods";
-    private static final String EXPOSED_HEADERS_KEY = "management.endpoints.web.cors.exposed-headers";
+    private static final String PREFIX = "management.endpoints.web.cors";
+    private static final String ORIGINS = PREFIX + ".allowed-origins";
+    private static final String ALLOWED_METHODS_KEY = PREFIX + ".allowed-methods";
+    private static final String EXPOSED_HEADERS_KEY = PREFIX + ".exposed-headers";
+    private static final String CREDENTIALS = PREFIX + ".allow-credentials";
 
-    @Test
-    @DisplayName("Should generate a MEDIUM Finding when allowed-methods=*")
-    void shouldGenerateFindingForAllowedMethodsWildcard() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                ProfileMerger.BASE_PROFILE_LABEL,
-                Map.of(ALLOWED_METHODS_KEY, "*")
-        );
+    /** Properties with an origin configured, so Spring Boot builds the CORS configuration. */
+    private static Map<String, String> cors(String key, String value, String credentials) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, "https://trusted.example");
+        properties.put(key, value);
+        if (credentials != null) {
+            properties.put(CREDENTIALS, credentials);
+        }
+        return properties;
+    }
 
-        List<Finding> findings = rule.check(config);
+    private List<Finding> check(Map<String, String> properties) {
+        return rule.check(new EffectiveConfig(FAKE_PATH, "prod", properties));
+    }
 
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.ruleId()).isEqualTo("SCG005");
-        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(finding.message()).contains(ALLOWED_METHODS_KEY);
+    private static List<Severity> severities(List<Finding> findings) {
+        return findings.stream().map(Finding::severity).toList();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {ALLOWED_METHODS_KEY, EXPOSED_HEADERS_KEY})
+    @DisplayName("M1, H3: without an origin key Spring Boot builds no CORS configuration, so the rule is silent")
+    void silentWithoutOrigins(String key) {
+        assertThat(check(Map.of(key, "*", CREDENTIALS, "true"))).isEmpty();
+        assertThat(check(Map.of(key, "${CORS_VALUE}"))).isEmpty();
     }
 
     @Test
-    @DisplayName("Should generate a MEDIUM Finding when exposed-headers contains Authorization or Set-Cookie")
-    void shouldGenerateFindingForExposedSensitiveHeaders() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "Authorization, X-Custom-Header, Set-Cookie")
-        );
+    @DisplayName("An origin pattern also enables the configuration")
+    void originPatternEnablesConfiguration() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(PREFIX + ".allowed-origin-patterns[0]", "https://*.trusted.example");
+        properties.put(ALLOWED_METHODS_KEY, "*");
+        properties.put(CREDENTIALS, "true");
 
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(2);
-        assertThat(findings)
-                .filteredOn(finding -> finding.message().contains("Authorization"))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.MEDIUM);
-        assertThat(findings)
-                .filteredOn(finding -> finding.message().contains("Set-Cookie"))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.LOW);
+        assertThat(severities(check(properties))).containsExactly(Severity.MEDIUM);
     }
 
     @Test
-    @DisplayName("Should generate a MEDIUM Finding when exposed-headers=*")
-    void shouldGenerateMediumFindingForExposedHeadersWildcard() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "*")
-        );
+    @DisplayName("M2: allowed-methods=* with credentials is MEDIUM")
+    void methodsWildcardWithCredentialsIsMedium() {
+        List<Finding> findings = check(cors(ALLOWED_METHODS_KEY, "*", "true"));
 
-        List<Finding> findings = rule.check(config);
+        assertThat(severities(findings)).containsExactly(Severity.MEDIUM);
+        assertThat(findings.getFirst().message()).contains(ALLOWED_METHODS_KEY, CREDENTIALS, "allowed-headers");
+    }
 
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(finding.message()).contains(EXPOSED_HEADERS_KEY);
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "${CORS_CREDENTIALS}"})
+    @DisplayName("M7: allowed-methods=* without credentials, or with them unresolved, is LOW")
+    void methodsWildcardWithoutCredentialsIsLow(String credentials) {
+        assertThat(severities(check(cors(ALLOWED_METHODS_KEY, "*", credentials)))).containsExactly(Severity.LOW);
+        assertThat(severities(check(cors(ALLOWED_METHODS_KEY, "*", null)))).containsExactly(Severity.LOW);
     }
 
     @Test
-    @DisplayName("Should NOT generate a Finding when allowed-methods explicitly specifies safe methods")
-    void shouldNotGenerateFindingForExplicitMethods() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(ALLOWED_METHODS_KEY, "GET, POST, PUT, DELETE")
-        );
-
-        assertThat(rule.check(config)).isEmpty();
+    @DisplayName("M4: an explicit list of methods is silent")
+    void explicitMethodsAreSilent() {
+        assertThat(check(cors(ALLOWED_METHODS_KEY, "GET, POST, PUT, DELETE", "true"))).isEmpty();
     }
 
     @Test
-    @DisplayName("Should NOT generate a Finding when exposed-headers contains safe operational headers")
-    void shouldNotGenerateFindingForExplicitSafeHeaders() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "Content-Disposition, X-Total-Count")
-        );
+    @DisplayName("A wildcard method in a YAML list item is found")
+    void methodsWildcardInListItem() {
+        Map<String, String> properties = cors(ALLOWED_METHODS_KEY + "[0]", "GET", "true");
+        properties.put(ALLOWED_METHODS_KEY + "[1]", "*");
 
-        assertThat(rule.check(config)).isEmpty();
-    }
-
-    // --- TESTES ADICIONAIS PARA COBERTURA COMPLETA ---
-
-    @Test
-    @DisplayName("Should detect sensitive headers regardless of letter casing")
-    void shouldDetectSensitiveHeadersCaseInsensitively() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "authorization, SET-COOKIE")
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(2);
-        assertThat(findings)
-                .filteredOn(finding -> finding.message().contains("authorization"))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.MEDIUM);
-        assertThat(findings)
-                .filteredOn(finding -> finding.message().contains("SET-COOKIE"))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.LOW);
+        assertThat(severities(check(properties))).containsExactly(Severity.MEDIUM);
     }
 
     @Test
-    @DisplayName("Should detect wildcards provided as YAML list items")
-    void shouldDetectWildcardInYamlListFormat() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        EXPOSED_HEADERS_KEY + "[0]", "X-Custom-Header",
-                        EXPOSED_HEADERS_KEY + "[1]", "*"
-                )
-        );
+    @DisplayName("H1: exposed-headers=* with credentials is LOW: browsers ignore the wildcard for credentialed requests")
+    void exposedWildcardWithCredentialsIsLowAndIneffective() {
+        List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, "*", "true"));
 
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(severities(findings)).containsExactly(Severity.LOW);
+        assertThat(findings.getFirst().message()).contains("exposes no header here");
     }
 
     @Test
-    @DisplayName("Should generate an INFO finding when property value relies on an unresolved environment placeholder")
-    void shouldGenerateInfoFindingForUnresolvedPlaceholders() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(ALLOWED_METHODS_KEY, "${CORS_ALLOWED_METHODS}")
-        );
+    @DisplayName("exposed-headers=* without credentials is LOW: it exposes headers of anonymous responses")
+    void exposedWildcardWithoutCredentialsIsLow() {
+        List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, "*", null));
 
-        List<Finding> findings = rule.check(config);
+        assertThat(severities(findings)).containsExactly(Severity.LOW);
+        assertThat(findings.getFirst().message()).contains("anonymous requests");
+    }
 
-        assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
-        assertThat(finding.ruleId()).isEqualTo("SCG005");
-        assertThat(finding.severity()).isEqualTo(Severity.INFO);
-        assertThat(finding.message()).contains("unresolved environment placeholder", "${CORS_ALLOWED_METHODS}");
+    @ParameterizedTest
+    @ValueSource(strings = {"X-Auth-Token", "Authorization", "x-auth-token", " \t authorization \t "})
+    @DisplayName("H4: a token header exposed with credentials is MEDIUM, in any case and spacing")
+    void tokenHeaderWithCredentialsIsMedium(String header) {
+        List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, header, "true"));
+
+        assertThat(severities(findings)).containsExactly(Severity.MEDIUM);
+        assertThat(findings.getFirst().message()).contains(header.strip());
     }
 
     @Test
-    @DisplayName("Should generate a MEDIUM Finding when exposed-headers contains X-Auth-Token")
-    void shouldGenerateMediumFindingForXAuthToken() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "X-Auth-Token")
-        );
-
-        assertThat(rule.check(config))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.MEDIUM);
+    @DisplayName("H5: a token header exposed without credentials is LOW")
+    void tokenHeaderWithoutCredentialsIsLow() {
+        assertThat(severities(check(cors(EXPOSED_HEADERS_KEY, "X-Auth-Token", null)))).containsExactly(Severity.LOW);
     }
 
     @Test
-    @DisplayName("Should generate a LOW Finding when exposed-headers contains Set-Cookie2")
-    void shouldGenerateLowFindingForSetCookie2() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "Set-Cookie2")
-        );
+    @DisplayName("H6: Set-Cookie is LOW (forbidden response header, never exposed) and Cookie is INFO (a request header)")
+    void forbiddenAndRequestHeaders() {
+        List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, "Set-Cookie, Set-Cookie2, Cookie", "true"));
 
-        assertThat(rule.check(config))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.LOW);
+        assertThat(severities(findings)).containsExactly(Severity.LOW, Severity.LOW, Severity.INFO);
     }
 
     @Test
-    @DisplayName("Should generate an INFO Finding when exposed-headers contains Cookie")
-    void shouldGenerateInfoFindingForCookie() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "Cookie")
-        );
-
-        assertThat(rule.check(config))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.INFO);
+    @DisplayName("Safe operational headers are silent")
+    void safeHeadersAreSilent() {
+        assertThat(check(cors(EXPOSED_HEADERS_KEY, "Content-Disposition, X-Total-Count", "true"))).isEmpty();
     }
 
     @Test
-    @DisplayName("Should generate findings with their respective severities for mixed exposed headers")
-    void shouldClassifyMixedExposedHeadersIndependently() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "Authorization, Set-Cookie, Cookie")
-        );
+    @DisplayName("Wildcard and token header in the same value give one finding each")
+    void wildcardAndTokenHeader() {
+        assertThat(severities(check(cors(EXPOSED_HEADERS_KEY, "*, Authorization", "true"))))
+                .containsExactly(Severity.LOW, Severity.MEDIUM);
+    }
 
-        List<Finding> findings = rule.check(config);
+    @ParameterizedTest
+    @ValueSource(strings = {ALLOWED_METHODS_KEY, EXPOSED_HEADERS_KEY})
+    @DisplayName("An unresolved placeholder is INFO when an origin is configured")
+    void unresolvedPlaceholderIsInfo(String key) {
+        List<Finding> findings = check(cors(key, "${CORS_VALUE}", "true"));
 
-        assertThat(findings).extracting(Finding::severity)
-                .containsExactlyInAnyOrder(Severity.MEDIUM, Severity.LOW, Severity.INFO);
+        assertThat(severities(findings)).containsExactly(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("${CORS_VALUE}");
     }
 
     @Test
-    @DisplayName("Should generate an INFO Finding when exposed-headers relies on an unresolved environment placeholder")
-    void shouldGenerateInfoFindingForUnresolvedExposedHeadersPlaceholder() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "${CORS_EXPOSED_HEADERS}")
-        );
-
-        assertThat(rule.check(config))
-                .singleElement()
-                .extracting(Finding::severity)
-                .isEqualTo(Severity.INFO);
+    @DisplayName("A placeholder default is resolved and reported at its own severity")
+    void placeholderDefaultIsResolved() {
+        assertThat(severities(check(cors(EXPOSED_HEADERS_KEY, "${CORS_EXPOSED:Authorization}", "true"))))
+                .containsExactly(Severity.MEDIUM);
     }
 
     @Test
-    @DisplayName("Should classify categorized headers provided as YAML list items")
-    void shouldClassifyCategorizedHeadersInYamlListFormat() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        EXPOSED_HEADERS_KEY + "[0]", "X-Auth-Token",
-                        EXPOSED_HEADERS_KEY + "[1]", "Set-Cookie",
-                        EXPOSED_HEADERS_KEY + "[2]", "Cookie"
-                )
-        );
+    @DisplayName("G1: Spring for GraphQL's keys are read with their own credentials")
+    void graphqlKeysAreRead() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put("spring.graphql.cors.allowed-origins", "https://trusted.example");
+        properties.put("spring.graphql.cors.allowed-methods", "*");
+        properties.put("spring.graphql.cors.exposed-headers", "X-Auth-Token");
+        properties.put("spring.graphql.cors.allow-credentials", "true");
 
-        assertThat(rule.check(config)).extracting(Finding::severity)
-                .containsExactlyInAnyOrder(Severity.MEDIUM, Severity.LOW, Severity.INFO);
+        List<Finding> findings = check(properties);
+
+        assertThat(severities(findings)).containsExactly(Severity.MEDIUM, Severity.MEDIUM);
+        assertThat(findings).allSatisfy(finding -> assertThat(finding.message()).contains("spring.graphql.cors."));
     }
 
     @Test
-    @DisplayName("Should resolve placeholder with default value and report actual severity instead of INFO")
-    void shouldResolvePlaceholderWithDefaultValue() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "${CORS_EXPOSED_HEADERS:Authorization}")
-        );
+    @DisplayName("Actuator's origins don't enable GraphQL's configuration")
+    void prefixesAreIndependent() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, "https://trusted.example");
+        properties.put("spring.graphql.cors.allowed-methods", "*");
 
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("Authorization");
-    }
-
-    @Test
-    @DisplayName("Should generate multiple Findings when exposed-headers contains both wildcard and sensitive header")
-    void shouldGenerateMultipleFindingsForWildcardAndSensitiveHeader() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, "*, Authorization")
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(2);
-        assertThat(findings).extracting(Finding::severity)
-                .containsExactly(Severity.MEDIUM, Severity.MEDIUM);
-    }
-
-    @Test
-    @DisplayName("Should correctly strip whitespace and tabs around header names")
-    void shouldHandleUntrimmedHeaderNames() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(EXPOSED_HEADERS_KEY, " \t authorization \t ,   Set-Cookie  ")
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertThat(findings).hasSize(2);
-        assertThat(findings).extracting(Finding::severity)
-                .containsExactlyInAnyOrder(Severity.MEDIUM, Severity.LOW);
+        assertThat(check(properties)).isEmpty();
     }
 }

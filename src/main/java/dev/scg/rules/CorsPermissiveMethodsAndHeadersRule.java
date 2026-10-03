@@ -3,28 +3,51 @@ package dev.scg.rules;
 import dev.scg.core.*;
 
 import java.util.*;
+import java.util.stream.Stream;
 
+/**
+ * SCG005 — detects a CORS configuration that lets permitted origins use every HTTP method, or read
+ * response headers that carry a session or an authentication token.
+ * <p>
+ * Covers the two CORS configurations Spring Boot binds from properties, as SCG003 and SCG004 do:
+ * Actuator's {@code management.endpoints.web.cors.*} and Spring for GraphQL's
+ * {@code spring.graphql.cors.*}. Spring Boot 4.1.1 builds either configuration only when
+ * {@code allowed-origins} or {@code allowed-origin-patterns} is set
+ * ({@code toCorsConfiguration()} returns null otherwise), so without an origin key these keys
+ * have no effect and the rule is silent. Checked against a running Spring Boot 4.1.1 app and
+ * Chromium (VALIDATION.md, "SCG005 methods and headers scenarios"):
+ * <ul>
+ *     <li>{@code allowed-methods=*} lets a permitted origin's script send any method, DELETE
+ *     included; a JSON POST (an Actuator write operation such as {@code /actuator/loggers}) also
+ *     needs {@code allowed-headers} to allow {@code Content-Type}. The default is GET and HEAD.</li>
+ *     <li>{@code Authorization} or {@code X-Auth-Token} (Spring Session's header) in
+ *     {@code exposed-headers} lets that script read the token and use it outside the browser.</li>
+ *     <li>{@code exposed-headers=*}: browsers honor the wildcard only for requests without
+ *     credentials; with credentials it is a header literally named {@code *}, and Chromium exposed
+ *     nothing.</li>
+ *     <li>{@code Set-Cookie} and {@code Set-Cookie2} are forbidden response headers that browsers
+ *     never expose (LOW, ineffective); {@code Cookie} is a request header (INFO).</li>
+ * </ul>
+ * The permitted origins are trusted by configuration, so these findings matter when one of them is
+ * compromised, or allowed too broadly (SCG003, SCG004). Severity follows {@code allow-credentials},
+ * as in SCG004: MEDIUM when it is true, since the script then acts with the user's session; LOW
+ * otherwise (false, absent, or an unresolved placeholder), since it only reaches anonymous
+ * responses. {@code exposed-headers=*} is LOW either way: ineffective with credentials, anonymous
+ * responses without. A placeholder without a default is INFO.
+ */
 public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
 
-    private static final String ALLOWED_METHODS_KEY = "management.endpoints.web.cors.allowed-methods";
-    private static final String EXPOSED_HEADERS_KEY = "management.endpoints.web.cors.exposed-headers";
+    /** The CORS prefixes Spring Boot binds from properties, in report order. */
+    private static final List<String> CORS_PREFIXES = List.of("management.endpoints.web.cors", "spring.graphql.cors");
 
-    // 1. Effective exposure -> MEDIUM
-    private static final Set<String> EFFECTIVE_SENSITIVE_HEADERS = Set.of(
-            "authorization",
-            "x-auth-token"
-    );
+    /** Response headers that carry a session or an authentication token. */
+    private static final Set<String> TOKEN_HEADERS = Set.of("authorization", "x-auth-token");
 
-    // 2. Ineffective browser blocks -> LOW
-    private static final Set<String> FORBIDDEN_RESPONSE_HEADERS = Set.of(
-            "set-cookie",
-            "set-cookie2"
-    );
+    /** Forbidden response headers: browsers never expose them, whatever CORS says. */
+    private static final Set<String> FORBIDDEN_RESPONSE_HEADERS = Set.of("set-cookie", "set-cookie2");
 
-    // 3. Direction anomaly (Request Header in Expose-Headers) -> INFO
-    private static final Set<String> REQUEST_HEADERS_MISPLACED = Set.of(
-            "cookie"
-    );
+    /** Request headers, meaningless in exposed-headers. */
+    private static final Set<String> REQUEST_HEADERS = Set.of("cookie");
 
     @Override
     public String id() {
@@ -33,134 +56,125 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
 
     @Override
     public String description() {
-        return "Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers";
+        return "Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers " +
+                "(Actuator and Spring for GraphQL)";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
-
-        checkAllowedMethods(config, findings);
-        checkExposedHeaders(config, findings);
-
+        for (String prefix : CORS_PREFIXES) {
+            if (!hasOrigins(config, prefix)) {
+                continue;
+            }
+            String credentialsKey = prefix + ".allow-credentials";
+            String credentials = RelaxedProperties.get(config.properties(), credentialsKey);
+            boolean credentialsEnabled = credentials != null && EnvironmentPlaceholder.resolve(credentials.strip())
+                    .map(RelaxedBoolean::isTrueLiteral)
+                    .orElse(false);
+            checkAllowedMethods(config, prefix + ".allowed-methods", credentialsKey, credentialsEnabled, findings);
+            checkExposedHeaders(config, prefix + ".exposed-headers", credentialsKey, credentialsEnabled, findings);
+        }
         return findings;
     }
 
-    private void checkAllowedMethods(EffectiveConfig config, List<Finding> findings) {
-        List<String> rawValues = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), ALLOWED_METHODS_KEY);
+    /** Whether Spring Boot builds this prefix's CORS configuration: an origin key holds a value. */
+    private static boolean hasOrigins(EffectiveConfig config, String prefix) {
+        return Stream.of(prefix + ".allowed-origins", prefix + ".allowed-origin-patterns")
+                .flatMap(key -> RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key).stream())
+                .anyMatch(value -> value != null && !value.isBlank());
+    }
 
-        for (String rawValue : rawValues) {
-            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
-            if (resolved.isEmpty()) {
-                findings.add(createUnresolvedPlaceholderFinding(ALLOWED_METHODS_KEY, rawValue, config));
+    private void checkAllowedMethods(EffectiveConfig config, String key, String credentialsKey,
+                                     boolean credentialsEnabled, List<Finding> findings) {
+        for (String rawValue : RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key)) {
+            if (rawValue == null) {
                 continue;
             }
-
-            if (containsWildcard(resolved.get())) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.MEDIUM,
-                        ("Permissive CORS allowed-methods detected in key '%s': wildcard '*' allows all HTTP verbs. " +
-                                "Explicitly list only the required HTTP methods (e.g., GET, POST).")
-                                .formatted(ALLOWED_METHODS_KEY),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
-            }
-        }
-    }
-
-    private void checkExposedHeaders(EffectiveConfig config, List<Finding> findings) {
-        List<String> rawValues = RelaxedProperties.valuesForKeyOrListChildren(config.properties(), EXPOSED_HEADERS_KEY);
-
-        for (String rawValue : rawValues) {
             Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
             if (resolved.isEmpty()) {
-                findings.add(createUnresolvedPlaceholderFinding(EXPOSED_HEADERS_KEY, rawValue, config));
+                findings.add(unresolvedPlaceholder(config, key, rawValue));
+            } else if (tokens(resolved.get()).contains("*")) {
+                findings.add(credentialsEnabled
+                        ? finding(config, Severity.MEDIUM,
+                                ("CORS key '%s' allows every HTTP method ('*') while '%s' is true: a script on a " +
+                                        "permitted origin can send DELETE, PUT or POST requests with the user's session " +
+                                        "(a JSON POST also needs 'allowed-headers' to allow Content-Type). List only the " +
+                                        "methods the clients need (e.g. GET).")
+                                        .formatted(key, credentialsKey))
+                        : finding(config, Severity.LOW,
+                                ("CORS key '%s' allows every HTTP method ('*'). '%s' is not true here, so a script on a " +
+                                        "permitted origin only sends them as anonymous requests; if credentials are " +
+                                        "allowed at runtime, it sends them with the user's session. List only the methods " +
+                                        "the clients need (e.g. GET).")
+                                        .formatted(key, credentialsKey)));
+            }
+        }
+    }
+
+    private void checkExposedHeaders(EffectiveConfig config, String key, String credentialsKey,
+                                     boolean credentialsEnabled, List<Finding> findings) {
+        for (String rawValue : RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key)) {
+            if (rawValue == null) {
                 continue;
             }
-
-            String value = resolved.get();
-
-            // Check 1: Wildcard exposed headers (MEDIUM)
-            if (containsWildcard(value)) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.MEDIUM,
-                        ("Permissive CORS exposed-headers detected in key '%s': wildcard '*' attempts to expose all response headers. " +
-                                "Explicitly list only safe operational headers (e.g., Content-Disposition).")
-                                .formatted(EXPOSED_HEADERS_KEY),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+            if (resolved.isEmpty()) {
+                findings.add(unresolvedPlaceholder(config, key, rawValue));
+                continue;
             }
-
-            // Check 2: Categorized sensitive/misconfigured header analysis
-            checkExposedHeaderCategories(value, config, findings);
-        }
-    }
-
-    private void checkExposedHeaderCategories(String value, EffectiveConfig config, List<Finding> findings) {
-        String[] tokens = value.split(",");
-
-        for (String token : tokens) {
-            String rawHeader = token.strip();
-            String header = rawHeader.toLowerCase(Locale.ROOT);
-
-            if (EFFECTIVE_SENSITIVE_HEADERS.contains(header)) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.MEDIUM,
-                        ("Exposing sensitive response header '%s' via CORS in key '%s' allows client-side scripts " +
-                                "from permitted origins to read authentication tokens.")
-                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
-            } else if (FORBIDDEN_RESPONSE_HEADERS.contains(header)) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.LOW,
-                        ("Header '%s' in key '%s' is ineffective. Modern browsers treat Set-Cookie/Set-Cookie2 as " +
-                                "forbidden response headers and strictly block client-side JavaScript access regardless of CORS rules.")
-                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
-            } else if (REQUEST_HEADERS_MISPLACED.contains(header)) {
-                findings.add(new Finding(
-                        id(),
-                        Severity.INFO,
-                        ("Header '%s' in key '%s' is typically a request header, not a response header. " +
-                                "Including it in exposed-headers is unusual and likely ineffective as an exposed response header.")
-                                .formatted(rawHeader, EXPOSED_HEADERS_KEY),
-                        config.sourceFile().toString(),
-                        config.profileLabel()
-                ));
+            for (String header : tokens(resolved.get())) {
+                String name = header.toLowerCase(Locale.ROOT);
+                if ("*".equals(name)) {
+                    findings.add(finding(config, Severity.LOW, credentialsEnabled
+                            ? ("CORS key '%s' contains '*' while '%s' is true. Browsers honor the wildcard only for " +
+                                    "requests without credentials, so it exposes no header here; list the headers clients " +
+                                    "need to read (e.g. Content-Disposition).").formatted(key, credentialsKey)
+                            : ("CORS key '%s' contains '*', which lets scripts on permitted origins read every header " +
+                                    "of responses to anonymous requests. List only the headers clients need to read " +
+                                    "(e.g. Content-Disposition).").formatted(key)));
+                } else if (TOKEN_HEADERS.contains(name)) {
+                    findings.add(credentialsEnabled
+                            ? finding(config, Severity.MEDIUM,
+                                    ("CORS key '%s' exposes '%s' while '%s' is true: a script on a permitted origin can " +
+                                            "read the user's session or authentication token and use it outside the " +
+                                            "browser. Don't expose token headers cross-origin.")
+                                            .formatted(key, header, credentialsKey))
+                            : finding(config, Severity.LOW,
+                                    ("CORS key '%s' exposes '%s'. '%s' is not true here, so a script on a permitted " +
+                                            "origin only reads it on anonymous responses; if credentials are allowed at " +
+                                            "runtime, it reads the user's token. Don't expose token headers cross-origin.")
+                                            .formatted(key, header, credentialsKey)));
+                } else if (FORBIDDEN_RESPONSE_HEADERS.contains(name)) {
+                    findings.add(finding(config, Severity.LOW,
+                            ("Header '%s' in key '%s' is ineffective: browsers treat Set-Cookie and Set-Cookie2 as " +
+                                    "forbidden response headers and never expose them to scripts, whatever CORS allows.")
+                                    .formatted(header, key)));
+                } else if (REQUEST_HEADERS.contains(name)) {
+                    findings.add(finding(config, Severity.INFO,
+                            ("Header '%s' in key '%s' is a request header, not a response header; exposing it has " +
+                                    "no effect.")
+                                    .formatted(header, key)));
+                }
             }
         }
     }
 
-    private Finding createUnresolvedPlaceholderFinding(String key, String rawValue, EffectiveConfig config) {
-        return new Finding(
-                id(),
-                Severity.INFO,
-                ("CORS configuration key '%s' relies on an unresolved environment placeholder '%s'. " +
-                        "Static analysis cannot determine the runtime CORS policy; " +
-                        "verify this value in your deployment pipeline or secret manager.")
-                        .formatted(key, rawValue),
-                config.sourceFile().toString(),
-                config.profileLabel()
-        );
+    private static List<String> tokens(String value) {
+        return Arrays.stream(value.split(","))
+                .map(String::strip)
+                .filter(token -> !token.isEmpty())
+                .toList();
     }
 
-    private boolean containsWildcard(String value) {
-        String[] tokens = value.split(",");
-        for (String token : tokens) {
-            if ("*".equals(token.strip())) {
-                return true;
-            }
-        }
-        return false;
+    private Finding unresolvedPlaceholder(EffectiveConfig config, String key, String rawValue) {
+        return finding(config, Severity.INFO,
+                ("CORS key '%s' relies on an unresolved environment placeholder '%s'. Static analysis cannot " +
+                        "determine the runtime CORS policy; verify this value in your deployment settings.")
+                        .formatted(key, rawValue));
+    }
+
+    private Finding finding(EffectiveConfig config, Severity severity, String message) {
+        return new Finding(id(), severity, message, config.sourceFile().toString(), config.profileLabel());
     }
 }

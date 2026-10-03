@@ -1197,3 +1197,41 @@ meant to allow plain HTTP. The pattern `*` is left to SCG003.
 Every reference project above and every demo fixture reports the same
 findings as with the v1.10.0 jar: none has an `http://` CORS origin. The
 script was run twice with the same results.
+
+## SCG005 methods and headers scenarios (running Spring Boot 4.1.1 app and Chromium)
+
+What `allowed-methods` and `exposed-headers` change for a script on a
+permitted origin was checked in this benchmark app (Actuator, with `env`
+and `loggers` exposed) and in Chromium, reproducible with
+`spring-env-benchmark/cors-methods-headers-scenarios.sh`, run twice with the
+same results. Spring Boot 4.1.1 builds Actuator's and GraphQL's CORS
+configuration only when `allowed-origins` or `allowed-origin-patterns` is
+set (`toCorsConfiguration()` returns null otherwise); unset methods default
+to GET and HEAD. Which response headers a script reads is decided by the
+browser, so it was checked against a minimal server.
+
+| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | Now |
+|---|---|---|---|---|
+| M1 | `allowed-methods=*`, no origin key | no CORS headers at all | MEDIUM | silent |
+| M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM | MEDIUM |
+| M7 | `allowed-methods=*`, no credentials | allowed, without credentials | MEDIUM | LOW |
+| M5 | `allowed-methods=*`, a JSON POST | preflight 403: `Content-Type` not allowed | — | — |
+| B1 | `allowed-methods=*` and `allowed-headers=*`, credentials | a JSON POST set the ROOT logger to TRACE (204) | — | — |
+| H1 | `exposed-headers=*`, credentials | `Access-Control-Expose-Headers: *`; Chromium exposed no header | MEDIUM | LOW (ineffective) |
+| H3 | `exposed-headers=*`, no origin key | no CORS headers at all | MEDIUM | silent |
+| H4 | `exposed-headers=X-Auth-Token`, credentials | Chromium exposed it to the script | MEDIUM | MEDIUM |
+| H5 | `exposed-headers=X-Auth-Token`, no credentials | exposed on anonymous responses | MEDIUM | LOW |
+| H6 | `exposed-headers=Set-Cookie, Cookie` | Chromium never exposed `Set-Cookie` | LOW, INFO | LOW, INFO |
+| G1 | GraphQL `allowed-methods=*`, `exposed-headers=X-Auth-Token`, credentials | GraphQL binds the same keys | silent | MEDIUM, MEDIUM |
+
+M5 and B1 show that a JSON write needs both `allowed-methods` and
+`allowed-headers`; `allowed-methods=*` alone still lets DELETE and a POST
+without a non-safelisted header through, so it stays the finding, and its
+message names the dependency. `allowed-headers=*` alone allowed no write
+(Chromium blocked the POST), so it isn't reported. Severity follows
+`allow-credentials`, as in SCG004: the permitted origins are trusted by
+configuration, and the risk is what a compromised one does with the user's
+session. `exposed-headers=*` in Chromium exposed `X-Auth-Token` only to a
+request without credentials, so it is LOW with or without them. Every
+reference project and demo fixture reports the same findings as with the
+v1.10.0 jar: none sets these keys.

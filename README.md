@@ -114,7 +114,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
 | SCG003 | HIGH / MEDIUM / LOW / INFO | CORS wildcard or `null` origin combined with `allow-credentials=true` (Actuator and Spring for GraphQL) |
 | SCG004 | MEDIUM / LOW / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins (Actuator and Spring for GraphQL) |
-| SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers |
+| SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers (Actuator and Spring for GraphQL) |
 | SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
 | SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
 | SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints |
