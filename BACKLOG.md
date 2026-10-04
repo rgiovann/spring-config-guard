@@ -62,6 +62,8 @@ Reviewed so far:
   review with the updated `review-security-rule`.
 * SCG005, against a running Spring Boot 4.1.1 app and Chromium
   (`VALIDATION.md`, "SCG005 methods and headers scenarios").
+* SCG010, against running Spring Boot 4.1.1 (Spring MVC and WebFlux) and
+  3.5.16 apps (`VALIDATION.md`, "SCG010 error response scenarios").
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -70,14 +72,15 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
-their first review with it, pick two of them at random and give them a
-second, full review. If it finds nothing that matters, the procedure holds;
-if it does, adjust the skill.
+their first review with it (SCG004, SCG005 and SCG010 so far), pick two of
+them at random and give them a second, full review. If it finds nothing
+that matters, the procedure holds; if it does, adjust the skill.
 
 Found while reviewing SCG003, to check in the rules concerned:
 `RelaxedBoolean.isTruthy` treats an unresolved placeholder as `true`, so a
 rule using it reports doubt at its certain severity (SCG003 now resolves
-`allow-credentials` itself).
+`allow-credentials` itself; SCG010 reads a value it has already resolved,
+with `isTrueLiteral`).
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
@@ -86,7 +89,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG002, SCG009, SCG010, SCG013, SCG015, SCG016,
+rules (SCG002, SCG009, SCG013, SCG015, SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
@@ -260,6 +263,17 @@ or code-scanning upload, where a wrong file would mark the wrong place. The
 planned GitHub Action (above) is that consumer once it adds annotations or
 SARIF.
 Until then, the documented semantics are enough.
+
+### Findings name the key as the rule spells it, not as it is written
+
+A message quotes the key from the rule's own list, so
+`spring.web.error.includeStacktrace=always` is reported as
+`spring.web.error.include-stacktrace=always` (found while reviewing
+SCG010). Relaxed binding makes both the same property, so detection is
+unaffected, but a user searching the file for the quoted key won't find
+it. `RelaxedProperties.findActualKey()` returns the spelling written; only
+SCG011 uses it today. Applying it would touch every rule that quotes a key,
+so it is one change across the rules, not part of any single review.
 
 ### `--config-name=<prefix>`: custom `spring.config.name`
 

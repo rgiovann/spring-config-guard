@@ -1235,3 +1235,50 @@ session. `exposed-headers=*` in Chromium exposed `X-Auth-Token` only to a
 request without credentials, so it is LOW with or without them. Every
 reference project and demo fixture reports the same findings as with the
 v1.10.0 jar: none sets these keys.
+
+## SCG010 error response scenarios (running Spring Boot 4.1.1 and 3.5.16 apps)
+
+What each error property adds to an HTTP error response was checked in
+three small apps with an endpoint that throws an exception and one that
+fails binding a request parameter: Spring MVC and WebFlux on Spring Boot
+4.1.1, and Spring MVC on Spring Boot 3.5.16. It is reproducible with
+`spring-env-benchmark/error-response-scenarios.sh`, run twice with the same
+results. T = stack trace, E = exception class name, M = the exception's
+message, B = binding errors; with `on-param`, what a request adding the
+`trace`, `message` or `errors` parameter gets. Unless noted, keys are
+`spring.web.error.*` on Spring MVC 4.1.1.
+
+| # | Configuration | Spring Boot | v1.11.0 | (unreleased) |
+|---|---|---|---|---|
+| D0, F0, T0 | defaults (no key) | nothing | silent | silent |
+| S1, S6 | `include-stacktrace=always` (or `ALWAYS`) | T on every error | HIGH | MEDIUM |
+| S2–S5 | `include-stacktrace=on-param` (or `onParam`, `ON_PARAM`, `on.param`) | T with `?trace`, any value but `false` (in any case) | HIGH | MEDIUM |
+| S7, S8 | `include-stacktrace=never`, or empty | nothing | silent | silent |
+| S9–S11 | `include-stacktrace=true`, `on`, `sometimes` | app did not start | silent | silent |
+| X1–X4 | `include-exception=true`, `on`, `YES`, `1` | E on every error | MEDIUM | MEDIUM |
+| X5 | `include-exception=false` | nothing | silent | silent |
+| X6, X7 | `include-exception=always`, or empty | app did not start | silent | silent |
+| M1, M2 | `include-message=always`, `on-param` | M (with `?message`) | MEDIUM | MEDIUM |
+| B1, B2 | `include-binding-errors=always`, `on-param` | B (with `?errors`) | MEDIUM | MEDIUM |
+| Y1 | YAML `include-exception: on`, unquoted | E (YAML reads `on` as true) | MEDIUM | MEDIUM |
+| Y2 | YAML `include-stacktrace: on`, unquoted | app did not start | silent | silent |
+| F1–F3 | WebFlux, the same keys | the same as Spring MVC | as Spring MVC | as Spring MVC |
+| O1, O2, F4 | `server.error.*` on 4.1.1: `include-stacktrace=always`; all four set | nothing: no longer bound | HIGH; HIGH, MEDIUM ×3 | MEDIUM; MEDIUM ×4 |
+| T1, T2 | `server.error.*` on 3.5.16: all four set; `include-stacktrace=on-param` | T, E, M, B; T with `?trace` | HIGH, MEDIUM ×3; HIGH | MEDIUM ×4; MEDIUM |
+| T3 | `spring.web.error.*`, all four set, on 3.5.16 | nothing: not bound yet | HIGH, MEDIUM ×3 | MEDIUM ×4 |
+
+Each prefix is read by one side of Spring Boot 4.0 only: 4.1.1's
+configuration metadata marks every `server.error.*` key deprecated at level
+`error` since 4.0.0 (no longer bound), and O1, O2, F4 and T3 show each
+prefix ignored by the other version. SCG doesn't know the version a project
+targets, so both prefixes are reported at the same severity, and every
+message says which version reads which prefix and that removing the key is
+the fix where it is inert; reporting both as INFO would hide the key that
+takes effect. `include-stacktrace` went from HIGH to MEDIUM: a stack trace
+carries the exception's message and its cause chain (S1), so it discloses
+more of what `include-message` does, which is information disclosure
+without compromise (MEDIUM), not a different risk. A value Spring Boot
+can't bind stops the application from starting (S9–S11, X6, X7, Y2), so
+the rule's silence on it is proven. Every reference project and demo
+fixture reports the same findings as with the v1.11.0 jar: none sets these
+keys.
