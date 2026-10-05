@@ -98,7 +98,10 @@ reviews of the reviewed rules found what the first ones missed.
   remembered. Example: Connector/J also reads a password from a host
   specification, `jdbc:mysql://(host=db,password=...)/app`.
 * **Conversion**: how Spring converts the value (its boolean literals are
-  `true`/`on`/`yes`/`1` and their opposites; enums bind relaxed).
+  `true`/`on`/`yes`/`1` and their opposites; enums bind relaxed; an empty
+  value, or a placeholder whose default is empty, binds to an empty list
+  or string, which Spring code often tests as unset with `hasText` or
+  `isEmpty`).
 
 The inventory is the list of cases the analysis below and the tests are
 built from.
@@ -126,6 +129,15 @@ SCG006 used to silence keys that only contain a secret pattern; since
 `app.secret-key-base` may well be a secret, they are `INFO` now. Measure
 before changing: the hand-built cases and the reference corpus (see
 `VALIDATION.md`) show how much `INFO` the change adds.
+
+Then list every precondition `check()` tests on a raw value before it
+looks further (a key that "is set", an origin that "exists", a feature
+that "is enabled"), and run each on a value that resolves empty
+(`${X:}`): Spring tests it after placeholder resolution and binding.
+Example: SCG005 counted `allowed-origins=${ORIGINS:}` as an origin, so it
+reported `allowed-methods=*` as MEDIUM, though Spring Boot bound an empty
+list and built no CORS configuration; its first review measured a missing
+origin key, not an empty one.
 
 Then work from the inventory (step 4): run every item the rule doesn't
 report against the jar, and for each one either prove it can't be the risk
