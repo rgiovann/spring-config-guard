@@ -8,6 +8,49 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.15.0
+
+**Added**
+- SCG005 reports, as INFO, a header in `exposed-headers` whose name
+  suggests a token or a session (it contains `authorization`, `token`,
+  `jwt`, `session`, `secret` or `apikey`, ignoring `-` and `_`, as in
+  `X-Access-Token` or `X-Api-Key`): Spring lists it in
+  `Access-Control-Expose-Headers` like any header, and only the
+  application knows whether it carries one. `Authorization` and
+  `X-Auth-Token` keep their MEDIUM/LOW finding.
+
+**Fixed**
+- SCG005 reported `allowed-methods=*` (and its other findings) as MEDIUM
+  when the origin was a placeholder that resolves empty, such as
+  `allowed-origins=${ORIGINS:}`: Spring Boot then allows no origin, and the
+  app sent no CORS headers. An origin now counts only when it resolves to
+  at least one origin, or is a placeholder without a default.
+- SCG015 was silent with `spring.rabbitmq.ssl.bundle=${BUNDLE:}`: Spring
+  Boot turns TLS on only when the bundle has text, and the client spoke
+  plain AMQP. A bundle that resolves empty now counts as unset (MEDIUM, or
+  HIGH with `ssl.enabled=false`), and a bundle placeholder without a
+  default is INFO unless `ssl.enabled` is true.
+
+**Detection changes**
+- **Fewer findings**: SCG005 when the origins resolve to none. With
+  `--fail-on=MEDIUM`, a project that failed only on it now passes.
+- **More findings**: SCG015 for a bundle that resolves empty (MEDIUM, or
+  HIGH with `ssl.enabled=false`; with the default `--fail-on=HIGH`, the
+  latter now fails), and INFO for SCG005's token-like exposed headers and
+  SCG015's unresolved bundle.
+- Each change was checked against Spring Boot 4.1.1: SCG005 in a running
+  app, SCG015 on the wire; see `VALIDATION.md`, "SCG005 methods and headers
+  scenarios" (E1, M4, T1) and "SCG015 RabbitMQ transport scenarios" (B2,
+  B2u). The scenario scripts are in `spring-env-benchmark`.
+- On the reference corpus and the demo fixtures, the output is
+  byte-identical to `v1.14.0`'s.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.14.0...v1.15.0`.
+
 ## v1.14.0
 
 **Added**
