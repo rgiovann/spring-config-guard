@@ -626,6 +626,14 @@ published v1.5.0 and v1.6.0 jars; the table above was confirmed unchanged.
 None of the reference projects above uses these keys with a web
 `exposure.include`, so their findings are unchanged.
 
+Split across config locations (ADR-005), checked with fixtures, each with
+the multi-location coverage warning: `exposure.include=env` in
+`src/main/resources` and `env.show-values=always` in `config/` (Spring:
+`env` exposed with values) loses the `show-values` finding, which the same
+two keys in one file report, a false negative; `exposure.include=*` in
+`src/main/resources` and `access.default=none` in `config/` (Spring: no
+endpoint reachable) is still HIGH, a false positive.
+
 ```bash
 cd spring-env-benchmark
 mvn -q package -DskipTests

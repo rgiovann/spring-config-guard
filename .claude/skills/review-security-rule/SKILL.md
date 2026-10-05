@@ -220,3 +220,22 @@ confirmed bugs, documentation and policy, verified correct, decisions
 needed, out of scope, with the classes above mapped onto those sections.
 Findings in other rules go to "out of scope", never into this rule's
 sections.
+
+## When to review a rule again
+
+Every rule has had a full review with this procedure (all 17 by
+2026-10-05; the first eight twice, since their first review came before
+the inventory, the attacker's round, the scope boundary and the done
+criteria were added). Second reviews kept finding something, but less each
+time: four of eight rules with a wrong result, then one of two, a corner
+case no reference project has. Such a residue is a class of cases, not a
+rule's: when a review finds one, add it to this procedure and sweep every
+rule for it once (e.g. values that resolve empty, step 5, which found
+SCG015's empty `ssl.bundle`), rather than reviewing rules again. Review a
+rule again only on a concrete trigger:
+
+* a wrong finding reported by a user or seen in a real project;
+* a Spring Boot (or client library) version that changes a property or a
+  default the rule reads;
+* a reference project whose findings for the rule differ from what its
+  `VALIDATION.md` section predicts.

@@ -19,105 +19,12 @@ or in an ADR.
 
 ## Pending
 
-### Rule-by-rule review of the 17 rules
-
-Apply `.claude/skills/review-security-rule/SKILL.md` to each rule, in order
-of how likely a wrong finding is times how many projects it reaches, not by
-rule number: 12 of the 17 rules can report HIGH, so severity alone doesn't
-order them. Planned order: SCG006 (heuristics on key names and values, the
-rule that fires most on the reference corpus), SCG014 (recalibrated by
-ADR-010), SCG007 and SCG012 (heuristics on URI and JAAS text), the rules
-that combine keys (SCG003, SCG008, SCG011), then the rest, single-key rules
-such as SCG002, SCG009 and SCG013 last.
-
-Reviewed so far:
-
-* SCG001, against a running Spring Boot app (`VALIDATION.md`, "SCG001
-  exposure scenarios"); split across locations it errs both ways: its
-  `show-values` finding is missed when `show-values` is in another location
-  (a false negative), and `exposure.include=*` is still reported when
-  `access.default=none` in another location turns every endpoint off (a
-  false positive), both surfaced by the ADR-005 coverage warning.
-* SCG006, against Spring Boot 4.1.1's configuration metadata (`VALIDATION.md`,
-  "SCG006 key matching").
-* SCG014, against Spring Boot 4.1.1's `KafkaProperties` (`VALIDATION.md`,
-  "SCG014 protocol precedence").
-* SCG007, against the JDBC drivers and kafka-clients (`VALIDATION.md`,
-  "SCG007 credential forms"; ADR-011).
-* SCG012, against the JDBC drivers and Spring Boot's Redis configuration
-  (`VALIDATION.md`, "SCG012 driver modes").
-* SCG003, against running Spring Boot 4.1.1 apps, Actuator and Spring for
-  GraphQL (`VALIDATION.md`, "SCG003 CORS scenarios").
-* SCG008, against a running Spring Boot 4.1.1 app with SpringDoc 3.1.1
-  (`VALIDATION.md`, "SCG008 SpringDoc scenarios"); split across locations
-  it can only err towards a false positive.
-* SCG011, against running Spring Boot 4.1.1 apps, Tomcat, Jetty, Spring
-  Session and WebFlux (`VALIDATION.md`, "SCG011 transport scenarios"); split
-  across locations it errs both ways (false negatives when the TLS material
-  and `enabled=false`, or the management port and management SSL, are in
-  different locations; a false positive when `config/` re-enables SSL), all
-  surfaced by the ADR-005 coverage warning.
-* SCG004, against running Spring Boot 4.1.1 apps, Actuator and Spring for
-  GraphQL (`VALIDATION.md`, "SCG004 insecure origin scenarios"); the first
-  review with the updated `review-security-rule`.
-* SCG005, against a running Spring Boot 4.1.1 app and Chromium
-  (`VALIDATION.md`, "SCG005 methods and headers scenarios").
-* SCG010, against running Spring Boot 4.1.1 (Spring MVC and WebFlux) and
-  3.5.16 apps (`VALIDATION.md`, "SCG010 error response scenarios").
-* SCG009, against a running Spring Boot 4.1.1 app (`VALIDATION.md`, "SCG009
-  verbose logging scenarios").
-* SCG002, against a running Spring Boot 4.1.1 app (`VALIDATION.md`, "SCG002
-  H2 console scenarios").
-* SCG013, against running Spring Boot 4.1.1 apps, without and with Spring
-  Security (`VALIDATION.md`, "SCG013 health details scenarios").
-* SCG015, on the wire against a Spring Boot 4.1.1 client (`VALIDATION.md`,
-  "SCG015 RabbitMQ transport scenarios").
-* SCG016, on the wire against a Spring Cloud Vault 5.0.2 client
-  (`VALIDATION.md`, "SCG016 Vault transport scenarios").
-* SCG017, on the wire against a Spring Boot 4.1.1 resource server
-  (`VALIDATION.md`, "SCG017 resource server transport scenarios").
-
-The first eight of these, SCG001 to SCG011, had a second, full review on
-2026-10-02. Six found
-something the first had missed (cases the rule got wrong in SCG006, SCG007,
-SCG012 and SCG003; documentation gaps or errors in SCG001 and SCG011);
-SCG014 and SCG008 held. The fixes shipped in v1.10.0.
-`review-security-rule` was changed in response (inventory from the sources
-of truth, an attacker's round, the scope boundary and done criteria in the
-first review). To check that change: now that the remaining nine rules
-have had their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002,
-SCG013, SCG015, SCG016 and SCG017), pick two of them at random and give them
-a second, full review. If it finds nothing that matters, the procedure holds; if it does,
-adjust the skill. Drawn on 2026-10-05: SCG004 and SCG005. SCG004's second
-review found no wrong result; it measured an assumption the first had
-taken for granted, that a browser resolves `*.localhost` itself rather
-than asking DNS (`VALIDATION.md`, "SCG004 insecure origin scenarios";
-Chromium only), and renamed a test whose name overstated what it checked.
-SCG005's second review found a false positive the first had missed: an
-origin whose placeholder resolves empty (`${ORIGINS:}`) allows no origin,
-and the rule reported `allowed-methods=*` as MEDIUM. It also reports, as
-INFO, exposed headers whose name suggests a token (`VALIDATION.md`,
-"SCG005 methods and headers scenarios", E1 and T1). The second reviews
-found something, so the skill was adjusted: step 5 now runs each
-precondition on a value that resolves empty.
-
-The severity of a finding based on an absent key is decided for every rule
-in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
-rule reviewed.
-
-How the review proceeds: stop after each rule for the maintainer's go-ahead
-before starting the next one, and release every 2 or 3 reviewed rules, so
-each release's detection changes stay few enough to read. All 17 rules have
-had their first review; next, the second review of two of the last nine,
-above. Where a rule relies on Spring Boot behavior, check it
-against a running app, as for SCG001.
-
 ### Rewrite VALIDATION.md once every rule is reviewed
 
 `VALIDATION.md` has grown into a history: columns per release, "used to /
 now" paragraphs, dated correction notes, numbers measured against earlier
-jars. It is heavy to read. After the last rule is reviewed (first and
-second reviews both), rewrite it to state only what holds now:
+jars. It is heavy to read. Every rule has had its review, so rewrite it
+now to state only what holds:
 
 * per rule, the scenario table(s) and one or two paragraphs: what was
   checked, against what (a running app, a driver, the metadata), and how to
