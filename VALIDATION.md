@@ -14,10 +14,13 @@ evidence, each reproducible from this repository:
   time, with the scripts in `spring-env-benchmark/`.
 
 Every number and every **SCG** column in this document is the result of
-**SCG v1.16.0**. The rules' tests pin their scenario rows, so a change in
-behavior fails the build before it can make this document wrong. What
-changed between releases, and why, is in `CHANGELOG.md` and the git
-history, not here.
+**SCG v1.16.0**. Most scenario rows are pinned by a test named after
+them, so a change in behavior fails the build before it can make this
+document wrong. The rest, mostly in the sections of SCG001, SCG003,
+SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
+each row; every one of them was checked against the v1.16.0 jar, one
+fixture per row. What changed between releases, and why, is in
+`CHANGELOG.md` and the git history, not here.
 
 SCG has no notion of "this is just a demo or test profile": a rule
 triggers on the effective properties of base and named profiles alike
@@ -299,8 +302,8 @@ and the `demo-project`/`demo-project-clean` fixtures.
 
 ## ProfileMerger correctness benchmark (`/actuator/env` comparison)
 
-The runs above check rule precision against real-world config. This
-benchmark checks a lower-level claim instead: that `ProfileMerger`'s
+The reference projects check rule precision against real-world config.
+This benchmark checks a lower-level claim instead: that `ProfileMerger`'s
 effective configuration for a profile is equivalent to what a real, running
 Spring Boot application resolves through `/actuator/env`. It's validation
 infrastructure, not part of this repository's regular `mvn test` run — the
@@ -318,9 +321,9 @@ property) for the same reason — it needs that app actually running.
 behaviors: scalar override, list replacement, relaxed binding across
 base/profile (kebab-case base key, camelCase profile key), explicit-null
 override (and a null in the base file no profile redefines, `debug:` and
-`~`: Spring loads both as an empty string, and so does SCG since
-2026-10-05), placeholder-with-default resolution, and — the same profile
-(`prod`) sourced from both a named file and an on-profile block inside the
+`~`: Spring loads both as an empty string, and so does SCG),
+placeholder-with-default resolution, and — the same profile (`prod`)
+sourced from both a named file and an on-profile block inside the
 base file — the two merging together, with the named file winning a key
 conflict.
 
@@ -395,22 +398,19 @@ binding and keeps the profile's value (ADR-007). A change on either side
 fails the benchmark.
 
 **Result:** all assertions match the real Spring Boot 4.1.1 output (6
-benchmark tests). Run against the `ConfigLoader` from before ADR-007, the
-bracketed map test fails on the first case: the base's
-`[com.acme-core]` entry is lost once the profile adds one of its own. The
-list format cases needed no code change: `ProfileMerger` already treats
-`a` and `a[n]` as one list in both directions. With that purge disabled,
-the list test fails on its first case (SCG sees `[*, health, info]`, both
-spellings surviving).
-The lists of objects found one divergence, fixed in ADR-008: SCG joined a
-quoted `"[0]"` YAML key with a dot (`quoted-index.[0].url`), so the
-profile's element wasn't recognized as part of the list and the base's
-whole list survived. The other cases already matched.
+benchmark tests). Each set fails when the behavior it pins is removed:
+with bracketed keys kept as they are written (before ADR-007), the
+bracketed map test fails on its first case, the base's `[com.acme-core]`
+entry lost once the profile adds one of its own; with the purge that
+treats `a` and `a[n]` as one list disabled, the list test fails on its
+first case (SCG sees `[*, health, info]`, both spellings surviving); with
+a quoted `"[0]"` YAML key joined with a dot (`quoted-index.[0].url`, before
+ADR-008), the profile's element isn't recognized as part of the list and
+the base's whole list survives; with the merge changed to purge a base
+map when the profile sets a scalar, the shapes test fails on that case.
 
-Scalar vs. map needed no change either: SCG keeps both shapes, like
-Spring's property sources, and a rule reads the shape of the property it
-checks. The test pins that SCG keeps both; with the merge changed to purge
-a base map when the profile sets a scalar, it fails on that case. What
+SCG keeps both shapes of a scalar-vs-map key, like Spring's property
+sources, and a rule reads the shape of the property it checks. What
 remains is a limitation, not a divergence: SCG doesn't know types, so a
 rule reading a key in the shape Spring ignores would see a value Spring
 doesn't bind. No rule does so for a realistic configuration, and no
@@ -422,12 +422,11 @@ Spring keeps an empty string. Rules reading a list see the same empty list
 either way; it would only matter to a rule treating an absent key as an
 insecure default.
 
-Exposing `configprops` changed what SCG reports on the benchmark app itself:
-the same 4 SCG001 findings, whose messages now name `configprops` next to
-`env`. Since the lists-of-objects cases, the app also reports 2 SCG006
-findings, for the two literal passwords of the `partial-override` base list:
-on the base only, since the `prod` profile replaces that list and Spring
-drops them — the behavior ADR-008 fixed. 6 findings in total.
+SCG reports 6 findings on the benchmark app itself: 4 SCG001, for `env`
+and `configprops` exposed with `show-values`, in the base and in `prod`;
+and 2 SCG006, for the two literal passwords of the `partial-override` base
+list, on the base only, since the `prod` profile replaces that list and
+Spring drops them (ADR-008).
 
 ```bash
 # 1. Start the benchmark app (plain directory in this repo, not a Maven module)
@@ -469,26 +468,17 @@ arguments, and `/actuator` lists the endpoints it links to.
 | S17 | `max-permitted=read-only`, `shutdown.access=unrestricted` | as S1 (not `shutdown`) |
 | S18 | `shutdown.access=unrestricted` | as S1, plus `shutdown` |
 
-Before this comparison, SCG001 read only `exposure.include` and each
-endpoint's own `access`/`enabled`: S2, S3, S5, S6, S8, S9, S12, S14 and S17
-were false positives (reported endpoints Spring doesn't expose: all of them
-in S3, S5, S6, S12 and S14; `env` in S2; every one but `env` in S8 and S9;
-`shutdown` in S17), and S10, S13 and S15 false negatives (`heapdump`, and in
-S10 and S13 `shutdown`, exposed but not reported). It now resolves each
-endpoint as Spring does, and `ActuatorExposureRuleTest` asserts exactly the
-endpoints listed above for every scenario but S16. In S16, where Spring
-refuses to start, SCG001 reports the endpoints of S1: it doesn't check that
-an endpoint's `access` and `enabled` exclude each other (a test pins this). `restart` isn't in
-the app (it needs Spring Cloud Context); its `defaultAccess = NONE` was read
-in `spring-cloud-commons`' source, so it follows `heapdump`.
+SCG001 resolves each endpoint as Spring does, not from `exposure.include`
+and the endpoint's own `access`/`enabled` alone: for every scenario but S16
+it reports exactly the endpoints listed above, which
+`ActuatorExposureRuleTest` asserts. In S16, where Spring refuses to start,
+SCG001 reports the endpoints of S1: it doesn't check that an endpoint's
+`access` and `enabled` exclude each other (a test pins this). `restart`
+isn't in the app (it needs Spring Cloud Context); its `defaultAccess = NONE`
+was read in `spring-cloud-commons`' source, so it follows `heapdump`.
 
-Correction (2026-10-02): this paragraph first listed six false positives,
-leaving out S8, S9 and S17, and the test covered 15 of the 18 scenarios.
-Found by re-running every scenario against the running app and against the
-published v1.5.0 and v1.6.0 jars; the table above was confirmed unchanged.
-
-None of the reference projects above uses these keys with a web
-`exposure.include`, so their findings are unchanged.
+None of the reference projects uses these keys with a web
+`exposure.include`.
 
 Split across config locations (ADR-005), checked with fixtures, each with
 the multi-location coverage warning: `exposure.include=env` in
@@ -504,19 +494,244 @@ mvn -q package -DskipTests
 ./actuator-exposure-scenarios.sh
 ```
 
+## SCG002 H2 console scenarios (running Spring Boot 4.1.1 app)
+
+Which values turn the H2 console on, and from where it answers, was checked
+in an app with Spring MVC and Spring Boot's H2 console module, reproducible
+with `spring-env-benchmark/h2-console-scenarios.sh`, run twice with the
+same results. Each scenario requests the console from loopback, from the
+machine's non-loopback address (a remote client to H2), and through
+`loopback-proxy.py`, a reverse proxy on that address forwarding to
+localhost as a proxy or sidecar on the same machine does. "blocked" is H2's
+"remote connections are disabled" page.
+
+|  # | Configuration | Loopback / remote / proxied | SCG |
+|---|---|---|---|
+|  H0 | defaults | 404 / 404 / 404 | silent  |
+|  H1, H2 | `enabled=true`, `TRUE` | console / blocked / console | HIGH  |
+|  H3–H5 | `enabled=yes`, `on`, `1` | 404 / 404 / 404 | silent  |
+|  P1 | `enabled=true ` (trailing space, `.properties`) | 404 / 404 / 404 | silent  |
+|  H6–H9 | `enabled=false`, `off`, empty, `banana` | 404 / 404 / 404 | silent  |
+|  H10 | `enabled=${H2_ENABLED}`, unset | app did not start | INFO  |
+|  H11 | `enabled=${H2_ENABLED:true}` | console / blocked / console | HIGH  |
+|  Y1 | YAML `enabled: on`, unquoted | console / blocked / console | HIGH  |
+|  A1, A2 | `enabled=true`, `web-allow-others=true` or `yes` | console / console / console | HIGH, aggravating  |
+|  A5 | `enabled=true`, `web-allow-others=${UNSET:true}` | console / console / console | HIGH, aggravating  |
+|  A3 | `web-allow-others=true` alone | 404 / 404 / 404 | silent  |
+|  A4 | A1 with a plain `web-admin-password` | 500 / 500 / 500 | HIGH, aggravating  |
+|  T1 | `enabled=true`, `path=/db` | console / blocked / console | HIGH  |
+
+Spring Boot turns the console on with `@ConditionalOnBooleanProperty`,
+which took only `true`, in any case (H1, H2): `yes`, `on`, `1` and a
+trailing space left it off (H3–H5, P1).
+`web-allow-others` is bound through the Binder and took `yes` too (A2).
+Without it, H2 served only loopback clients, but through the same-host
+proxy, which sends no `X-Forwarded-For`, a remote client reached the
+console (H1, proxied); a proxy that sends that header, to an app that
+trusts it, was not measured. So the console stays HIGH either way and
+the message names `web-allow-others` when it is set. A placeholder without
+a default is INFO (H10); for `web-allow-others` (not in the table) the
+message says the console may accept remote clients rather than that it
+does. H2 rejects a `web-admin-password` that isn't in its encoded form, so
+A4's console answered 500.
+
+## SCG003 CORS scenarios (running Spring Boot 4.1.1 apps)
+
+How Spring answers a credentialed cross-origin request was checked in two
+running Spring Boot 4.1.1 apps: Actuator's CORS in this benchmark app
+(`/actuator/env`, reproducible with
+`spring-env-benchmark/cors-scenarios.sh`), and Spring for GraphQL's in a
+minimal app with `spring-boot-starter-graphql` (`/graphql`, reproducible
+with `spring-env-benchmark/graphql-cors-scenarios.sh`). Spring Boot 4.1.1's
+configuration metadata binds CORS from properties for these two only, with
+the same keys.
+
+|  # | With `allow-credentials=true` unless noted | Spring 4.1.1 | SCG |
+|---|---|---|---|
+|  C1 | Actuator `allowed-origins=*` | app doesn't start ("allowedOrigins cannot contain the special value *") | LOW  |
+|  G2 | GraphQL `allowed-origins=*` | 500 on every CORS request | LOW  |
+|  C2 | Actuator `allowed-origin-patterns=*` | foreign origin echoed with credentials | HIGH  |
+|  G1 | GraphQL `allowed-origin-patterns=*` | foreign origin echoed with credentials | HIGH  |
+|  C6 | Actuator `allowed-origin-patterns=https://*` | foreign origin echoed with credentials | HIGH  |
+|  C3 | Actuator `allowed-origins=https://*.example.com` | 403: compared literally | silent  |
+|  G3 | GraphQL `allowed-origins=https://*.example.com` | 403: compared literally | silent  |
+|  C4 | Actuator `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | MEDIUM  |
+|  G4 | GraphQL `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | MEDIUM  |
+|  C5 | Actuator `allowed-origins=*`, no credentials | `Access-Control-Allow-Origin: *` without credentials | silent  |
+|  C8 | `allowed-origin-patterns=${CORS_ORIGINS}` | decided at runtime | INFO  |
+
+SCG003 reads both prefixes and each origin key as Spring does: a wildcard
+is only a pattern in `allowed-origin-patterns`; `*` in `allowed-origins`
+with credentials is rejected by Spring, so it is LOW (present but
+ineffective) rather than an exploitable HIGH; an unresolved placeholder,
+in an origin key or in `allow-credentials`, is INFO.
+
+Spring anchors the end of a pattern, so SCG003 looks at what follows the
+last `*`: unless it fixes a domain of at least two labels, the pattern is
+HIGH. In the running app each of these echoed an attacker's origin with
+credentials: `https://*.com` (`https://evil.com`), `https://*example.com`
+(`https://evilexample.com`) and `https://app.*` (`https://app.evil.com`).
+`https://*.example.com` and `https://*-staging.example.com` are MEDIUM (the
+app refused `https://a.example.com.evil.com` and
+`https://x-staging.example.com.evil.com`), and so is a public suffix of two
+labels or more, such as `*.co.uk` or a hosting platform's `*.vercel.app`,
+which SCG can't tell from a company's domain. Spring Cloud Gateway's CORS
+properties are left open (BACKLOG.md).
+
+Wildcards in the scheme, the host or the port, and the `null` origin, were
+run with `cors-scenarios.sh`, `graphql-cors-scenarios.sh` and
+`null-origin-browser-probe.sh`, each twice with the same results (A6–A13
+are SCG004's rows, "SCG004 insecure origin scenarios"):
+
+|  # | With `allow-credentials=true` unless noted | Spring 4.1.1 | SCG |
+|---|---|---|---|
+|  A6 | `allowed-origin-patterns=*://app.example.com` | only `app.example.com`, in any scheme | silent  |
+|  A7 | `allowed-origin-patterns=http*://app.example.com` | only `app.example.com` | silent  |
+|  A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | silent  |
+|  A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only | silent  |
+|  A11 | `allowed-origin-patterns=http://*.localhost` | `localhost` subdomains only | silent  |
+|  A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | HIGH  |
+|  N1 | `allowed-origins=null` | `Origin: null` allowed with credentials | HIGH  |
+|  N2 | `allowed-origins=NULL` | the same: compared ignoring case | HIGH  |
+|  N3 | `allowed-origin-patterns=null` | the same | HIGH  |
+|  N4 | `allowed-origins=null`, no credentials | allowed, without credentials | silent  |
+|  N5 | `allowed-origins: null` unquoted in YAML | no CORS headers: YAML null is no value | silent  |
+|  G5 | GraphQL `allowed-origins=null` | allowed with credentials | HIGH  |
+
+SCG003 takes the host as SCG004 does (`CorsOrigins`): a wildcard only in
+the scheme or the port lets one host in, and a host whose matches are all
+`localhost` names is no attacker's origin; both are silent, and SCG004
+reports the plain-HTTP remote hosts among them. `null` is the origin a
+browser sends from a sandboxed iframe, which any page can embed: in
+Chromium, a page's sandboxed iframe read `/actuator/env` with credentials
+when `allowed-origins=null`, and was blocked with another origin. It is
+HIGH with credentials, INFO with credentials from an unresolved
+placeholder, and silent without them, like `*` (C5).
+
+## SCG004 insecure origin scenarios (running Spring Boot 4.1.1 apps)
+
+How Spring answers a cross-origin request from a plain-HTTP origin was
+checked in the same two apps as SCG003: Actuator's CORS in this benchmark
+app (`/actuator/env`) and Spring for GraphQL's in the `graphql-cors` app
+(`/graphql`), both reproducible with
+`spring-env-benchmark/cors-insecure-origin-scenarios.sh`, run twice with
+the same results. How an origin is
+read comes from `CorsConfiguration` in spring-web 7.0.9: `allowed-origins`
+is compared ignoring case; in a pattern, `*` matches any sequence, matching
+is case-sensitive and anchored, and a trailing `:[*]` or `:[8080,8081]` is
+a port list whose comma doesn't separate origins.
+
+|  # | With `allow-credentials=true` unless noted | Spring 4.1.1 | SCG |
+|---|---|---|---|
+|  A1 | `allowed-origins=http://partner.example` | allowed with credentials | MEDIUM  |
+|  A2 | the same, no credentials | allowed, without credentials | LOW  |
+|  A3 | `allowed-origins=HTTP://PARTNER.EXAMPLE` | allowed with credentials | MEDIUM  |
+|  A4 | `allowed-origin-patterns=HTTP://partner.example` | 403: patterns are case-sensitive | MEDIUM  |
+|  A5 | `allowed-origin-patterns=*.example.com` | `http://a.example.com` allowed with credentials | MEDIUM  |
+|  A6 | `allowed-origin-patterns=*://app.example.com` | `http://app.example.com` allowed with credentials | MEDIUM  |
+|  A7 | `allowed-origin-patterns=http*://app.example.com` | `http://app.example.com` allowed with credentials | MEDIUM  |
+|  A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | silent  |
+|  A9 | `allowed-origin-patterns=http://localhost:[8080,8082]`, a scalar | 403: Spring Boot splits the value on its comma | silent  |
+|  A9b | the same, as a YAML list item | ports 8080 and 8082 allowed, 9000: 403 | silent  |
+|  A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only (`http://localhost.evil.com`: 403) | silent  |
+|  A11 | `allowed-origin-patterns=http://*.localhost` | `http://a.localhost` allowed, `http://a.localhost.evil.com`: 403 | silent  |
+|  A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | MEDIUM  |
+|  G1 | GraphQL `allowed-origins=http://partner.example` | allowed with credentials | MEDIUM  |
+|  G2 | GraphQL `allowed-origin-patterns=http://*.example.com`, no credentials | allowed, without credentials | LOW  |
+|  P1 | `allowed-origins=http://${PARTNER_HOST}` | decided at runtime | INFO  |
+|  P2 | `allowed-origins=${APP_ORIGIN},http://partner.example`, no credentials | `http://partner.example` allowed | LOW and INFO  |
+
+SCG004 reads both prefixes, splits a value as `CorsConfiguration` does, and
+reports a pattern whose scheme is missing or a wildcard (A5–A7). A loopback
+host is silent with any port, port wildcard or port list, and so are
+subdomains of `localhost` (A8–A11). Severity follows `allow-credentials`:
+MEDIUM when it is true; LOW otherwise, since an injected script then only
+reads responses to anonymous requests (SCG003 reports nothing for
+`allowed-origins=*` without credentials, its C5, which lets every origin
+in). A literal origin next to a placeholder is reported at its own severity
+(P2); an origin is INFO only where the placeholder decides it. A4 is kept as
+a finding: the pattern matches nothing, but it is a broken configuration
+meant to allow plain HTTP. The pattern `*` is left to SCG003.
+
+Leaving loopback origins unreported (A8–A11) assumes the browser resolves
+`localhost` names itself: if it asked DNS, an attacker on the network could
+answer `a.localhost` with their own address, serve a page from it, and pass
+the CORS check. `spring-env-benchmark/localhost-browser-probe.sh` serves a
+page on 127.0.0.1 and loads it by name, run twice with the same results:
+Chromium 141 loaded it from `localhost`, `a.localhost` and
+`deep.a.localhost`, though the system resolver had no answer for the last
+two, and didn't load it from `example.test`, which the resolver didn't
+answer either. Firefox and Safari were not measured.
+
+## SCG005 methods and headers scenarios (running Spring Boot 4.1.1 app and Chromium)
+
+What `allowed-methods` and `exposed-headers` change for a script on a
+permitted origin was checked in this benchmark app (Actuator, with `env`
+and `loggers` exposed) and in Chromium, reproducible with
+`spring-env-benchmark/cors-methods-headers-scenarios.sh`, run twice with the
+same results. Spring Boot 4.1.1 builds Actuator's and GraphQL's CORS
+configuration only when `allowed-origins` or `allowed-origin-patterns`
+binds to a non-empty list (`toCorsConfiguration()` returns null
+otherwise); unset methods default to GET and HEAD. Which response headers
+a script reads is decided by the browser, so it was checked against a
+minimal server.
+
+|  # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | SCG |
+|---|---|---|---|
+|  M1 | `allowed-methods=*`, no origin key | no CORS headers at all | silent  |
+|  M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM  |
+|  M4 | `allowed-methods=GET,DELETE`, credentials | DELETE preflight allowed with credentials | silent  |
+|  M7 | `allowed-methods=*`, no credentials | allowed, without credentials | LOW  |
+|  M5 | `allowed-methods=*`, a JSON POST | preflight 403: `Content-Type` not allowed | —  |
+|  B1 | `allowed-methods=*` and `allowed-headers=*`, credentials | a JSON POST set the ROOT logger to TRACE (204) | —  |
+|  H1 | `exposed-headers=*`, credentials | `Access-Control-Expose-Headers: *`; Chromium exposed no header | LOW (ineffective)  |
+|  H3 | `exposed-headers=*`, no origin key | no CORS headers at all | silent  |
+|  E1 | `allowed-origins=${SCG_ORIGINS:}`, `allowed-methods=*`, credentials | no CORS headers at all | silent  |
+|  H4 | `exposed-headers=X-Auth-Token`, credentials | Chromium exposed it to the script | MEDIUM  |
+|  H5 | `exposed-headers=X-Auth-Token`, no credentials | exposed on anonymous responses | LOW  |
+|  H6 | `exposed-headers=Set-Cookie, Cookie` | Chromium never exposed `Set-Cookie` | LOW, INFO  |
+|  T1 | `exposed-headers=X-Access-Token`, credentials | `Access-Control-Expose-Headers: X-Access-Token` | INFO  |
+|  G1 | GraphQL `allowed-methods=*`, `exposed-headers=X-Auth-Token`, credentials | GraphQL binds the same keys | MEDIUM, MEDIUM  |
+
+M5 and B1 show that a JSON write needs both `allowed-methods` and
+`allowed-headers`; `allowed-methods=*` alone still lets DELETE and a POST
+without a non-safelisted header through, so it stays the finding, and its
+message names the dependency. `allowed-headers=*` alone allowed no write
+(Chromium blocked the POST), so it isn't reported. Severity follows
+`allow-credentials`, as in SCG004: the permitted origins are trusted by
+configuration, and the risk is what a compromised one does with the user's
+session. `exposed-headers=*` in Chromium exposed `X-Auth-Token` only to a
+request without credentials, so it is LOW with or without them.
+
+E1: an origin whose placeholder resolves empty allows no origin (the app
+sent no CORS headers), so SCG005 resolves the origin keys first and counts
+the origins they yield; a value of only blanks or commas is silent too; a
+placeholder without a default still counts as an origin, since it may be set
+at runtime. M4: an explicit list of methods lets DELETE through with
+credentials, but it is not reported: listing the methods clients need is the
+fix the `*` finding asks for. T1: Spring sends any header listed in
+`exposed-headers` in `Access-Control-Expose-Headers`, the same mechanism by
+which Chromium exposed `X-Auth-Token` (H4; Chromium was not run with
+`X-Access-Token`); a header whose name suggests a token or a session
+(`authorization`, `token`, `jwt`, `session`, `secret`, `apikey`, ignoring
+`-` and `_`) is INFO, since whether it carries one depends on the
+application. M5 and B1 have no SCG result: they measure Spring, not a
+configuration SCG tells apart. The only files among the reference projects
+that set these keys are three `src/test` resources in `spring-boot`, which
+SCG doesn't scan (ADR-006).
+
 ## SCG006 key matching (Spring Boot 4.1.1 metadata)
 
-Which keys SCG006 treats as secrets is checked against the 2650 properties in
-the configuration metadata of Spring Boot 4.1.1's modules (96 of 97 module
-jars from Maven Central; `spring-boot-webflux` couldn't be fetched), plus a
+Which keys SCG006 treats as secrets is checked against the configuration
+metadata of Spring Boot 4.1.1's 97 modules (2650 properties in 96 of them,
+plus `spring-boot-webflux`'s 24, none of which names a secret), plus a
 hand-built set of 30 keys: 20 non-secrets, native and third-party, 6
 secrets as controls, and 4 secrets whose key doesn't end in the word.
 
-SCG006 used to match a pattern (`password`, `secret`, `token`,
-`credential`, ...) anywhere in the key, so a namespace, a map key, a nested
-object or a package name containing the word was enough. With the v1.6.0
-jar, 18 of the 20 non-secrets were reported as HIGH, including native
-properties:
+A pattern (`password`, `secret`, `token`, `credential`, ...) found
+anywhere in a key isn't enough: a namespace, a map key, a nested object or
+a package name can contain the word. The 20 non-secrets are such keys,
+native properties among them:
 
 * `spring.security.oauth2.authorizationserver.client.<id>.token.*`
   (`access-token-time-to-live=5m`, `id-token-signature-algorithm=RS256`, and
@@ -528,92 +743,74 @@ properties:
   `spring.cloud.gcp.secretmanager.project-id`, a Spring Cloud Stream binding
   named `tokenEvents`, `app.jwt.token-prefix=Bearer`.
 
-A custom key is now HIGH only when it ends in a pattern, and
+A custom key is HIGH only when it ends in a pattern, and
 `logging.level`/`logging.group` are skipped. A key that only contains a
 pattern is INFO, which never fails a build on its own (checked: exit 0 with
 `--fail-on=LOW`): it may still name a secret, so it stays visible instead of
-being silenced. Measured on the same keys:
+being silenced.
 
-| | v1.6.0 | v1.7.0 |
-|---|---|---|
-| 20 non-secrets | 18 HIGH | 1 HIGH, 15 INFO, 4 silent |
-| 6 secrets (controls) | 6 HIGH | 6 HIGH |
-| 4 secrets named with the word before another one, in the plural, or behind a placeholder default (`app.secret-key-base`, `app.password-hash`, `app.api-keys`, `app.token-value`) | 4 HIGH | 4 INFO |
+|  | SCG |
+|---|---|
+|  20 non-secrets | 1 HIGH, 15 INFO, 4 silent  |
+|  6 secrets (controls) | 6 HIGH  |
+|  4 secrets named with the word before another one, in the plural, or behind a placeholder default (`app.secret-key-base`, `app.password-hash`, `app.api-keys`, `app.token-value`) | 4 INFO  |
 
-The remaining HIGH is
-`server.ssl.certificate-private-key=/etc/tls/server.key` (a plain path;
-accepted, see the rule's Javadoc); the 4 silent ones are the 2
-`logging.level` keys, a boolean and a number. Against the metadata, 4 native
-properties can now be INFO instead of HIGH, none of them a secret
-(`api-token-type`, `credentials-provider-class-name`,
-`embedded.credential.username`, `opaquetoken.client-id`), plus the 6
-non-boolean fields of
+The one HIGH is `server.ssl.certificate-private-key=/etc/tls/server.key` (a
+plain path; accepted, see the rule's Javadoc); the 4 silent ones are the 2
+`logging.level` keys, a boolean and a number. Against the metadata, 4
+native properties are INFO, none of them a secret (`api-token-type`,
+`credentials-provider-class-name`, `embedded.credential.username`,
+`opaquetoken.client-id`), and so are the 6 non-boolean fields of
 `spring.security.oauth2.authorizationserver.client.<id>.token`, which the
 metadata doesn't list since they sit inside a map; every native secret is
-still HIGH. Every reference project above reports the same findings, byte
-for byte, as with the v1.6.0 jar: all 72 SCG006 findings there were on keys
-ending in a pattern, and no key there only contains one with a value that
-could be a secret. (Corrected on 2026-10-02: this said 80, the count over
-nine targets that also included three demo projects and the benchmark.)
+HIGH. In the reference projects, the 65 HIGH SCG006 findings are all on
+keys ending in a pattern, and no key there only contains one with a value
+that could be a secret.
 
-Where SCG006 stays silent was then reviewed case by case (CLAUDE.md,
-"Findings"), which changed two of them:
+Where SCG006 stays silent was reviewed case by case (CLAUDE.md,
+"Findings"):
 
 * A key containing a pattern but ending in `-uri`/`-url`/`-endpoint`
-  (`token-uri`) was silent whatever its value. Its URL is now checked: a
-  password in the user-info is HIGH, a query string INFO, a plain URL or
-  path silent. A secret in the path itself (a webhook URL) stays silent, an
+  (`token-uri`) has its URL checked: a password in the user-info is HIGH
+  (reported by SCG007, ADR-011), a query string INFO, a plain URL or path
+  silent. A secret in the path itself (a webhook URL) stays silent, an
   accepted limitation.
-* A `classpath:` value in a key naming secret material was silent as a mere
-  reference. It is INFO now: the material is packaged inside the jar,
-  usually committed. `file:` stays silent. A certificate or its location is
-  silent too (`public-material-suffixes`), since a certificate is public:
-  without that, SAML's `...credentials[0].certificate-location` gave 4 INFO
+* A `classpath:` value in a key naming secret material is INFO: the
+  material is packaged inside the jar, usually committed. `file:` is
+  silent. A certificate or its location is silent too
+  (`public-material-suffixes`), since a certificate is public: without
+  that, SAML's `...credentials[0].certificate-location` would give 4 INFO
   in `spring-boot`.
+* A boolean written as `true`, `false`, `on`, `yes`, `off` or `no` in a key
+  ending in a pattern (`management.endpoints.web.cors.allow-credentials:
+  on`) is a switch, since Spring's `StringToBooleanConverter` reads all of
+  them, and is silent. `1` and `0`, which Spring also reads as booleans,
+  are reported in such a key, as a numeric secret.
 
-On 6 more hand-built keys, v1.6.0 was silent on all of them; in v1.7.0,
-`https://svc:s3cr3t@...` in `app.security.token-url` is HIGH (from SCG006;
-reported by SCG007 since ADR-011), a `?token=` query and
-`classpath:certs/server.key` in a `private-key` are INFO, and a webhook URL,
-a GitHub `token-uri` and a SAML `certificate-location` stay silent. On the reference corpus this adds 6
-INFO in `spring-boot`, all private keys packaged with an application: the
-`spring.ssl.bundle.pem.*.keystore.private-key` of the two SNI integration
-test apps (4) and the SAML smoke test's `private-key-location` (2). Every
-other reference project is byte-identical to v1.6.0.
+On 6 more hand-built keys, `https://svc:s3cr3t@...` in
+`app.security.token-url` is HIGH, a `?token=` query and
+`classpath:certs/server.key` in a `private-key` are INFO, and a webhook
+URL, a GitHub `token-uri` and a SAML `certificate-location` are silent. Of
+the 13 INFO SCG006 findings in `spring-boot`, 6 are private keys packaged
+with an application: the `spring.ssl.bundle.pem.*.keystore.private-key` of
+the two SNI integration test apps (4) and the SAML smoke test's
+`private-key-location` (2); the other 7 are OAuth2 client secrets from a
+placeholder without a default.
 
-`HardcodedSecretsRuleTest` pins these cases. Three
-`high-risk-keys` entries that don't exist in Spring Boot 4.1.1 were replaced
-(`spring.elasticsearch.rest.password`, removed in 3.0;
-`spring.couchbase.env.ssl.key-store-password`, deprecated;
-`spring.ldap.embedded.credential`, an object rather than a key) and 11
-current ones added. That changes the message wording and reports a blank
-value as INFO for those keys; detection was already HIGH through the
-`password` pattern.
-
-Native secrets no pattern matches were searched for on 2026-10-02, when
-re-checking this section. Every metadata property with no SCG006 finding
-whose name contains `pass`, `pwd`, `secret`, `token`, `cred`, `key`, `auth`,
-`cert`, `private`, `jaas`, `sasl`, `license`, `ticket`, `headers` or
-`signature` was read (146 names, most of them types, aliases, locations,
-URIs or timeouts). Eight were secrets that SCG006 never reported,
-in v1.6.0 or since: `spring.kafka.ssl.key-store-key` and its `admin`,
-`consumer`, `producer` and `streams` variants (a PEM private key, by the
-metadata's own description), `spring.neo4j.authentication.kerberos-ticket`,
+Native secrets no pattern matches were searched for: every metadata
+property with no SCG006 finding whose name contains `pass`, `pwd`,
+`secret`, `token`, `cred`, `key`, `auth`, `cert`, `private`, `jaas`,
+`sasl`, `license`, `ticket`, `headers` or `signature` was read (146 names,
+most of them types, aliases, locations, URIs or timeouts). Eight are
+secrets: `spring.kafka.ssl.key-store-key` and its `admin`, `consumer`,
+`producer` and `streams` variants (a PEM private key, by the metadata's own
+description), `spring.neo4j.authentication.kerberos-ticket`,
 `spring.liquibase.license-key` and
-`management.datadog.metrics.export.application-key` (its pre-3.0 name no
-longer binds). They are now `high-risk-keys`: HIGH for a written value,
-INFO for a `classpath:` value or an unresolved placeholder, as for the
-other entries. Against the metadata (now also `spring-boot-webflux`, whose
-24 properties name no secret), exactly these 8 findings are added; every
-reference project reports the same findings as with the v1.9.0 jar.
-
-A boolean written as `on`, `yes`, `off` or `no` in a key ending in a
-pattern (`management.endpoints.web.cors.allow-credentials: on`) was
-reported HIGH from v1.6.0 to v1.9.0, since only `true`/`false` counted as
-switches; Spring's `StringToBooleanConverter` reads all of them, so they
-are now switches too (found in the second review of SCG003, 2026-10-02).
-`1` and `0`, which Spring also reads as booleans, are still reported in
-such a key, as a numeric secret.
+`management.datadog.metrics.export.application-key`. They are
+`high-risk-keys`, a list holding only keys that exist in Spring Boot
+4.1.1: HIGH for a written value, INFO for a blank value, a `classpath:`
+value or an unresolved placeholder. `HardcodedSecretsRuleTest` pins these
+cases.
 
 Left open (`BACKLOG.md`): the OTLP `headers` maps
 (`management.otlp.metrics.export.headers`,
@@ -623,54 +820,6 @@ credential. An entry named after a pattern (`headers.api-key`) is HIGH, but
 `headers.Authorization` and vendor headers such as `X-Honeycomb-Team` are
 silent.
 
-## SCG014 protocol precedence (Spring Boot 4.1.1 `KafkaProperties`)
-
-Which `security.protocol` each Kafka client actually gets was checked by
-binding properties to Spring Boot 4.1.1's own `KafkaProperties` and building
-each client's configuration (`buildConsumerProperties()` and the others),
-with kafka-clients 4.2.1, whose default protocol is `PLAINTEXT`. Precedence,
-highest first: the client's `properties` map
-(`spring.kafka.consumer.properties.security.protocol`), the client's typed
-key (`spring.kafka.consumer.security.protocol`), the common
-`spring.kafka.properties` map, the common typed key
-(`spring.kafka.security.protocol`).
-
-SCG014 used to evaluate every key on its own, so an insecure value
-overridden by a secure one was still reported as HIGH:
-
-| Scenario | Spring's result | v1.6.0 | v1.7.0 |
-|---|---|---|---|
-| P1 common typed `PLAINTEXT`, common map `SSL` | `SSL` everywhere | HIGH | none |
-| P2 common typed `SSL`, common map `PLAINTEXT` | `PLAINTEXT` everywhere | HIGH (map) | HIGH (map) |
-| P3 consumer `SSL`, common map `PLAINTEXT` | `PLAINTEXT` for the other clients | HIGH (map) | HIGH (map) |
-| P4 consumer typed `PLAINTEXT`, consumer map `SSL` | consumer `SSL`, others unset | HIGH + MEDIUM | MEDIUM |
-| P5 common `PLAINTEXT`, every client `SSL` | `SSL` everywhere | HIGH | none |
-| P6 consumer `SSL` only | others unset | MEDIUM | MEDIUM |
-| P7 consumer, producer, admin `SSL` | streams unset | MEDIUM | MEDIUM, naming streams |
-
-SCG014 now resolves the protocol per client in that order and reports only
-the keys a client actually uses, once each; inside a named binder's
-environment too. An unresolved placeholder overrides what is below it,
-since it resolves at runtime or the application doesn't start. The "not
-set" finding names the clients left without a protocol, and the streams
-client counts even without a `spring.kafka.streams.*` key: a Kafka Streams
-application can take its application id from `spring.application.name`.
-On the reference projects only the wording of the 3 "not set" findings
-changes (1 in `spring-boot`, 2 in `spring-cloud-stream-samples`); every
-other finding is byte-identical.
-
-Re-checked on 2026-10-02 with the program now kept in the repository
-(`spring-env-benchmark/kafka-precedence`): P1–P7 give the results above.
-Two more scenarios check the steps of P4 and P3 the other way round, with
-the insecure value on top: X1 (consumer map `PLAINTEXT` over consumer typed
-`SSL`) and X2 (consumer typed `PLAINTEXT` over common map `SSL`) both leave
-the consumer on `PLAINTEXT`.
-
-```bash
-cd spring-env-benchmark
-./kafka-precedence-scenarios.sh
-```
-
 ## SCG007 credential forms (JDBC drivers and kafka-clients)
 
 Which credential forms a connection string or JAAS configuration can carry
@@ -679,225 +828,70 @@ Boot 4.1.1's dependency management resolves: each JDBC driver's own URL
 parser (or, for H2, a database created with the URL's password, which then
 rejected any other), and kafka-clients 4.2.1's `JaasConfig`.
 
-| # | Value | Read by | v1.7.0 | v1.8.0 |
-|---|---|---|---|---|
-| c01 | `jdbc:mysql://app:s3cr3t@db/app` | MySQL | HIGH | HIGH |
-| c02 | `jdbc:postgresql://db/app?user=app&password=s3cr3t` | PostgreSQL (rejects the user-info form) | silent | HIGH |
-| c03 | `jdbc:mysql://db/app?user=app&password=s3cr3t` | MySQL, MariaDB | silent | HIGH |
-| c04 | `jdbc:sqlserver://db;user=sa;password=s3cr3t` | SQL Server | silent | HIGH |
-| c05 | `jdbc:h2:mem:app;USER=sa;PASSWORD=s3cr3t` | H2 | silent | HIGH |
-| c06 | `jdbc:oracle:thin:scott/s3cr3t@db:1521/orcl` | Oracle | silent | HIGH |
-| c07 | `jdbc:mysql://db:3306/app?serverTimezone=UTC` | no credential | silent | silent |
-| c08 | `jdbc:postgresql://db:5432/app?ApplicationName=a@b` | no credential | HIGH | silent |
-| c09 | `spring.data.redis.url=redis://user:s3cr3t@...` | Spring Boot 4 name | silent | HIGH |
-| c10 | `spring.mongodb.uri=mongodb://app:s3cr3t@...` | Spring Boot 4 name | silent | HIGH |
-| c11 | `spring.flyway.url` with user-info | JDBC | silent | HIGH |
-| c12 | `spring.datasource.hikari.jdbc-url` with user-info | JDBC | silent | HIGH |
-| c13 | `spring.elasticsearch.uris`, credential in the 2nd node | | silent | HIGH |
-| c14 | JAAS `password=s3cr3t`, unquoted | Kafka | silent | HIGH |
-| c15 | JAAS OAuthBearer `clientSecret="s3cr3t"` | Kafka (deprecated option, still read) | silent | HIGH |
-| c16 | `spring.kafka.consumer.properties.sasl.jaas.config` | Kafka per-client map | silent | HIGH |
-| c17 | `spring.kafka.jaas.options.password` | a map entry | SCG006 HIGH | SCG006 HIGH |
+| # | Value | Read by | SCG |
+|---|---|---|---|
+| c01 | `jdbc:mysql://app:s3cr3t@db/app` | MySQL | HIGH |
+| c02 | `jdbc:postgresql://db/app?user=app&password=s3cr3t` | PostgreSQL (rejects the user-info form) | HIGH |
+| c03 | `jdbc:mysql://db/app?user=app&password=s3cr3t` | MySQL, MariaDB | HIGH |
+| c04 | `jdbc:sqlserver://db;user=sa;password=s3cr3t` | SQL Server | HIGH |
+| c05 | `jdbc:h2:mem:app;USER=sa;PASSWORD=s3cr3t` | H2 | HIGH |
+| c06 | `jdbc:oracle:thin:scott/s3cr3t@db:1521/orcl` | Oracle | HIGH |
+| c07 | `jdbc:mysql://db:3306/app?serverTimezone=UTC` | no credential | silent |
+| c08 | `jdbc:postgresql://db:5432/app?ApplicationName=a@b` | no credential | silent |
+| c09 | `spring.data.redis.url=redis://user:s3cr3t@...` | Spring Boot 4 name | HIGH |
+| c10 | `spring.mongodb.uri=mongodb://app:s3cr3t@...` | Spring Boot 4 name | HIGH |
+| c11 | `spring.flyway.url` with user-info | JDBC | HIGH |
+| c12 | `spring.datasource.hikari.jdbc-url` with user-info | JDBC | HIGH |
+| c13 | `spring.elasticsearch.uris`, credential in the 2nd node |  | HIGH |
+| c14 | JAAS `password=s3cr3t`, unquoted | Kafka | HIGH |
+| c15 | JAAS OAuthBearer `clientSecret="s3cr3t"` | Kafka (deprecated option, still read) | HIGH |
+| c16 | `spring.kafka.consumer.properties.sasl.jaas.config` | Kafka per-client map | HIGH |
+| c17 | `spring.kafka.jaas.options.password` | a map entry | SCG006 HIGH |
 
-SCG007 now detects these forms in every property by the value's shape
+SCG007 detects these forms in every property by the value's shape
 (ADR-011); `HardcodedSecretsRuleTest` and
 `EmbeddedConnectionCredentialsRuleTest` pin them, plus `spring.cloud.config.uri`
-and Eureka's `defaultZone` with user-info. Every reference project above
-reports the same findings, byte for byte, as with the v1.7.0 jar.
+and Eureka's `defaultZone` with user-info. The client versions checked
+were MySQL Connector/J 9.7.0, PostgreSQL 42.7.13, MariaDB 3.5.10, SQL
+Server 13.4.0, H2 2.4.240, Oracle 23.26 and kafka-clients 4.2.1.
 
-Re-checked on 2026-10-02 against the same client versions (MySQL
-Connector/J 9.7.0, PostgreSQL 42.7.13, MariaDB 3.5.10, SQL Server 13.4.0,
-H2 2.4.240, Oracle 23.26, kafka-clients 4.2.1): c01–c17 hold. These
-forms, not checked against their clients, are reported HIGH too: Redis
-with a password and no user (`redis://:s3cr3t@`) and `rediss://`,
-`mongodb+srv://`, R2DBC, RabbitMQ
+Connector/J also reads a password from a MySQL host specification, after
+`(` or `,` (`jdbc:mysql://(host=db,user=app,password=s3cr3t)/app`,
+`jdbc:mysql://address=(host=db)(password=s3cr3t)/app`, in any `jdbc:mysql`
+sub-protocol, the key in any case): HIGH. These forms, not checked against
+their clients, are reported HIGH too: Redis with a password and no user
+(`redis://:s3cr3t@`) and `rediss://`, `mongodb+srv://`, R2DBC, RabbitMQ
 `amqp://`/`amqps://` (also in a list), SQL Server `password={...}`, Oracle
 `@//host`, `?PASSWORD=` in upper case, MariaDB user-info and a SCRAM JAAS
 configuration; kafka-clients' replacement for `clientSecret`,
 `sasl.oauthbearer.client.credentials.client.secret`, is HIGH through
-SCG006. One form was missed, from v1.6.0 to v1.9.0: Connector/J reads a
-password from a MySQL host specification, after `(` or `,`
-(`jdbc:mysql://(host=db,user=app,password=s3cr3t)/app`,
-`jdbc:mysql://address=(host=db)(password=s3cr3t)/app`, in any `jdbc:mysql`
-sub-protocol, the key in any case). It is now HIGH; the reference projects
-report the same findings as with the v1.9.0 jar.
-
-## SCG012 driver modes (JDBC drivers and Spring Boot's Redis configuration)
-
-Which values turn TLS off, or keep it on without checking the server's
-certificate, was read from the drivers Spring Boot 4.1.1's dependency
-management resolves: pgjdbc 42.7.13 (`SslMode.requireEncryption()` and
-`verifyCertificate()` for each mode), MySQL Connector/J 9.7 (the `sslMode`
-property description), mssql-jdbc 13.4 (`EncryptOption.valueOfString`) and
-MariaDB Connector/J 3.5 (`SslMode.from`).
-
-* No encryption: PostgreSQL `sslmode=disable`/`allow` (and the default
-  `prefer` doesn't require it), MySQL `sslMode=DISABLED`, SQL Server
-  `encrypt=false`, `no` and `optional`, MariaDB `sslMode=disable`, `false`
-  and `0`.
-* Encryption without certificate validation: PostgreSQL `sslmode=require`,
-  MySQL `sslMode=REQUIRED`, MariaDB `sslMode=trust` (its TLS plugin then
-  installs `MariaDbX509TrustingManager`, whose `checkServerTrusted` accepts
-  any certificate); only `verify-ca`/`verify-full` (MySQL
-  `VERIFY_CA`/`VERIFY_IDENTITY`) check it.
-* Redis: Spring Boot 4.1.1's Lettuce and Jedis configurations enable TLS
-  when `spring.data.redis.ssl.enabled` is true or the URL is `rediss://`,
-  so a `redis://` URL alone doesn't prove plaintext.
-
-| # | Value | v1.7.0 | v1.8.0 |
-|---|---|---|---|
-| t01 | `spring.datasource.url` `?sslmode=disable` | HIGH | HIGH |
-| t02 | `spring.mongodb.uri` `?tls=false` | silent | HIGH |
-| t03 | `spring.data.redis.url=redis://...` | silent | silent |
-| t04 | `spring.flyway.url` `?sslmode=disable` | silent | HIGH |
-| t05 | `spring.datasource.hikari.jdbc-url` `?sslMode=DISABLED` | silent | HIGH |
-| t06 | `spring.artemis.broker-url=tcp://...` | silent | silent |
-| t07 | SQL Server `encrypt=optional` | silent | HIGH |
-| t08 | SQL Server `encrypt=no` | silent | HIGH |
-| t09 | MariaDB `sslMode=false` | silent | HIGH |
-| t10 | MariaDB `sslMode=trust` | silent | MEDIUM |
-| t11 | PostgreSQL `sslmode=require` | silent | MEDIUM |
-| t12 | MySQL `sslMode=REQUIRED` | silent | MEDIUM |
-| t13 | `spring.elasticsearch.uris=https://es1,http://es2` | silent | HIGH |
-| t14 | PostgreSQL `sslmode=verify-full` | silent | silent |
-
-The query parameters are now looked for in every property whose value
-starts with `jdbc:`, `r2dbc:`, `mongodb:` or `mongodb+srv:`, which covers
-t02, t04 and t05 whatever the key; the scheme check (`http://`, `tcp://`,
-`amqp://`, `ldap://`) stays limited to the known connection keys, now with
-Spring Boot 4.1.1's names, and checks every node of a list (t13).
-Certificate validation turned off is MEDIUM rather than HIGH, including
-`verifyServerCertificate=false` and the other parameters already listed:
-the traffic is encrypted and reading it takes an active man in the middle.
-Every reference project above reports the same findings, byte for byte, as
-with the v1.7.0 jar. t03, t06 and the default modes are left for later
-(BACKLOG.md).
-
-Re-checked on 2026-10-02 against the same driver versions: t01–t14 hold,
-and so do the modes above, read again from each driver (pgjdbc's
-`SslMode`, mssql-jdbc's `EncryptOption`, MariaDB's `SslMode.from` and the
-empty `checkServerTrusted` of `MariaDbX509TrustingManager`, Connector/J's
-`sslMode` description) and Spring Boot 4.1.1's Redis configuration (Lettuce
-and Jedis enable TLS from the SSL bundle or from a `rediss://` URL).
-MySQL's legacy `useSSL=false`, still accepted and translated to
-`sslMode=DISABLED`, is HIGH; R2DBC `sslMode=disable` is HIGH. One
-parameter was missed: pgjdbc's
-`sslfactory=org.postgresql.ssl.NonValidatingFactory`, whose trust manager's
-`checkServerTrusted` is empty, so any certificate is accepted. It is now
-MEDIUM, with the other modes that encrypt without verifying; the
-reference projects report the same findings as with the v1.9.0 jar. Left
-open (BACKLOG.md): an explicit `sslmode=prefer`, MySQL `requireSSL=false`
-(translated to `PREFERRED`, yet HIGH today), and the transports SCG012
-doesn't look at (Neo4j, Cassandra, Pulsar, Couchbase).
-
-## SCG003 CORS scenarios (running Spring Boot 4.1.1 apps)
-
-How Spring answers a credentialed cross-origin request was checked in two
-running Spring Boot 4.1.1 apps: Actuator's CORS in this benchmark app
-(`/actuator/env`, reproducible with `spring-env-benchmark/cors-scenarios.sh`),
-and Spring for GraphQL's in a minimal app with `spring-boot-starter-graphql`
-(`/graphql`, reproducible with `spring-env-benchmark/graphql-cors-scenarios.sh`).
-Spring Boot 4.1.1's configuration metadata binds CORS from properties for
-these two only, with the same keys.
-
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.8.0 | v1.9.0 |
-|---|---|---|---|---|
-| C1 | Actuator `allowed-origins=*` | app doesn't start ("allowedOrigins cannot contain the special value *") | HIGH | LOW |
-| G2 | GraphQL `allowed-origins=*` | 500 on every CORS request | silent | LOW |
-| C2 | Actuator `allowed-origin-patterns=*` | foreign origin echoed with credentials | HIGH | HIGH |
-| G1 | GraphQL `allowed-origin-patterns=*` | foreign origin echoed with credentials | silent | HIGH |
-| C6 | Actuator `allowed-origin-patterns=https://*` | foreign origin echoed with credentials | HIGH | HIGH |
-| C3 | Actuator `allowed-origins=https://*.example.com` | 403: compared literally | MEDIUM | silent |
-| G3 | GraphQL `allowed-origins=https://*.example.com` | 403: compared literally | silent | silent |
-| C4 | Actuator `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | MEDIUM | MEDIUM |
-| G4 | GraphQL `allowed-origin-patterns=https://*.example.com` | subdomain gets credentials | silent | MEDIUM |
-| C5 | Actuator `allowed-origins=*`, no credentials | `Access-Control-Allow-Origin: *` without credentials | silent | silent |
-| C8 | `allowed-origin-patterns=${CORS_ORIGINS}` | decided at runtime | HIGH | INFO |
-
-SCG003 now reads both prefixes and each origin key as Spring does: a
-wildcard is only a pattern in `allowed-origin-patterns`; `*` in
-`allowed-origins` with credentials is rejected by Spring, so it is LOW
-(present but ineffective) rather than an exploitable HIGH; an unresolved
-placeholder, in an origin key or in `allow-credentials`, is INFO. The two
-demo fixtures that used `allowed-origins: "*"` with credentials
-(`multi-profile-showcase`'s `prod` profile and `config-location-showcase`)
-now use `allowed-origin-patterns: "*"`, the form that is a real risk; ADR-005
-carries a note on its example. Every reference project above reports the
-same findings as with the v1.8.0 jar.
-
-Re-checked on 2026-10-02 with `cors-scenarios.sh` and the GraphQL app:
-C1–C6 and G1–G4 hold, and so do the fixtures of every row. A pattern was
-classified by whether a literal host follows the wildcard, so these were
-MEDIUM though an attacker can register a matching origin; in the running
-app each echoed it with credentials: `https://*.com` (`https://evil.com`),
-`https://*example.com` (`https://evilexample.com`) and `https://app.*`
-(`https://app.evil.com`). Spring anchors the end of a pattern, so SCG003
-now looks at what follows the last `*`: unless it fixes a domain of at
-least two labels, the pattern is HIGH. `https://*.example.com` and
-`https://*-staging.example.com` stay MEDIUM (the app refused
-`https://a.example.com.evil.com` and `https://x-staging.example.com.evil.com`),
-and so does a public suffix of two labels or more, such as `*.co.uk` or a
-hosting platform's `*.vercel.app`, which SCG can't tell from a company's
-domain. Spring Cloud Gateway's CORS properties are left open (BACKLOG.md).
-The reference projects report the same findings as with the v1.9.0 jar.
-
-Re-checked while reviewing SCG004 (its rows A6–A13, "SCG004 insecure
-origin scenarios"), with `cors-scenarios.sh`, `graphql-cors-scenarios.sh`
-and `null-origin-browser-probe.sh`, each run twice with the same results:
-
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | v1.11.0 |
-|---|---|---|---|---|
-| A6 | `allowed-origin-patterns=*://app.example.com` | only `app.example.com`, in any scheme | MEDIUM | silent |
-| A7 | `allowed-origin-patterns=http*://app.example.com` | only `app.example.com` | MEDIUM | silent |
-| A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | HIGH | silent |
-| A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only | HIGH | silent |
-| A11 | `allowed-origin-patterns=http://*.localhost` | `localhost` subdomains only | HIGH | silent |
-| A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | HIGH | HIGH |
-| N1 | `allowed-origins=null` | `Origin: null` allowed with credentials | silent | HIGH |
-| N2 | `allowed-origins=NULL` | the same: compared ignoring case | silent | HIGH |
-| N3 | `allowed-origin-patterns=null` | the same | silent | HIGH |
-| N4 | `allowed-origins=null`, no credentials | allowed, without credentials | silent | silent |
-| N5 | `allowed-origins: null` unquoted in YAML | no CORS headers: YAML null is no value | silent | silent |
-| G5 | GraphQL `allowed-origins=null` | allowed with credentials | silent | HIGH |
-
-SCG003 classified a pattern by a host cut at its first `:`, so a wildcard
-port left a host without `*`, read as a wildcard of one label (HIGH). It
-now takes the host as SCG004 does (`CorsOrigins`): a wildcard only in the
-scheme or the port lets one host in, and a host whose matches are all
-`localhost` names is no attacker's origin; both are silent, and SCG004
-reports the plain-HTTP remote hosts among them. `null` is the origin a
-browser sends from a sandboxed iframe, which any page can embed: in
-Chromium, a page's sandboxed iframe read `/actuator/env` with credentials
-when `allowed-origins=null`, and was blocked with another origin. It is
-HIGH with credentials, INFO with credentials from an unresolved
-placeholder, and silent without them, like `*` (C5). Every reference
-project and demo fixture reports the same findings as with the v1.10.0 jar.
+SCG006.
 
 ## SCG008 SpringDoc scenarios (running Spring Boot 4.1.1 app)
 
-What each SpringDoc flag turns off was checked in a running app. Method,
-to reproduce: a minimal Spring Boot 4.1.1 app with
+What each SpringDoc flag turns off was checked in a running app. Method, to
+reproduce: a minimal Spring Boot 4.1.1 app with
 `spring-boot-starter-webmvc`, `springdoc-openapi-starter-webmvc-ui` 3.1.1
-(the line for Spring Boot 4) and one `@RestController`
-(`GET /api/orders/{id}`); each scenario starts it with the flags as
-command-line arguments, waits until the previous run has released the port
-and the new one has logged `Started`, and requests `/v3/api-docs` (checking
-that it lists `/api/orders/{id}`), `/swagger-ui/index.html` and
-`/swagger-ui.html` (reproducible with `spring-env-benchmark/springdoc-scenarios.sh`).
+(the line for Spring Boot 4) and one `@RestController` (`GET
+/api/orders/{id}`); each scenario starts it with the flags as command-line
+arguments, waits until the previous run has released the port and the new
+one has logged `Started`, and requests `/v3/api-docs` (checking that it
+lists `/api/orders/{id}`), `/swagger-ui/index.html` and `/swagger-ui.html`
+(reproducible with `spring-env-benchmark/springdoc-scenarios.sh`).
 
-| # | Flags | `/v3/api-docs` | Swagger UI | v1.8.0 | v1.9.0 |
-|---|---|---|---|---|---|
-| S1 | none (defaults) | 200, lists the API | 200 | silent (no `springdoc.*` key) | silent |
-| S2 | `api-docs.enabled=false` | 404 | 404 | MEDIUM | silent |
-| S9 | `api-docs.enabled=FALSE` | 404 | 404 | MEDIUM | silent |
-| S11 | `api-docs.enabled=false`, `swagger-ui.enabled=true` | 404 | 404 | MEDIUM | silent |
-| S3 | `swagger-ui.enabled=false` | 200, lists the API | 404 | MEDIUM | MEDIUM |
-| S4 | both `false` | 404 | 404 | silent | silent |
-| S5–S7 | `api-docs.enabled=off`, `no`, `0` | 200, lists the API | 200 | MEDIUM | MEDIUM |
-| S8 | `swagger-ui.path=/docs` | 200, lists the API | 200 (at `/docs`) | MEDIUM | MEDIUM |
-| P1 | `api-docs.enabled=false`, `swagger-ui.enabled=${X}` | (off, as S2) | | INFO | silent |
-| P2 | `api-docs.enabled=${X}` | decided at runtime | | INFO | INFO |
-| P3 | `swagger-ui.enabled=${X}` | 200 (only the UI depends on `X`) | | INFO | MEDIUM |
+| # | Flags | `/v3/api-docs` | Swagger UI | SCG |
+|---|---|---|---|---|
+| S1 | none (defaults) | 200, lists the API | 200 | silent |
+| S2 | `api-docs.enabled=false` | 404 | 404 | silent |
+| S9 | `api-docs.enabled=FALSE` | 404 | 404 | silent |
+| S11 | `api-docs.enabled=false`, `swagger-ui.enabled=true` | 404 | 404 | silent |
+| S3 | `swagger-ui.enabled=false` | 200, lists the API | 404 | MEDIUM |
+| S4 | both `false` | 404 | 404 | silent |
+| S5–S7 | `api-docs.enabled=off`, `no`, `0` | 200, lists the API | 200 | MEDIUM |
+| S8 | `swagger-ui.path=/docs` | 200, lists the API | 200 (at `/docs`) | MEDIUM |
+| P1 | `api-docs.enabled=false`, `swagger-ui.enabled=${X}` | (off, as S2) |  | silent |
+| P2 | `api-docs.enabled=${X}` | decided at runtime |  | INFO |
+| P3 | `swagger-ui.enabled=${X}` | 200 (only the UI depends on `X`) |  | MEDIUM |
 
 `springdoc.api-docs.enabled=false` turns SpringDoc off entirely, the UI
 included even when it is explicitly enabled; only `false`, in any case,
@@ -913,238 +907,84 @@ positive the multi-location coverage warning surfaces; `api-docs.enabled=false`
 in `src/main/resources` overridden by `true` in `config/` (Spring: on)
 leaves one MEDIUM in `config/`, correct. SCG008 can't miss a split risk:
 re-enabling SpringDoc takes a `springdoc.*` key, which triggers the rule in
-that location. Every reference project above reports the same findings as
-with the v1.8.0 jar.
+that location.
 
+## SCG009 verbose logging scenarios (running Spring Boot 4.1.1 app)
 
-## SCG011 transport scenarios (running Spring Boot 4.1.1 apps)
+What each logging setting writes to the application log was checked in an
+app with Spring MVC, JdbcTemplate and JPA on H2, and a RestClient on Apache
+HttpClient 5. It receives one request with a secret in each place a log can
+pick up, reproducible with `spring-env-benchmark/verbose-logging-scenarios.sh`,
+run twice with the same results. Q = query string, H = inbound
+Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
+J = JPA bound parameter, O = outbound Authorization header, D = outbound
+body. Values are command-line arguments unless noted.
 
-What each server transport key does was checked in running apps. Method, to
-reproduce: a minimal Spring Boot 4.1.1 app with `spring-boot-starter-webmvc`,
-`spring-boot-starter-actuator` and one endpoint that creates a session, built
-three times: on Tomcat (the default), on Jetty, and on Tomcat with Spring
-Session (`spring-boot-session`, `@EnableSpringHttpSession` with an in-memory
-`MapSessionRepository`); plus a WebFlux app (`spring-boot-starter-webflux`,
-Netty) whose endpoint touches the `WebSession`. A self-signed PKCS#12
-key-store and the same key as PEM files serve as TLS material. Each scenario
-starts one app with the properties as command-line arguments on port 9443
-(a separate management port, when set, is 9444), waits until the previous
-run has released both ports and the new one has logged Spring Boot's
-`Started ... in` line (or failed),
-then requests the session endpoint and `/actuator/health` over HTTPS, falling
-back to HTTP, and records the scheme each port answers on and the session
-cookie's attributes (reproducible with
-`spring-env-benchmark/server-transport-scenarios.sh`, which generates the
-TLS material on its first run).
+|  # | Configuration | Secrets in the log | SCG |
+|---|---|---|---|
+|  L0 | defaults | none | silent  |
+|  L1 | `debug=true` | Q B D | MEDIUM  |
+|  L2, P4 | `debug=false`, `debug=${UNSET_VAR:false}` | none | silent  |
+|  L3–L7 | `debug=FALSE`, `off`, `no`, `0`, empty | Q B D | MEDIUM  |
+|  P2 | `debug=false ` (trailing space, `.properties`) | Q B D | MEDIUM  |
+|  P3 | `debug=${UNSET_VAR:}` | Q B D | MEDIUM  |
+|  L8, L9 | `trace=true`, `trace=off` | Q B S D | MEDIUM  |
+|  Y1, Y2 | YAML `debug: off`, `debug: no`, unquoted | none | silent  |
+|  Y3 | YAML `debug: "off"`, quoted | Q B D | MEDIUM  |
+|  Y4, Y5 | YAML `debug:` and `debug: ~` (null) in a base file | Q B D | MEDIUM  |
+|  P1 | `DEBUG=true` in a `.properties` file | Q B D | MEDIUM  |
+|  R1, R3 | `logging.level.root=DEBUG` (or `debug`) | Q B O D | MEDIUM  |
+|  R2 | `logging.level.root=TRACE` | Q H B S J O D | MEDIUM  |
+|  R4 | `logging.level.root=INFO` | none | silent  |
+|  R5, R6 | `logging.level.root=ALL`, `true` | app did not start | silent  |
+|  N1, N7, N8 | `web`, `org.springframework.web`, `org.springframework` at `debug` | Q B D | MEDIUM  |
+|  N9 | `org=debug` | Q B O D | MEDIUM  |
+|  N3 | `org.springframework=trace` | Q B S D | MEDIUM  |
+|  N10, N11 | `sql`, `org.springframework.jdbc.core` at `trace` | S | MEDIUM  |
+|  N4, N12 | `org.hibernate.orm.jdbc.bind`, `org.hibernate` at `trace` | J | MEDIUM  |
+|  N5, N13 | `org.apache.hc.client5.http.wire`, `org.apache.hc` at `debug` | O D | MEDIUM  |
+|  N2 | `sql=debug` | none (SQL without its parameters) | INFO  |
+|  N14 | `org.apache.hc=info` | none | silent  |
+|  N6 | `spring.mvc.log-request-details=true`, `web=debug` | Q B D | MEDIUM  |
+|  N15 | `org.springframework.web.servlet.DispatcherServlet=debug` | Q | MEDIUM  |
+|  N16 | `...mvc.method.annotation.RequestResponseBodyMethodProcessor=debug` | B D | MEDIUM  |
+|  N17 | `org.springframework.web.client.DefaultRestClient=debug` | D | MEDIUM  |
+|  N18 | `org.springframework.web.method.HandlerMethod=trace` | Q B D | MEDIUM  |
+|  N19 | `org.springframework.jdbc.core.StatementCreatorUtils=trace` | S | MEDIUM  |
+|  N20 | `org.hibernate.orm.resource.registry=trace` | J | MEDIUM  |
+|  N21 | `org.apache.hc.client5.http.headers=debug` | O | MEDIUM  |
+|  N22, N24 | `org.apache.coyote.http11.Http11InputBuffer`, `org.apache.tomcat.util.http.Parameters` at `debug` | none | INFO  |
+|  N23 | `org.apache.coyote.http11.Http11InputBuffer=trace` | Q H B O D (the raw requests) | MEDIUM  |
+|  N25 | `org=debug`, with `org.springframework.web` and `org.apache.hc` at `info` | none | INFO  |
+|  N26 | `ORG.SPRINGFRAMEWORK.WEB=debug` | none: logger names are case-sensitive | INFO  |
 
-Server and management SSL (Tomcat):
+Spring Boot's `LoggingApplicationListener` reads `debug` and `trace` as raw
+strings and turns them on for any value except exactly `false`, so every
+other spelling of "off" turns debug logging on (L3–L7, P2, P3, Y3).
+Unquoted YAML `off` and `no` are YAML booleans and stay off. A YAML null is
+read as an empty value and turns it on too (Y4, Y5): Spring Boot's YAML
+loader turns a null into an empty string, so the key is present, and
+`ProfileMerger` keeps it as an empty string, in the base and in a profile
+that overrides a key with null (checked through `/actuator/env`,
+"ProfileMerger correctness benchmark", case 4).
 
-| # | Properties | Spring 4.1.1 | v1.9.0 | v1.10.0 |
-|---|---|---|---|---|
-| T1–T5 | `key-store`, `enabled=false` / `off` / `no` / `0` / `FALSE` | HTTP | HIGH | HIGH |
-| T6 | `key-store`, `enabled=disabled` | does not start | silent | silent |
-| T7 | `key-store`, `enabled=` or `${X:}` | does not start (`Failed to bind properties under 'server.ssl.enabled' to boolean`) | silent | silent |
-| T8 | PEM `certificate` + `certificate-private-key`, `enabled=false` | HTTP | silent | HIGH |
-| T9 | PEM `certificate` + `certificate-private-key` | HTTPS | silent | silent |
-| T10 | `bundle` (a JKS SSL bundle), `enabled=false` | HTTP | silent | HIGH |
-| T11 | `bundle` | HTTPS | silent | silent |
-| T12 | `enabled=false`, no TLS material | HTTP | silent | silent |
-| M1 | `server.ssl.key-store`, `management.server.port=9444` | management HTTPS (inherits `server.ssl`) | silent | silent |
-| M2 | M1 + `management.server.ssl.enabled=false` | main HTTPS, management HTTP | silent | HIGH |
-| M3 | `management.server.port=9444`, `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | management HTTP | HIGH | HIGH |
-| M4 | `management.server.port=9444`, `management.server.ssl.key-store` | management HTTPS | silent | silent |
-| M5 | M3 with `management.server.port=-1` | management server off | HIGH | silent |
-| M6 | `server.ssl.key-store`, `management.server.port=9443` (= `server.port`), `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | one HTTPS connector, `management.server.ssl.*` ignored | HIGH | silent |
+The secrets were written by the loggers of N15–N21 and N23, each turned on
+alone, and by their ancestors (N1, N3–N5, N7–N13); a more specific logger
+with its own level decides for its descendants (N25), and logger names are
+matched as written (N26). The rule reports at MEDIUM one of those loggers,
+an ancestor of one, or Spring Boot's `web` or `sql` group containing one,
+when its level reaches it and no more specific configured logger stands in
+between, and any other logger at `DEBUG`/`TRACE` as INFO, since what it
+writes can't be known statically (N2, N22, N24 wrote none of the secrets).
+Severity stays MEDIUM: the secrets reach whoever reads the log.
 
-M5 and M6 follow `ManagementPortType.get()`: a negative management port
-disables the management server, and a port equal to `server.port` (or to
-8080 when `server.port` is not set) shares the main connector. A management
-connector of its own takes `management.server.ssl.*` when that is set
-(`ManagementWebServerFactoryCustomizer`), so M2's `enabled=false` without a
-management key-store turns TLS off on it. The falsy values that disable SSL
-(`false`, `off`, `no`, `0`, any case) are the ones the rule matches.
-
-Session cookie, servlet keys (`server.servlet.session.cookie.*`); the cookie
-attributes each app set:
-
-| # | Properties | Tomcat | Jetty | Spring Session | v1.9.0 | v1.10.0 |
-|---|---|---|---|---|---|---|
-| K0 | TLS, defaults | `Secure; HttpOnly` | `Secure` | `Secure; HttpOnly; SameSite=Lax` | silent | silent |
-| K1/K2 | TLS, `secure=false` / `off` | `Secure; HttpOnly` | `Secure` | `HttpOnly; SameSite=Lax` | HIGH | MEDIUM |
-| K3 | HTTP, `http-only=false` | (none) | (none) | `SameSite=Lax` | HIGH | MEDIUM |
-| K4/K5 | HTTP, `same-site=None` / `none` | `HttpOnly; SameSite=None` | `SameSite=None` | `HttpOnly; SameSite=None` | MEDIUM | MEDIUM |
-| K6 | HTTP, defaults | `HttpOnly` | (none) | `HttpOnly; SameSite=Lax` | silent | silent |
-| K7 | TLS, `same-site=None`, `secure=false` | `Secure; HttpOnly; SameSite=None` | `Secure; SameSite=None` | `HttpOnly; SameSite=None` | HIGH + MEDIUM | MEDIUM + MEDIUM |
-
-Tomcat and Jetty mark their session cookie `Secure` on every HTTPS request,
-whatever `secure` says; only Spring Session drops it. Jetty's session cookie
-carries no `HttpOnly` even by default, so K3 changes nothing there. (The
-Jetty runs of K6 and K7 didn't answer in the first review. Its script
-waited for any `Started ` log line, and Jetty writes its own before its
-connector is up: re-run that way on 2026-10-02, other Jetty rows failed the
-same way at random, and none did once the script waited for Spring Boot's
-`Started ... in` line, which filled these two cells.)
-
-Session cookie, WebFlux (`server.reactive.session.cookie.*`):
-
-| # | Properties | WebFlux (Netty) | v1.9.0 | v1.10.0 |
-|---|---|---|---|---|
-| R0 | TLS, defaults | `Secure; HttpOnly` | silent | silent |
-| R1 | TLS, `secure=false` | `HttpOnly` | silent | MEDIUM |
-| R2 | HTTP, `http-only=false` | (none) | silent | MEDIUM |
-| R3 | HTTP, `same-site=None` | `HttpOnly; SameSite=None` | silent | MEDIUM |
-| R4 | TLS, `server.servlet.session.cookie.secure=false` and `http-only=false` | `Secure; HttpOnly` (no effect) | HIGH ×2 | MEDIUM ×2 |
-
-The cookie checks are MEDIUM: none exposes the cookie's value without a
-second weakness (a plain HTTP request, an XSS, a cross-site request). K1/K2
-on Tomcat or Jetty and R4 are findings for a key without effect: SCG doesn't
-see the classpath, so it can't tell them from Spring Session's K1/K2 or a
-servlet app's R4 keys, and the message of the servlet `secure` finding says
-the key only takes effect with Spring Session.
-
-Split across config locations (ADR-005), checked with fixtures, each with the
-coverage warning on stderr:
-
-| # | `src/main/resources` | `config/` | Spring | v1.10.0 |
-|---|---|---|---|---|
-| L1 | `server.ssl.key-store` | `application-prod.yml`: `enabled: false` | HTTP in `prod` | silent (false negative) |
-| L1b | `server.ssl.key-store` | `application.yml`: `enabled: false` | HTTP | silent (false negative) |
-| L2 | `key-store`, `enabled: false` | `application-prod.yml`: `enabled: true` | HTTP, HTTPS in `prod` | HIGH in the base profile (correct) |
-| L2b | `key-store`, `enabled: false` | `application.yml`: `enabled: true` | HTTPS | HIGH (false positive) |
-| L3 | `management.server.port: 9444` | `application-prod.yml`: management `key-store`, `enabled: false` | management HTTP in `prod` | silent (false negative) |
-| L4 | management port, `key-store`, `enabled: false` | `application-prod.yml`: `port: -1` | management HTTP, off in `prod` | HIGH in the base profile (correct) |
-
-Every reference project above reports the same findings as with the v1.9.0
-jar: none has an SCG011 finding.
-
-Re-checked on 2026-10-02: the Tomcat, Spring Session, Jetty and WebFlux
-apps were run again for every row (one app per scenario, waiting for the
-ports to be free and for `Started`), and one fixture per row was run
-against the v1.9.0 jar and the current code. Every cell holds, L1–L4
-included. Left open (BACKLOG.md): weak TLS protocols
-(`server.ssl.enabled-protocols`, `server.ssl.protocol`) and
-`server.servlet.session.tracking-modes=url`, silent today.
-
-## SCG004 insecure origin scenarios (running Spring Boot 4.1.1 apps)
-
-How Spring answers a cross-origin request from a plain-HTTP origin was
-checked in the same two apps as SCG003: Actuator's CORS in this benchmark
-app (`/actuator/env`) and Spring for GraphQL's in the `graphql-cors` app
-(`/graphql`), both reproducible with
-`spring-env-benchmark/cors-insecure-origin-scenarios.sh`. How an origin is
-read comes from `CorsConfiguration` in spring-web 7.0.9: `allowed-origins`
-is compared ignoring case; in a pattern, `*` matches any sequence, matching
-is case-sensitive and anchored, and a trailing `:[*]` or `:[8080,8081]` is
-a port list whose comma doesn't separate origins.
-
-| # | With `allow-credentials=true` unless noted | Spring 4.1.1 | v1.10.0 | v1.11.0 |
-|---|---|---|---|---|
-| A1 | `allowed-origins=http://partner.example` | allowed with credentials | MEDIUM | MEDIUM |
-| A2 | the same, no credentials | allowed, without credentials | MEDIUM | LOW |
-| A3 | `allowed-origins=HTTP://PARTNER.EXAMPLE` | allowed with credentials | MEDIUM | MEDIUM |
-| A4 | `allowed-origin-patterns=HTTP://partner.example` | 403: patterns are case-sensitive | MEDIUM | MEDIUM |
-| A5 | `allowed-origin-patterns=*.example.com` | `http://a.example.com` allowed with credentials | silent | MEDIUM |
-| A6 | `allowed-origin-patterns=*://app.example.com` | `http://app.example.com` allowed with credentials | silent | MEDIUM |
-| A7 | `allowed-origin-patterns=http*://app.example.com` | `http://app.example.com` allowed with credentials | silent | MEDIUM |
-| A8 | `allowed-origin-patterns=http://localhost:*` | loopback only (`http://localhost.evil.com`: 403) | MEDIUM | silent |
-| A9 | `allowed-origin-patterns=http://localhost:[8080,8082]`, a scalar | 403: Spring Boot splits the value on its comma | MEDIUM | silent |
-| A9b | the same, as a YAML list item | ports 8080 and 8082 allowed, 9000: 403 | MEDIUM | silent |
-| A10 | `allowed-origin-patterns=http://localhost:[*]` | loopback only (`http://localhost.evil.com`: 403) | MEDIUM | silent |
-| A11 | `allowed-origin-patterns=http://*.localhost` | `http://a.localhost` allowed, `http://a.localhost.evil.com`: 403 | MEDIUM | silent |
-| A13 | `allowed-origin-patterns=http://localhost*` | `http://localhost.evil.com` allowed with credentials | MEDIUM | MEDIUM |
-| G1 | GraphQL `allowed-origins=http://partner.example` | allowed with credentials | silent | MEDIUM |
-| G2 | GraphQL `allowed-origin-patterns=http://*.example.com`, no credentials | allowed, without credentials | silent | LOW |
-| P1 | `allowed-origins=http://${PARTNER_HOST}` | decided at runtime | INFO | INFO |
-| P2 | `allowed-origins=${APP_ORIGIN},http://partner.example`, no credentials | `http://partner.example` allowed | INFO | LOW and INFO |
-
-SCG004 now reads both prefixes, splits a value as `CorsConfiguration`
-does, and reports a pattern whose scheme is missing or a wildcard (A5–A7).
-A loopback host is silent with any port, port wildcard or port list, and so
-are subdomains of `localhost` (A8–A11). Severity follows
-`allow-credentials`: MEDIUM when it is true; LOW otherwise, since an
-injected script then only reads responses to anonymous requests (SCG003
-reports nothing for `allowed-origins=*` without credentials, its C5, which
-lets every origin in). A
-literal origin next to a placeholder is reported at its own severity (P2);
-an origin is INFO only where the placeholder decides it. A4 is kept as a
-finding: the pattern matches nothing, but it is a broken configuration
-meant to allow plain HTTP. The pattern `*` is left to SCG003.
-
-Leaving loopback origins unreported (A8–A11) assumes the browser resolves
-`localhost` names itself: if it asked DNS, an attacker on the network could
-answer `a.localhost` with their own address, serve a page from it, and pass
-the CORS check. `spring-env-benchmark/localhost-browser-probe.sh` serves a
-page on 127.0.0.1 and loads it by name, run twice with the same results:
-Chromium 141 loaded it from `localhost`, `a.localhost` and
-`deep.a.localhost`, though the system resolver had no answer for the last
-two, and didn't load it from `example.test`, which the resolver didn't
-answer either. Firefox and Safari were not measured.
-
-Every reference project above and every demo fixture reports the same
-findings as with the v1.10.0 jar: none has an `http://` CORS origin. The
-script was run twice with the same results.
-
-## SCG005 methods and headers scenarios (running Spring Boot 4.1.1 app and Chromium)
-
-What `allowed-methods` and `exposed-headers` change for a script on a
-permitted origin was checked in this benchmark app (Actuator, with `env`
-and `loggers` exposed) and in Chromium, reproducible with
-`spring-env-benchmark/cors-methods-headers-scenarios.sh`, run twice with the
-same results. Spring Boot 4.1.1 builds Actuator's and GraphQL's CORS
-configuration only when `allowed-origins` or `allowed-origin-patterns`
-binds to a non-empty list (`toCorsConfiguration()` returns null
-otherwise); unset methods default to GET and HEAD. Which response headers a script reads is decided by the
-browser, so it was checked against a minimal server.
-
-| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | v1.11.0 | v1.15.0 |
-|---|---|---|---|---|---|
-| M1 | `allowed-methods=*`, no origin key | no CORS headers at all | MEDIUM | silent | silent |
-| M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM | MEDIUM | MEDIUM |
-| M4 | `allowed-methods=GET,DELETE`, credentials | DELETE preflight allowed with credentials | silent | silent | silent |
-| M7 | `allowed-methods=*`, no credentials | allowed, without credentials | MEDIUM | LOW | LOW |
-| M5 | `allowed-methods=*`, a JSON POST | preflight 403: `Content-Type` not allowed | — | — | — |
-| B1 | `allowed-methods=*` and `allowed-headers=*`, credentials | a JSON POST set the ROOT logger to TRACE (204) | — | — | — |
-| H1 | `exposed-headers=*`, credentials | `Access-Control-Expose-Headers: *`; Chromium exposed no header | MEDIUM | LOW (ineffective) | LOW (ineffective) |
-| H3 | `exposed-headers=*`, no origin key | no CORS headers at all | MEDIUM | silent | silent |
-| E1 | `allowed-origins=${SCG_ORIGINS:}`, `allowed-methods=*`, credentials | no CORS headers at all | MEDIUM | MEDIUM | silent |
-| H4 | `exposed-headers=X-Auth-Token`, credentials | Chromium exposed it to the script | MEDIUM | MEDIUM | MEDIUM |
-| H5 | `exposed-headers=X-Auth-Token`, no credentials | exposed on anonymous responses | MEDIUM | LOW | LOW |
-| H6 | `exposed-headers=Set-Cookie, Cookie` | Chromium never exposed `Set-Cookie` | LOW, INFO | LOW, INFO | LOW, INFO |
-| T1 | `exposed-headers=X-Access-Token`, credentials | `Access-Control-Expose-Headers: X-Access-Token` | silent | silent | INFO |
-| G1 | GraphQL `allowed-methods=*`, `exposed-headers=X-Auth-Token`, credentials | GraphQL binds the same keys | silent | MEDIUM, MEDIUM | MEDIUM, MEDIUM |
-
-M5 and B1 show that a JSON write needs both `allowed-methods` and
-`allowed-headers`; `allowed-methods=*` alone still lets DELETE and a POST
-without a non-safelisted header through, so it stays the finding, and its
-message names the dependency. `allowed-headers=*` alone allowed no write
-(Chromium blocked the POST), so it isn't reported. Severity follows
-`allow-credentials`, as in SCG004: the permitted origins are trusted by
-configuration, and the risk is what a compromised one does with the user's
-session. `exposed-headers=*` in Chromium exposed `X-Auth-Token` only to a
-request without credentials, so it is LOW with or without them. Every
-reference project and demo fixture reports the same findings as with the
-v1.10.0 jar: none sets these keys.
-
-A second review added three rows. E1: an origin whose placeholder resolves
-empty allowed no origin (the app sent no CORS headers); the rule used to
-check only that the raw value was non-blank, and reported MEDIUM. It now
-resolves it first and counts the origins it yields, so a value of only
-blanks or commas is silent too; a placeholder without a default still
-counts as an origin, since it may be set at runtime. M4: an explicit list
-of methods lets DELETE through with credentials, but it is not reported:
-listing the methods clients need is the fix the `*` finding asks for. T1:
-Spring sends any header listed in `exposed-headers` in
-`Access-Control-Expose-Headers`, the same mechanism by which Chromium
-exposed `X-Auth-Token` (H4; Chromium was not run with `X-Access-Token`); a
-header whose name suggests a token or a session (`authorization`, `token`,
-`jwt`, `session`, `secret`, `apikey`, ignoring `-` and `_`) is INFO, since
-whether it carries one depends on the application. The v1.11.0 column
-holds through v1.14.0: E1, M4 and T1 were also run with the v1.13.0 jar,
-with the same results. The script, with these rows, was run twice with the same
-results. The output on every reference project and demo fixture is
-byte-identical to v1.14.0's: the only files there that set these keys are
-three `src/test` resources in `spring-boot`, which SCG doesn't scan
-(ADR-006).
+In the reference projects: `spring-boot`'s `debug=true` is MEDIUM, and 5
+loggers are INFO (`org.hibernate.SQL`, `org.springframework.security`,
+`org.springframework.integration.file`, Spring Boot's `AuditListener` and
+`org.thymeleaf` at `DEBUG`/`TRACE`); `spring-boot-admin` has 1 MEDIUM
+(`org.springframework.web=debug`) and 1 INFO (`de.codecentric=trace`);
+`spring-cloud-stream-samples` has 1 INFO
+(`org.springframework.kafka.config=debug`).
 
 ## SCG010 error response scenarios (running Spring Boot 4.1.1 and 3.5.16 apps)
 
@@ -1158,24 +998,24 @@ message, B = binding errors; with `on-param`, what a request adding the
 `trace`, `message` or `errors` parameter gets. Unless noted, keys are
 `spring.web.error.*` on Spring MVC 4.1.1.
 
-| # | Configuration | Spring Boot | v1.11.0 | v1.12.0 |
-|---|---|---|---|---|
-| D0, F0, T0 | defaults (no key) | nothing | silent | silent |
-| S1, S6 | `include-stacktrace=always` (or `ALWAYS`) | T on every error | HIGH | MEDIUM |
-| S2–S5 | `include-stacktrace=on-param` (or `onParam`, `ON_PARAM`, `on.param`) | T with `?trace`, any value but `false` (in any case) | HIGH | MEDIUM |
-| S7, S8 | `include-stacktrace=never`, or empty | nothing | silent | silent |
-| S9–S11 | `include-stacktrace=true`, `on`, `sometimes` | app did not start | silent | silent |
-| X1–X4 | `include-exception=true`, `on`, `YES`, `1` | E on every error | MEDIUM | MEDIUM |
-| X5 | `include-exception=false` | nothing | silent | silent |
-| X6, X7 | `include-exception=always`, or empty | app did not start | silent | silent |
-| M1, M2 | `include-message=always`, `on-param` | M (with `?message`) | MEDIUM | MEDIUM |
-| B1, B2 | `include-binding-errors=always`, `on-param` | B (with `?errors`) | MEDIUM | MEDIUM |
-| Y1 | YAML `include-exception: on`, unquoted | E (YAML reads `on` as true) | MEDIUM | MEDIUM |
-| Y2 | YAML `include-stacktrace: on`, unquoted | app did not start | silent | silent |
-| F1–F3 | WebFlux, the same keys | the same as Spring MVC | as Spring MVC | as Spring MVC |
-| O1, O2, F4 | `server.error.*` on 4.1.1: `include-stacktrace=always`; all four set | nothing: no longer bound | HIGH; HIGH, MEDIUM ×3 | MEDIUM; MEDIUM ×4 |
-| T1, T2 | `server.error.*` on 3.5.16: all four set; `include-stacktrace=on-param` | T, E, M, B; T with `?trace` | HIGH, MEDIUM ×3; HIGH | MEDIUM ×4; MEDIUM |
-| T3 | `spring.web.error.*`, all four set, on 3.5.16 | nothing: not bound yet | HIGH, MEDIUM ×3 | MEDIUM ×4 |
+|  # | Configuration | Spring Boot | SCG |
+|---|---|---|---|
+|  D0, F0, T0 | defaults (no key) | nothing | silent  |
+|  S1, S6 | `include-stacktrace=always` (or `ALWAYS`) | T on every error | MEDIUM  |
+|  S2–S5 | `include-stacktrace=on-param` (or `onParam`, `ON_PARAM`, `on.param`) | T with `?trace`, any value but `false` (in any case) | MEDIUM  |
+|  S7, S8 | `include-stacktrace=never`, or empty | nothing | silent  |
+|  S9–S11 | `include-stacktrace=true`, `on`, `sometimes` | app did not start | silent  |
+|  X1–X4 | `include-exception=true`, `on`, `YES`, `1` | E on every error | MEDIUM  |
+|  X5 | `include-exception=false` | nothing | silent  |
+|  X6, X7 | `include-exception=always`, or empty | app did not start | silent  |
+|  M1, M2 | `include-message=always`, `on-param` | M (with `?message`) | MEDIUM  |
+|  B1, B2 | `include-binding-errors=always`, `on-param` | B (with `?errors`) | MEDIUM  |
+|  Y1 | YAML `include-exception: on`, unquoted | E (YAML reads `on` as true) | MEDIUM  |
+|  Y2 | YAML `include-stacktrace: on`, unquoted | app did not start | silent  |
+|  F1–F3 | WebFlux, the same keys | the same as Spring MVC | as Spring MVC  |
+|  O1, O2, F4 | `server.error.*` on 4.1.1: `include-stacktrace=always`; all four set | nothing: no longer bound | MEDIUM; MEDIUM ×4  |
+|  T1, T2 | `server.error.*` on 3.5.16: all four set; `include-stacktrace=on-param` | T, E, M, B; T with `?trace` | MEDIUM ×4; MEDIUM  |
+|  T3 | `spring.web.error.*`, all four set, on 3.5.16 | nothing: not bound yet | MEDIUM ×4  |
 
 Each prefix is read by one side of Spring Boot 4.0 only: 4.1.1's
 configuration metadata marks every `server.error.*` key deprecated at level
@@ -1184,171 +1024,202 @@ prefix ignored by the other version. SCG doesn't know the version a project
 targets, so both prefixes are reported at the same severity, and every
 message says which version reads which prefix and that removing the key is
 the fix where it is inert; reporting both as INFO would hide the key that
-takes effect. `include-stacktrace` went from HIGH to MEDIUM: a stack trace
+takes effect. `include-stacktrace` is MEDIUM, not HIGH: a stack trace
 carries the exception's message and its cause chain (S1), so it discloses
 more of what `include-message` does, which is information disclosure
 without compromise (MEDIUM), not a different risk. A value Spring Boot
 can't bind stops the application from starting (S9–S11, X6, X7, Y2), so
-the rule's silence on it is proven. Every reference project and demo
-fixture reports the same findings as with the v1.11.0 jar: none sets these
-keys.
+the rule's silence on it is proven. None of the reference projects sets
+these keys.
 
-## SCG009 verbose logging scenarios (running Spring Boot 4.1.1 app)
+## SCG011 transport scenarios (running Spring Boot 4.1.1 apps)
 
-What each logging setting writes to the application log was checked in an
-app with Spring MVC, JdbcTemplate and JPA on H2, and a RestClient on Apache
-HttpClient 5. It receives one request with a secret in each place a log can
-pick up, reproducible with `spring-env-benchmark/verbose-logging-scenarios.sh`,
-run twice with the same results. Q = query string, H = inbound
-Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
-J = JPA bound parameter, O = outbound Authorization header, D = outbound
-body. Values are command-line arguments unless noted.
+What each server transport key does was checked in running apps. Method, to
+reproduce: a minimal Spring Boot 4.1.1 app with
+`spring-boot-starter-webmvc`, `spring-boot-starter-actuator` and one
+endpoint that creates a session, built three times: on Tomcat (the default),
+on Jetty, and on Tomcat with Spring Session (`spring-boot-session`,
+`@EnableSpringHttpSession` with an in-memory `MapSessionRepository`); plus a
+WebFlux app (`spring-boot-starter-webflux`, Netty) whose endpoint touches
+the `WebSession`. A self-signed PKCS#12 key-store and the same key as PEM
+files serve as TLS material. Each scenario starts one app with the
+properties as command-line arguments on port 9443 (a separate management
+port, when set, is 9444), waits until the previous run has released both
+ports and the new one has logged Spring Boot's `Started ... in` line (or
+failed), then requests the session endpoint and `/actuator/health` over
+HTTPS, falling back to HTTP, and records the scheme each port answers on and
+the session cookie's attributes (reproducible with
+`spring-env-benchmark/server-transport-scenarios.sh`, which generates the
+TLS material on its first run).
 
-| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 | v1.16.0 |
+Server and management SSL (Tomcat):
+
+|  # | Properties | Spring 4.1.1 | SCG |
+|---|---|---|---|
+|  T1–T5 | `key-store`, `enabled=false` / `off` / `no` / `0` / `FALSE` | HTTP | HIGH  |
+|  T6 | `key-store`, `enabled=disabled` | does not start | silent  |
+|  T7 | `key-store`, `enabled=` or `${X:}` | does not start (`Failed to bind properties under 'server.ssl.enabled' to boolean`) | silent  |
+|  T8 | PEM `certificate` + `certificate-private-key`, `enabled=false` | HTTP | HIGH  |
+|  T9 | PEM `certificate` + `certificate-private-key` | HTTPS | silent  |
+|  T10 | `bundle` (a JKS SSL bundle), `enabled=false` | HTTP | HIGH  |
+|  T11 | `bundle` | HTTPS | silent  |
+|  T12 | `enabled=false`, no TLS material | HTTP | silent  |
+|  M1 | `server.ssl.key-store`, `management.server.port=9444` | management HTTPS (inherits `server.ssl`) | silent  |
+|  M2 | M1 + `management.server.ssl.enabled=false` | main HTTPS, management HTTP | HIGH  |
+|  M3 | `management.server.port=9444`, `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | management HTTP | HIGH  |
+|  M4 | `management.server.port=9444`, `management.server.ssl.key-store` | management HTTPS | silent  |
+|  M5 | M3 with `management.server.port=-1` | management server off | silent  |
+|  M6 | `server.ssl.key-store`, `management.server.port=9443` (= `server.port`), `management.server.ssl.key-store`, `management.server.ssl.enabled=false` | one HTTPS connector, `management.server.ssl.*` ignored | silent  |
+
+M5 and M6 follow `ManagementPortType.get()`: a negative management port
+disables the management server, and a port equal to `server.port` (or to
+8080 when `server.port` is not set) shares the main connector. A management
+connector of its own takes `management.server.ssl.*` when that is set
+(`ManagementWebServerFactoryCustomizer`), so M2's `enabled=false` without a
+management key-store turns TLS off on it. The falsy values that disable SSL
+(`false`, `off`, `no`, `0`, any case) are the ones the rule matches.
+
+Session cookie, servlet keys (`server.servlet.session.cookie.*`); the cookie
+attributes each app set:
+
+|  # | Properties | Tomcat | Jetty | Spring Session | SCG |
 |---|---|---|---|---|---|
-| L0 | defaults | none | silent | silent | silent |
-| L1 | `debug=true` | Q B D | MEDIUM | MEDIUM | MEDIUM |
-| L2, P4 | `debug=false`, `debug=${UNSET_VAR:false}` | none | silent | silent | silent |
-| L3–L7 | `debug=FALSE`, `off`, `no`, `0`, empty | Q B D | silent | MEDIUM | MEDIUM |
-| P2 | `debug=false ` (trailing space, `.properties`) | Q B D | silent | MEDIUM | MEDIUM |
-| P3 | `debug=${UNSET_VAR:}` | Q B D | silent | MEDIUM | MEDIUM |
-| L8, L9 | `trace=true`, `trace=off` | Q B S D | MEDIUM, silent | MEDIUM | MEDIUM |
-| Y1, Y2 | YAML `debug: off`, `debug: no`, unquoted | none | silent | silent | silent |
-| Y3 | YAML `debug: "off"`, quoted | Q B D | silent | MEDIUM | MEDIUM |
-| Y4, Y5 | YAML `debug:` and `debug: ~` (null) in a base file | Q B D | silent | silent | MEDIUM |
-| P1 | `DEBUG=true` in a `.properties` file | Q B D | MEDIUM | MEDIUM | MEDIUM |
-| R1, R3 | `logging.level.root=DEBUG` (or `debug`) | Q B O D | MEDIUM | MEDIUM | MEDIUM |
-| R2 | `logging.level.root=TRACE` | Q H B S J O D | MEDIUM | MEDIUM | MEDIUM |
-| R4 | `logging.level.root=INFO` | none | silent | silent | silent |
-| R5, R6 | `logging.level.root=ALL`, `true` | app did not start | silent | silent | silent |
-| N1, N7, N8 | `web`, `org.springframework.web`, `org.springframework` at `debug` | Q B D | silent | MEDIUM | MEDIUM |
-| N9 | `org=debug` | Q B O D | silent | MEDIUM | MEDIUM |
-| N3 | `org.springframework=trace` | Q B S D | silent | MEDIUM | MEDIUM |
-| N10, N11 | `sql`, `org.springframework.jdbc.core` at `trace` | S | silent | MEDIUM | MEDIUM |
-| N4, N12 | `org.hibernate.orm.jdbc.bind`, `org.hibernate` at `trace` | J | silent | MEDIUM | MEDIUM |
-| N5, N13 | `org.apache.hc.client5.http.wire`, `org.apache.hc` at `debug` | O D | silent | MEDIUM | MEDIUM |
-| N2 | `sql=debug` | none (SQL without its parameters) | silent | INFO | INFO |
-| N14 | `org.apache.hc=info` | none | silent | silent | silent |
-| N6 | `spring.mvc.log-request-details=true`, `web=debug` | Q B D | silent | MEDIUM | MEDIUM |
-| N15 | `org.springframework.web.servlet.DispatcherServlet=debug` | Q | silent | MEDIUM | MEDIUM |
-| N16 | `...mvc.method.annotation.RequestResponseBodyMethodProcessor=debug` | B D | silent | MEDIUM | MEDIUM |
-| N17 | `org.springframework.web.client.DefaultRestClient=debug` | D | silent | MEDIUM | MEDIUM |
-| N18 | `org.springframework.web.method.HandlerMethod=trace` | Q B D | silent | MEDIUM | MEDIUM |
-| N19 | `org.springframework.jdbc.core.StatementCreatorUtils=trace` | S | silent | MEDIUM | MEDIUM |
-| N20 | `org.hibernate.orm.resource.registry=trace` | J | silent | MEDIUM | MEDIUM |
-| N21 | `org.apache.hc.client5.http.headers=debug` | O | silent | MEDIUM | MEDIUM |
-| N22, N24 | `org.apache.coyote.http11.Http11InputBuffer`, `org.apache.tomcat.util.http.Parameters` at `debug` | none | silent | INFO | INFO |
-| N23 | `org.apache.coyote.http11.Http11InputBuffer=trace` | Q H B O D (the raw requests) | silent | MEDIUM | MEDIUM |
-| N25 | `org=debug`, with `org.springframework.web` and `org.apache.hc` at `info` | none | silent | INFO | INFO |
-| N26 | `ORG.SPRINGFRAMEWORK.WEB=debug` | none: logger names are case-sensitive | silent | INFO | INFO |
+|  K0 | TLS, defaults | `Secure; HttpOnly` | `Secure` | `Secure; HttpOnly; SameSite=Lax` | silent  |
+|  K1/K2 | TLS, `secure=false` / `off` | `Secure; HttpOnly` | `Secure` | `HttpOnly; SameSite=Lax` | MEDIUM  |
+|  K3 | HTTP, `http-only=false` | (none) | (none) | `SameSite=Lax` | MEDIUM  |
+|  K4/K5 | HTTP, `same-site=None` / `none` | `HttpOnly; SameSite=None` | `SameSite=None` | `HttpOnly; SameSite=None` | MEDIUM  |
+|  K6 | HTTP, defaults | `HttpOnly` | (none) | `HttpOnly; SameSite=Lax` | silent  |
+|  K7 | TLS, `same-site=None`, `secure=false` | `Secure; HttpOnly; SameSite=None` | `Secure; SameSite=None` | `HttpOnly; SameSite=None` | MEDIUM + MEDIUM  |
 
-Spring Boot's `LoggingApplicationListener` reads `debug` and `trace` as raw
-strings and turns them on for any value except exactly `false`, so every
-other spelling of "off" turned debug logging on (L3–L7, P2, P3, Y3), where
-v1.11.0 was silent. Unquoted YAML `off` and `no` are YAML booleans and stay
-off. A YAML null is read as an empty value and turns it on too (Y4, Y5):
-Spring Boot's YAML loader turns a null into an empty string, so the key is
-present. `ProfileMerger` used to drop a null key from a base file, so no
-rule saw it there; it now keeps it as an empty string, in the base and in
-a profile that overrides a key with null, as Spring does (checked through
-`/actuator/env`, "ProfileMerger correctness benchmark", case 4). The secrets
-were written by the loggers of N15–N21 and N23, each turned on alone, and
-by their ancestors (N1, N3–N5, N7–N13); a more specific logger with its own
-level decides for its descendants (N25), and logger names are matched as
-written (N26). The rule reports at MEDIUM one of those loggers, an
-ancestor of one, or Spring Boot's `web` or `sql` group containing one, when
-its level reaches it and no more specific configured logger stands in
-between, and any other logger at `DEBUG`/`TRACE` as INFO, since what it
-writes can't be known statically (N2, N22, N24 wrote none of the secrets). Severity stays MEDIUM: the secrets reach whoever reads the log.
+Tomcat and Jetty mark their session cookie `Secure` on every HTTPS request,
+whatever `secure` says; only Spring Session drops it. Jetty's session cookie
+carries no `HttpOnly` even by default, so K3 changes nothing there. The
+script waits for Spring Boot's `Started ... in` line, not any `Started `
+line: Jetty logs its own before its connector is up, and Jetty rows waited
+for that one failed at random.
 
-On the reference corpus, against the v1.11.0 jar: `spring-boot`'s
-`debug=true` finding keeps its severity with the new message, and 5 INFO
-are added (`org.hibernate.SQL`, `org.springframework.security`,
-`org.springframework.integration.file`, Spring Boot's `AuditListener` and
-`org.thymeleaf` at `DEBUG`/`TRACE`; its table above predates ADR-006 and is
-kept as recorded); `spring-boot-admin` adds 1 MEDIUM
-(`org.springframework.web=debug`) and 1 INFO (`de.codecentric=trace`);
-`spring-cloud-stream-samples` adds 1 INFO
-(`org.springframework.kafka.config=debug`). `spring-petclinic`,
-`spring-petclinic-microservices-config` and the demo fixtures report the
-same findings.
+Session cookie, WebFlux (`server.reactive.session.cookie.*`):
 
-## SCG002 H2 console scenarios (running Spring Boot 4.1.1 app)
+|  # | Properties | WebFlux (Netty) | SCG |
+|---|---|---|---|
+|  R0 | TLS, defaults | `Secure; HttpOnly` | silent  |
+|  R1 | TLS, `secure=false` | `HttpOnly` | MEDIUM  |
+|  R2 | HTTP, `http-only=false` | (none) | MEDIUM  |
+|  R3 | HTTP, `same-site=None` | `HttpOnly; SameSite=None` | MEDIUM  |
+|  R4 | TLS, `server.servlet.session.cookie.secure=false` and `http-only=false` | `Secure; HttpOnly` (no effect) | MEDIUM ×2  |
 
-Which values turn the H2 console on, and from where it answers, was checked
-in an app with Spring MVC and Spring Boot's H2 console module, reproducible
-with `spring-env-benchmark/h2-console-scenarios.sh`, run twice with the
-same results. Each scenario requests the console from loopback, from the
-machine's non-loopback address (a remote client to H2), and through
-`loopback-proxy.py`, a reverse proxy on that address forwarding to
-localhost as a proxy or sidecar on the same machine does. "blocked" is H2's
-"remote connections are disabled" page.
+The cookie checks are MEDIUM: none exposes the cookie's value without a
+second weakness (a plain HTTP request, an XSS, a cross-site request). K1/K2
+on Tomcat or Jetty and R4 are findings for a key without effect: SCG doesn't
+see the classpath, so it can't tell them from Spring Session's K1/K2 or a
+servlet app's R4 keys, and the message of the servlet `secure` finding says
+the key only takes effect with Spring Session.
 
-| # | Configuration | Loopback / remote / proxied | v1.12.0 | v1.13.0 |
+Split across config locations (ADR-005), checked with fixtures, each with the
+coverage warning on stderr:
+
+|  # | `src/main/resources` | `config/` | Spring | SCG |
 |---|---|---|---|---|
-| H0 | defaults | 404 / 404 / 404 | silent | silent |
-| H1, H2 | `enabled=true`, `TRUE` | console / blocked / console | HIGH | HIGH |
-| H3–H5 | `enabled=yes`, `on`, `1` | 404 / 404 / 404 | HIGH | silent |
-| P1 | `enabled=true ` (trailing space, `.properties`) | 404 / 404 / 404 | HIGH | silent |
-| H6–H9 | `enabled=false`, `off`, empty, `banana` | 404 / 404 / 404 | silent | silent |
-| H10 | `enabled=${H2_ENABLED}`, unset | app did not start | HIGH | INFO |
-| H11 | `enabled=${H2_ENABLED:true}` | console / blocked / console | HIGH | HIGH |
-| Y1 | YAML `enabled: on`, unquoted | console / blocked / console | HIGH | HIGH |
-| A1, A2 | `enabled=true`, `web-allow-others=true` or `yes` | console / console / console | HIGH, aggravating | HIGH, aggravating |
-| A5 | `enabled=true`, `web-allow-others=${UNSET:true}` | console / console / console | HIGH, aggravating | HIGH, aggravating |
-| A3 | `web-allow-others=true` alone | 404 / 404 / 404 | silent | silent |
-| A4 | A1 with a plain `web-admin-password` | 500 / 500 / 500 | HIGH, aggravating | HIGH, aggravating |
-| T1 | `enabled=true`, `path=/db` | console / blocked / console | HIGH | HIGH |
+|  L1 | `server.ssl.key-store` | `application-prod.yml`: `enabled: false` | HTTP in `prod` | silent (false negative)  |
+|  L1b | `server.ssl.key-store` | `application.yml`: `enabled: false` | HTTP | silent (false negative)  |
+|  L2 | `key-store`, `enabled: false` | `application-prod.yml`: `enabled: true` | HTTP, HTTPS in `prod` | HIGH in the base profile (correct)  |
+|  L2b | `key-store`, `enabled: false` | `application.yml`: `enabled: true` | HTTPS | HIGH (false positive)  |
+|  L3 | `management.server.port: 9444` | `application-prod.yml`: management `key-store`, `enabled: false` | management HTTP in `prod` | silent (false negative)  |
+|  L4 | management port, `key-store`, `enabled: false` | `application-prod.yml`: `port: -1` | management HTTP, off in `prod` | HIGH in the base profile (correct)  |
 
-Spring Boot turns the console on with `@ConditionalOnBooleanProperty`,
-which took only `true`, in any case (H1, H2): `yes`, `on`, `1` and a
-trailing space left it off (H3–H5, P1), where v1.12.0 reported HIGH.
-`web-allow-others` is bound through the Binder and took `yes` too (A2).
-Without it, H2 served only loopback clients, but through the same-host
-proxy, which sends no `X-Forwarded-For`, a remote client reached the
-console (H1, proxied); a proxy that sends that header, to an app that
-trusts it, was not measured. So the console stays HIGH either way and
-the message names `web-allow-others` when it is set. A placeholder without
-a default is INFO (H10); for `web-allow-others` (not in the table) the
-message says the console may accept remote clients rather than that it
-does. H2 rejects a `web-admin-password` that isn't in its encoded form, so
-A4's console answered 500. Every reference project and demo fixture
-reports the same findings as with the v1.12.0 jar, except the wording of
-the SCG002 message (3 findings in `spring-boot`, 2 in `demo-project`): all
-of them set `enabled=true`.
+None of the reference projects has an SCG011 finding. Left open
+(BACKLOG.md): weak TLS protocols
+(`server.ssl.enabled-protocols`, `server.ssl.protocol`) and
+`server.servlet.session.tracking-modes=url`, silent today.
+
+## SCG012 driver modes (JDBC drivers and Spring Boot's Redis configuration)
+
+Which values turn TLS off, or keep it on without checking the server's
+certificate, was read from the drivers Spring Boot 4.1.1's dependency
+management resolves: pgjdbc 42.7.13 (`SslMode.requireEncryption()` and
+`verifyCertificate()` for each mode), MySQL Connector/J 9.7 (the `sslMode`
+property description), mssql-jdbc 13.4 (`EncryptOption.valueOfString`) and
+MariaDB Connector/J 3.5 (`SslMode.from`).
+
+* No encryption: PostgreSQL `sslmode=disable`/`allow` (and the default
+  `prefer` doesn't require it), MySQL `sslMode=DISABLED`, SQL Server
+  `encrypt=false`, `no` and `optional`, MariaDB `sslMode=disable`, `false`
+  and `0`; MySQL's legacy `useSSL=false`, still accepted and translated to
+  `sslMode=DISABLED`; R2DBC `sslMode=disable`.
+* Encryption without certificate validation: PostgreSQL `sslmode=require`,
+  MySQL `sslMode=REQUIRED`, MariaDB `sslMode=trust` (its TLS plugin then
+  installs `MariaDbX509TrustingManager`, whose `checkServerTrusted` accepts
+  any certificate), pgjdbc's
+  `sslfactory=org.postgresql.ssl.NonValidatingFactory` (whose trust
+  manager's `checkServerTrusted` is empty, too); only
+  `verify-ca`/`verify-full` (MySQL `VERIFY_CA`/`VERIFY_IDENTITY`) check it.
+* Redis: Spring Boot 4.1.1's Lettuce and Jedis configurations enable TLS
+  when `spring.data.redis.ssl.enabled` is true or the URL is `rediss://`,
+  so a `redis://` URL alone doesn't prove plaintext.
+
+|  # | Value | SCG |
+|---|---|---|
+|  t01 | `spring.datasource.url` `?sslmode=disable` | HIGH  |
+|  t02 | `spring.mongodb.uri` `?tls=false` | HIGH  |
+|  t03 | `spring.data.redis.url=redis://...` | silent  |
+|  t04 | `spring.flyway.url` `?sslmode=disable` | HIGH  |
+|  t05 | `spring.datasource.hikari.jdbc-url` `?sslMode=DISABLED` | HIGH  |
+|  t06 | `spring.artemis.broker-url=tcp://...` | silent  |
+|  t07 | SQL Server `encrypt=optional` | HIGH  |
+|  t08 | SQL Server `encrypt=no` | HIGH  |
+|  t09 | MariaDB `sslMode=false` | HIGH  |
+|  t10 | MariaDB `sslMode=trust` | MEDIUM  |
+|  t11 | PostgreSQL `sslmode=require` | MEDIUM  |
+|  t12 | MySQL `sslMode=REQUIRED` | MEDIUM  |
+|  t13 | `spring.elasticsearch.uris=https://es1,http://es2` | HIGH  |
+|  t14 | PostgreSQL `sslmode=verify-full` | silent  |
+
+The query parameters are looked for in every property whose value starts
+with `jdbc:`, `r2dbc:`, `mongodb:` or `mongodb+srv:`, which covers t02, t04
+and t05 whatever the key; the scheme check (`http://`, `tcp://`,
+`amqp://`, `ldap://`) is limited to the known connection keys, with Spring
+Boot 4.1.1's names, and checks every node of a list (t13). No encryption
+is HIGH. Encryption without certificate validation is MEDIUM, including
+`verifyServerCertificate=false` and the other parameters listed above: the
+traffic is encrypted and reading it takes an active man in the middle.
+Left open (BACKLOG.md): t03, t06, the default modes, an explicit
+`sslmode=prefer` (silent), MySQL `requireSSL=false` (translated to
+`PREFERRED`, yet HIGH), and the transports SCG012 doesn't look at (Neo4j,
+Cassandra, Pulsar, Couchbase).
 
 ## SCG013 health details scenarios (running Spring Boot 4.1.1 apps)
 
 What `/actuator/health` returns for each health setting was checked in two
 apps with Spring MVC, Actuator and an H2 datasource, one without Spring
 Security and one with it (every request permitted, one HTTP Basic user with
-role USER), reproducible with `spring-env-benchmark/health-details-scenarios.sh`,
-run twice with the same results. "details" is every component with its
-details (the database vendor, diskSpace's absolute path and free space, the
-SSL chains), "components" their names and status only, "status" the
-overall status only. Keys are under `management.endpoint.health`; the
-group is `group.custom`, including `db`.
+role USER), reproducible with
+`spring-env-benchmark/health-details-scenarios.sh`, run twice with the same
+results. "details" is every component with its details (the database vendor,
+diskSpace's absolute path and free space, the SSL chains), "components"
+their names and status only, "status" the overall status only. Keys are
+under `management.endpoint.health`; the group is `group.custom`, including
+`db`.
 
-| # | Configuration | Response | v1.12.0 | v1.13.0 |
-|---|---|---|---|---|
-| D0, D5 | defaults, `show-details=never` | status | silent | silent |
-| S0, S1 | Spring Security: defaults, `show-details=always` | anonymous and user: status, details | silent, MEDIUM | silent, MEDIUM |
-| D1, D7 | `show-details=always` (or `ALWAYS`) | details | MEDIUM | MEDIUM |
-| D2–D4 | `show-details=when-authorized` (or `WHEN_AUTHORIZED`, `whenAuthorized`), no Spring Security | status | MEDIUM | INFO |
-| S2 | `show-details=when-authorized`, Spring Security | anonymous: status; user: details | MEDIUM | INFO |
-| S3 | S2 with `roles=ADMIN` | anonymous and user: status | MEDIUM | INFO |
-| D6 | `show-details=true` | app did not start | silent | silent |
-| C1 | `show-components=always` | components | silent | INFO |
-| S4 | `show-components=when-authorized`, Spring Security | anonymous: status; user: components | silent | INFO |
-| C2 | `show-components=never`, `show-details=always` | status | MEDIUM | silent |
-| G1, G2 | group `show-details=always`: the group, the endpoint | details, status | silent | MEDIUM |
-| G3 | group `show-components=always` | components | silent | INFO |
-| G4 | G1 with `additional-path=server:/healthz` | `/healthz`: details | silent | MEDIUM |
-| G5 | `show-details=always`, the group without its own | details | MEDIUM (endpoint) | MEDIUM (endpoint) |
-| G7 | `show-details=always`, group `show-details=` (empty) | details | MEDIUM (endpoint) | MEDIUM (endpoint) |
-| G6 | `show-details=always`, group `show-components=never` | group: status | MEDIUM (endpoint) | MEDIUM (endpoint) |
-| S5 | group `show-details=when-authorized`, Spring Security | anonymous: status; user: details | silent | INFO |
-| X1, X2 | `show-details=always` with `access=none`, or health excluded from exposure | 404 | MEDIUM | MEDIUM |
+|  # | Configuration | Response | SCG |
+|---|---|---|---|
+|  D0, D5 | defaults, `show-details=never` | status | silent  |
+|  S0, S1 | Spring Security: defaults, `show-details=always` | anonymous and user: status, details | silent, MEDIUM  |
+|  D1, D7 | `show-details=always` (or `ALWAYS`) | details | MEDIUM  |
+|  D2–D4 | `show-details=when-authorized` (or `WHEN_AUTHORIZED`, `whenAuthorized`), no Spring Security | status | INFO  |
+|  S2 | `show-details=when-authorized`, Spring Security | anonymous: status; user: details | INFO  |
+|  S3 | S2 with `roles=ADMIN` | anonymous and user: status | INFO  |
+|  D6 | `show-details=true` | app did not start | silent  |
+|  C1 | `show-components=always` | components | INFO  |
+|  S4 | `show-components=when-authorized`, Spring Security | anonymous: status; user: components | INFO  |
+|  C2 | `show-components=never`, `show-details=always` | status | silent  |
+|  G1, G2 | group `show-details=always`: the group, the endpoint | details, status | MEDIUM  |
+|  G3 | group `show-components=always` | components | INFO  |
+|  G4 | G1 with `additional-path=server:/healthz` | `/healthz`: details | MEDIUM  |
+|  G5 | `show-details=always`, the group without its own | details | MEDIUM (endpoint)  |
+|  G7 | `show-details=always`, group `show-details=` (empty) | details | MEDIUM (endpoint)  |
+|  G6 | `show-details=always`, group `show-components=never` | group: status | MEDIUM (endpoint)  |
+|  S5 | group `show-details=when-authorized`, Spring Security | anonymous: status; user: details | INFO  |
+|  X1, X2 | `show-details=always` with `access=none`, or health excluded from exposure | 404 | MEDIUM  |
 
 `when-authorized` returned nothing extra to an anonymous caller, with or
 without Spring Security; only an authenticated user got the details, and
@@ -1357,14 +1228,56 @@ without Spring Security; only an authenticated user got the details, and
 (C1, S4). `show-components` defaults to `show-details`, and at `never` it
 hid the details too (C2), so the lower of the two decides. A health group
 has its own keys, falls back to the endpoint's for those it doesn't set or
-sets to an empty value (G5–G7), and is served at `/actuator/health/<name>` and at its
-`additional-path`, which can be on the main server port (G1–G4); a group is
-reported when it sets one of the keys itself. X1 and X2 remain the rule's
-documented scope decision. On the reference corpus, against the v1.12.0
-jar: `spring-boot` adds 1 MEDIUM, the `comp` group of its Actuator smoke
-test (`group.comp.show-details=always`), and every SCG013 finding has a new
-message; severities, files and profiles are otherwise unchanged, and so are
-the other rules and the demo fixtures.
+sets to an empty value (G5–G7), and is served at `/actuator/health/<name>`
+and at its `additional-path`, which can be on the main server port
+(G1–G4); a group is reported when it sets one of the keys itself, as the
+`comp` group of `spring-boot`'s Actuator smoke test
+(`group.comp.show-details=always`, MEDIUM) does. X1 and X2 are the rule's
+documented scope decision: health details are reported even where the
+endpoint isn't reachable.
+
+## SCG014 protocol precedence (Spring Boot 4.1.1 `KafkaProperties`)
+
+Which `security.protocol` each Kafka client actually gets was checked by
+binding properties to Spring Boot 4.1.1's own `KafkaProperties` and building
+each client's configuration (`buildConsumerProperties()` and the others),
+with kafka-clients 4.2.1, whose default protocol is `PLAINTEXT`. Precedence,
+highest first: the client's `properties` map
+(`spring.kafka.consumer.properties.security.protocol`), the client's typed
+key (`spring.kafka.consumer.security.protocol`), the common
+`spring.kafka.properties` map, the common typed key
+(`spring.kafka.security.protocol`).
+
+SCG014 resolves the protocol per client in that order, so an insecure
+value overridden by a secure one isn't reported:
+
+|  Scenario | Spring's result | SCG |
+|---|---|---|
+|  P1 common typed `PLAINTEXT`, common map `SSL` | `SSL` everywhere | none  |
+|  P2 common typed `SSL`, common map `PLAINTEXT` | `PLAINTEXT` everywhere | HIGH (map)  |
+|  P3 consumer `SSL`, common map `PLAINTEXT` | `PLAINTEXT` for the other clients | HIGH (map)  |
+|  P4 consumer typed `PLAINTEXT`, consumer map `SSL` | consumer `SSL`, others unset | MEDIUM  |
+|  P5 common `PLAINTEXT`, every client `SSL` | `SSL` everywhere | none  |
+|  P6 consumer `SSL` only | others unset | MEDIUM  |
+|  P7 consumer, producer, admin `SSL` | streams unset | MEDIUM, naming streams  |
+
+It reports only the keys a client actually uses, once each; inside a named
+binder's environment too. An unresolved placeholder overrides what is below it,
+since it resolves at runtime or the application doesn't start. The "not
+set" finding names the clients left without a protocol, and the streams
+client counts even without a `spring.kafka.streams.*` key: a Kafka Streams
+application can take its application id from `spring.application.name`.
+
+The program is kept in the repository
+(`spring-env-benchmark/kafka-precedence`). Two more scenarios check the
+steps of P4 and P3 the other way round, with the insecure value on top: X1
+(consumer map `PLAINTEXT` over consumer typed `SSL`) and X2 (consumer typed
+`PLAINTEXT` over common map `SSL`) both leave the consumer on `PLAINTEXT`.
+
+```bash
+cd spring-env-benchmark
+./kafka-precedence-scenarios.sh
+```
 
 ## SCG015 RabbitMQ transport scenarios (Spring Boot 4.1.1 client, on the wire)
 
@@ -1375,53 +1288,48 @@ or a TLS handshake, and an app with `spring-boot-starter-amqp` opens one
 connection at startup. Reproducible with
 `spring-env-benchmark/rabbit-transport-scenarios.sh`, run twice with the
 same results. Keys are under `spring.rabbitmq`; `host` is `127.0.0.1`
-unless `addresses` is set. The rule columns
-are for the same configuration on a remote host: on the scenario's own
+unless `addresses` is set. The SCG column is for the same configuration
+on a remote host: on the scenario's own
 loopback address, a finding there is INFO (see "Loopback addresses in the
 transport rules").
 
-| # | Configuration | On the wire | v1.12.0 | v1.13.0 | v1.15.0 |
-|---|---|---|---|---|---|
-| H0 | `host` only | AMQP (5672) | MEDIUM | MEDIUM | MEDIUM |
-| H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent | silent | silent |
-| H2 | `ssl.enabled=false` | AMQP (5672) | HIGH | HIGH | HIGH |
-| H5 | `port=5671`, no `ssl.enabled` | AMQP (5671) | MEDIUM | MEDIUM | MEDIUM |
-| B1 | `ssl.bundle` set | TLS (5672) | silent | silent | silent |
-| B2 | `ssl.bundle=${SCG_BUNDLE:}` (resolves empty) | AMQP (5672) | silent | silent | MEDIUM |
-| B2u | `ssl.bundle=${SCG_BUNDLE}` (no default) | decided at runtime | silent | silent | INFO |
-| V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent | silent | silent |
-| A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM | MEDIUM | MEDIUM |
-| A2 | `addresses=amqps://...` | TLS | silent | silent | silent |
-| A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012) | HIGH (SCG012) | HIGH (SCG012) |
-| A4 | `addresses=AMQPS://...` | app did not start | silent | silent | silent |
-| A5 | `addresses=127.0.0.1:5672`, `ssl.enabled=true` | TLS | silent | silent | silent |
-| A6 | `addresses=127.0.0.1:5672,amqps://...` | AMQP | MEDIUM | MEDIUM | MEDIUM |
-| A7 | `addresses=amqps://...,127.0.0.1:5672` | TLS | silent | silent | silent |
-| Y1 | YAML `addresses` as a list, `[127.0.0.1:5672]` | AMQP | silent | MEDIUM | MEDIUM |
+|  # | Configuration | On the wire | SCG |
+|---|---|---|---|
+|  H0 | `host` only | AMQP (5672) | MEDIUM  |
+|  H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent  |
+|  H2 | `ssl.enabled=false` | AMQP (5672) | HIGH  |
+|  H5 | `port=5671`, no `ssl.enabled` | AMQP (5671) | MEDIUM  |
+|  B1 | `ssl.bundle` set | TLS (5672) | silent  |
+|  B2 | `ssl.bundle=${SCG_BUNDLE:}` (resolves empty) | AMQP (5672) | MEDIUM  |
+|  B2u | `ssl.bundle=${SCG_BUNDLE}` (no default) | decided at runtime | INFO  |
+|  V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent  |
+|  A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM  |
+|  A2 | `addresses=amqps://...` | TLS | silent  |
+|  A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012)  |
+|  A4 | `addresses=AMQPS://...` | app did not start | silent  |
+|  A5 | `addresses=127.0.0.1:5672`, `ssl.enabled=true` | TLS | silent  |
+|  A6 | `addresses=127.0.0.1:5672,amqps://...` | AMQP | MEDIUM  |
+|  A7 | `addresses=amqps://...,127.0.0.1:5672` | TLS | silent  |
+|  Y1 | YAML `addresses` as a list, `[127.0.0.1:5672]` | AMQP | MEDIUM  |
 
 Spring Boot's `RabbitProperties.Ssl.determineEnabled()` turns TLS on for
 `ssl.enabled` true (bound through the Binder, so `yes` too) or an
 `ssl.bundle`, and the scheme of the first address, when it has one,
-overrides both (A2, A3, A6, A7). An address list written in YAML reached
-the client like a single value (Y1), where v1.12.0 read only the scalar
-key; the rule now reads the list's first entry. The RabbitMQ Java client
+overrides both (A2, A3, A6, A7). An address list written in YAML reaches
+the client like a single value (Y1), so the rule reads the list's first
+entry. The RabbitMQ Java client
 (amqp-client 5.30.0) authenticates with SASL `PLAIN` by default, which sends
 the user name and password as they are, so a plain connection carries the
 credentials in the clear. V1 is TLS without checking the broker's
 certificate, which SCG015 doesn't cover (`BACKLOG.md`, "TLS without
-verifying the server"). No reference project sets `spring.rabbitmq.host`
-or `addresses`, so every reference project and demo fixture reports the
-same findings as with the v1.12.0 jar.
+verifying the server").
 
-A sweep of every rule for values that resolve empty added B2 and B2u.
 `determineEnabled()` tests the bundle with `StringUtils.hasText`, so a
-placeholder that resolves empty left TLS off and the client spoke plain
-AMQP (B2), where the rule, checking only that the raw value was non-blank,
-was silent. It now resolves the bundle first: one that resolves empty
+placeholder that resolves empty leaves TLS off and the client speaks plain
+AMQP (B2). The rule resolves the bundle first: one that resolves empty
 counts as unset, and one without a default is INFO unless `ssl.enabled` is
-true, since the bundle may be set at runtime. The v1.13.0 column holds
-through v1.14.0, checked on B2 and B2u with that jar; the script, with B2,
-was run twice with the same results.
+true, since the bundle may be set at runtime. No reference project sets
+`spring.rabbitmq.host` or `addresses`.
 
 ## SCG016 Vault transport scenarios (Spring Cloud Vault 5.0.2 client, on the wire)
 
@@ -1434,34 +1342,32 @@ imports configuration from Vault at startup
 Spring Cloud 2025.1.3, the latest GA release train, which pins Spring Boot
 4.0.8 and Spring Cloud Vault 5.0.2; the train for Spring Boot 4.1 is not
 GA yet. Reproducible with `spring-env-benchmark/vault-transport-scenarios.sh`,
-run twice with the same results. Keys are under `spring.cloud.vault`. The rule columns
-are for the same configuration on a remote host: on the scenario's own
+run twice with the same results. Keys are under `spring.cloud.vault`. The
+SCG column is for the same configuration on a remote host: on the scenario's own
 loopback address, a finding there is INFO (see "Loopback addresses in the
 transport rules").
 
-| # | Configuration | On the wire | v1.13.0 | v1.14.0 |
-|---|---|---|---|---|
-| D0 | defaults (`host=127.0.0.1`) | TLS | silent | silent |
-| S1 | `scheme=http` | HTTP, token in the clear | HIGH | HIGH |
-| S2 | `scheme=HTTP` | app did not start | HIGH | silent |
-| S3 | `scheme=https` | TLS | silent | silent |
-| S4 | `scheme=` (empty) | app did not start | silent | silent |
-| U1 | `uri=http://...` | HTTP, token in the clear | HIGH | HIGH |
-| U2 | `uri=https://...` | TLS | silent | silent |
-| U3 | `uri=https://...`, `scheme=http` | TLS | silent | silent |
-| U4 | `uri=http://...`, `scheme=https` | HTTP, token in the clear | HIGH | HIGH |
-| U5 | `uri=HTTP://...` | app did not start | HIGH | silent |
-| U6 | `uri=` (empty), `scheme=http` | HTTP, token in the clear | HIGH | HIGH |
-| E1–E5 | `scheme=http`, `enabled=false` (or `FALSE`, `off`, `no`, `0`) | no connection | HIGH | silent |
+|  # | Configuration | On the wire | SCG |
+|---|---|---|---|
+|  D0 | defaults (`host=127.0.0.1`) | TLS | silent  |
+|  S1 | `scheme=http` | HTTP, token in the clear | HIGH  |
+|  S2 | `scheme=HTTP` | app did not start | silent  |
+|  S3 | `scheme=https` | TLS | silent  |
+|  S4 | `scheme=` (empty) | app did not start | silent  |
+|  U1 | `uri=http://...` | HTTP, token in the clear | HIGH  |
+|  U2 | `uri=https://...` | TLS | silent  |
+|  U3 | `uri=https://...`, `scheme=http` | TLS | silent  |
+|  U4 | `uri=http://...`, `scheme=https` | HTTP, token in the clear | HIGH  |
+|  U5 | `uri=HTTP://...` | app did not start | silent  |
+|  U6 | `uri=` (empty), `scheme=http` | HTTP, token in the clear | HIGH  |
+|  E1–E5 | `scheme=http`, `enabled=false` (or `FALSE`, `off`, `no`, `0`) | no connection | silent  |
 
 `uri` overrides `scheme` (U3, U4), and an empty `uri` leaves it to `scheme`
 (U6). Spring Cloud Vault compares the scheme case-sensitively: `HTTP`,
 `HTTP://` and an empty `scheme` stopped the application from starting
-("Scheme must be http or https"), where v1.13.0 reported `HTTP` and
-`HTTP://` as HIGH. `enabled` set to any false literal turned the client
-off. No reference project configures `spring.cloud.vault.*`, so every
-reference project and demo fixture reports the same findings as with the
-v1.13.0 jar.
+("Scheme must be http or https"), so SCG016 is silent on them. `enabled`
+set to any false literal turned the client off. No reference project
+configures `spring.cloud.vault.*`.
 
 ## SCG017 resource server transport scenarios (Spring Boot 4.1.1, on the wire)
 
@@ -1476,51 +1382,46 @@ bearer token; the listener serves a generated public key for `.pub` paths.
 The response was 401 in every row: the test token is never valid, and
 forging one was not attempted. Reproducible with
 `spring-env-benchmark/jwt-transport-scenarios.sh`, run twice with the same
-results. Keys are under `spring.security.oauth2.resourceserver`. The rule columns
-are for the same configuration on a remote host: on the scenario's own
+results. Keys are under `spring.security.oauth2.resourceserver`. The SCG
+column is for the same configuration on a remote host: on the scenario's own
 loopback address, a finding there is INFO (see "Loopback addresses in the
 transport rules").
 
-| # | Configuration | On the wire | v1.13.0 | v1.14.0 |
-|---|---|---|---|---|
-| J1 | `jwt.jwk-set-uri=http://...` | HTTP | HIGH | HIGH |
-| J2 | `jwt.jwk-set-uri=https://...` | TLS | silent | silent |
-| J3 | `jwt.jwk-set-uri=HTTP://...` | HTTP | HIGH | HIGH |
-| I1 | `jwt.issuer-uri=http://...` | HTTP | HIGH | HIGH |
-| I2 | `jwt.issuer-uri=https://...` | TLS | silent | silent |
-| I3 | `jwt.issuer-uri=HTTP://...` | HTTP | HIGH | HIGH |
-| B1 | `jwt.issuer-uri=https://...`, `jwt.jwk-set-uri=http://...` | HTTP | HIGH | HIGH |
-| B2 | `jwt.issuer-uri=http://...`, `jwt.jwk-set-uri=https://...` | TLS | HIGH | silent |
-| K1 | `jwt.public-key-location=http://...` | HTTP | silent | HIGH |
-| B3 | `jwt.issuer-uri=http://...`, `jwt.public-key-location=file:...` | HTTP | HIGH | HIGH |
-| B4 | `jwt.jwk-set-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent | silent |
-| B5 | `jwt.issuer-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent | silent |
-| O1 | `opaquetoken.introspection-uri=http://...`, client id and secret | HTTP, secret in the clear | silent | HIGH |
-| O2 | `opaquetoken.introspection-uri=https://...`, client id and secret | TLS | silent | silent |
+|  # | Configuration | On the wire | SCG |
+|---|---|---|---|
+|  J1 | `jwt.jwk-set-uri=http://...` | HTTP | HIGH  |
+|  J2 | `jwt.jwk-set-uri=https://...` | TLS | silent  |
+|  J3 | `jwt.jwk-set-uri=HTTP://...` | HTTP | HIGH  |
+|  I1 | `jwt.issuer-uri=http://...` | HTTP | HIGH  |
+|  I2 | `jwt.issuer-uri=https://...` | TLS | silent  |
+|  I3 | `jwt.issuer-uri=HTTP://...` | HTTP | HIGH  |
+|  B1 | `jwt.issuer-uri=https://...`, `jwt.jwk-set-uri=http://...` | HTTP | HIGH  |
+|  B2 | `jwt.issuer-uri=http://...`, `jwt.jwk-set-uri=https://...` | TLS | silent  |
+|  K1 | `jwt.public-key-location=http://...` | HTTP | HIGH  |
+|  B3 | `jwt.issuer-uri=http://...`, `jwt.public-key-location=file:...` | HTTP | HIGH  |
+|  B4 | `jwt.jwk-set-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent  |
+|  B5 | `jwt.issuer-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent  |
+|  O1 | `opaquetoken.introspection-uri=http://...`, client id and secret | HTTP, secret in the clear | HIGH  |
+|  O2 | `opaquetoken.introspection-uri=https://...`, client id and secret | TLS | silent  |
 
 The keys come from the first of `jwk-set-uri`, `issuer-uri` and
 `public-key-location` that is set, as Spring Boot's `IssuerUriCondition`
 and `KeyValueCondition` state: next to a `jwk-set-uri`, neither
-`issuer-uri` (B2) nor `public-key-location` (B4) was fetched, so v1.13.0's
-B2 finding was a false positive; next to an `issuer-uri`,
-`public-key-location` wasn't (B5), and `issuer-uri` was (B3). The rule now
-reports only the key in use. When a key before it is an unresolved
-placeholder, which may resolve empty at runtime, an `http://` value after
-it is reported as INFO. The application reads `public-key-location` at
-startup and started with the key it fetched in plain HTTP (K1), which
-v1.13.0 didn't read; nor did it read `introspection-uri`, which sent the
-client secret in the clear (O1). The scheme is matched in any case (J3,
-I3). In O1 and O2, SCG006 also reports the client secret written in the
-file, in both versions.
+`issuer-uri` (B2) nor `public-key-location` (B4) was fetched; next to an
+`issuer-uri`, `public-key-location` wasn't (B5), and `issuer-uri` was
+(B3). The rule reports only the key in use. When a key before it is an
+unresolved placeholder, which may resolve empty at runtime, an `http://`
+value after it is reported as INFO. The application reads
+`public-key-location` at startup and started with the key it fetched in
+plain HTTP (K1), and `introspection-uri` sent the client secret in the
+clear (O1). The scheme is matched in any case (J3, I3). In O1 and O2,
+SCG006 also reports the client secret written in the file.
 
-On the reference projects and demo fixtures, the findings are the same as
-with the v1.13.0 jar except for the wording of SCG017's message: no
-reference project sets `public-key-location` or `introspection-uri`, and
-none sets more than one of the three key sources (checked with a grep for
-the four keys, in any of their relaxed forms, whatever their value). The
-one SCG017 finding in `spring-boot`, `jwk-set-uri:
-http://localhost:8080/oauth2/jwks`, was HIGH in v1.14.0 and is INFO since
-loopback addresses were decided for all the transport rules at once
+No reference project sets `public-key-location` or `introspection-uri`,
+and none sets more than one of the three key sources (checked with a grep
+for the four keys, in any of their relaxed forms, whatever their value).
+The one SCG017 finding, in `spring-boot`, is `jwk-set-uri:
+http://localhost:8080/oauth2/jwks`: INFO, on a loopback address
 ("Loopback addresses in the transport rules", L13).
 
 ## Loopback addresses in the transport rules
@@ -1552,25 +1453,25 @@ SOCKS proxy or a failover partner (L14). SCG016 keeps its severity when
 Vault is located through service discovery (L16), and SCG017 when the
 URI is `issuer-uri`, whose metadata may name keys on another host (L17).
 
-| # | Rule | Configuration | v1.15.0 | v1.16.0 |
-|---|---|---|---|---|
-| L1 | SCG012 | `spring.datasource.url=jdbc:mysql://localhost:3306/app?useSSL=false` | HIGH | INFO |
-| L2 | SCG012 | `jdbc:mysql://localhost,db.internal/app?useSSL=false` | HIGH | HIGH |
-| L3 | SCG012 | `jdbc:sqlserver://127.0.0.1;encrypt=false` | HIGH | INFO |
-| L4 | SCG012 | `spring.elasticsearch.uris=http://es.localhost:9200` | HIGH | HIGH |
-| L5 | SCG014 | `spring.kafka.bootstrap-servers=localhost:9092`, no protocol | MEDIUM | INFO |
-| L6 | SCG014 | L5 plus `spring.kafka.consumer.bootstrap-servers=kafka.internal:9092` | MEDIUM | MEDIUM |
-| L7 | SCG014 | binder `brokers=localhost:9092`, `configuration.security.protocol=SASL_PLAINTEXT` | HIGH | INFO |
-| L8 | SCG014 | no broker written, no protocol | MEDIUM | MEDIUM |
-| L9 | SCG015 | `spring.rabbitmq.host=localhost` | MEDIUM | INFO |
-| L10 | SCG015 | `addresses=localhost:5672,rabbit.internal:5672` | MEDIUM | MEDIUM |
-| L11 | SCG016 | `spring.cloud.vault.uri=http://127.0.0.1:8200` | HIGH | INFO |
-| L12 | SCG016 | `scheme=http`, `host=localhost` (HIGH without `host`) | HIGH | INFO |
-| L13 | SCG017 | `jwk-set-uri=http://localhost:8080/oauth2/jwks` | HIGH | INFO |
-| L14 | SCG012 | `jdbc:postgresql://localhost/db?host=prod-db.internal&sslmode=disable` | HIGH | HIGH |
-| L15 | SCG015 | `spring.rabbitmq.host=${RABBIT_HOST:localhost}` | MEDIUM | MEDIUM |
-| L16 | SCG016 | L12 plus `discovery.enabled=true` | HIGH | HIGH |
-| L17 | SCG017 | `issuer-uri=http://localhost:9000` | HIGH | HIGH |
+|  # | Rule | Configuration | SCG |
+|---|---|---|---|
+|  L1 | SCG012 | `spring.datasource.url=jdbc:mysql://localhost:3306/app?useSSL=false` | INFO  |
+|  L2 | SCG012 | `jdbc:mysql://localhost,db.internal/app?useSSL=false` | HIGH  |
+|  L3 | SCG012 | `jdbc:sqlserver://127.0.0.1;encrypt=false` | INFO  |
+|  L4 | SCG012 | `spring.elasticsearch.uris=http://es.localhost:9200` | HIGH  |
+|  L5 | SCG014 | `spring.kafka.bootstrap-servers=localhost:9092`, no protocol | INFO  |
+|  L6 | SCG014 | L5 plus `spring.kafka.consumer.bootstrap-servers=kafka.internal:9092` | MEDIUM  |
+|  L7 | SCG014 | binder `brokers=localhost:9092`, `configuration.security.protocol=SASL_PLAINTEXT` | INFO  |
+|  L8 | SCG014 | no broker written, no protocol | MEDIUM  |
+|  L9 | SCG015 | `spring.rabbitmq.host=localhost` | INFO  |
+|  L10 | SCG015 | `addresses=localhost:5672,rabbit.internal:5672` | MEDIUM  |
+|  L11 | SCG016 | `spring.cloud.vault.uri=http://127.0.0.1:8200` | INFO  |
+|  L12 | SCG016 | `scheme=http`, `host=localhost` (HIGH without `host`) | INFO  |
+|  L13 | SCG017 | `jwk-set-uri=http://localhost:8080/oauth2/jwks` | INFO  |
+|  L14 | SCG012 | `jdbc:postgresql://localhost/db?host=prod-db.internal&sslmode=disable` | HIGH  |
+|  L15 | SCG015 | `spring.rabbitmq.host=${RABBIT_HOST:localhost}` | MEDIUM  |
+|  L16 | SCG016 | L12 plus `discovery.enabled=true` | HIGH  |
+|  L17 | SCG017 | `issuer-uri=http://localhost:9000` | HIGH  |
 
 SCG014 counts the brokers across the whole file (`bootstrap-servers`, a
 `bootstrap.servers` map entry, a binder's `brokers`, in every context): one
@@ -1578,13 +1479,13 @@ remote address anywhere keeps every finding (L6). SCG015 counts every
 entry of `addresses` when it is set, since the client fails over to them,
 else `host`.
 
-On the reference projects, against the v1.15.0 jar, nine findings become
-INFO, each on a written loopback host: in `spring-petclinic-microservices`,
-SCG012's `jdbc:mysql://localhost:3306/petclinic?...useSSL=false` (HIGH); in
-`spring-boot`, SCG017's `jwk-set-uri: http://localhost:8080/oauth2/jwks`
-(HIGH) and one SCG014 on `bootstrap-servers=localhost:9092` (MEDIUM); in
+In the reference projects, 15 findings are INFO for a written loopback
+host, from 8 properties: in `spring-petclinic-microservices-config`,
+SCG012's `jdbc:mysql://localhost:3306/petclinic?...useSSL=false`, inherited
+by its 8 services (HIGH on a remote host); in `spring-boot`, SCG017's
+`jwk-set-uri: http://localhost:8080/oauth2/jwks` (HIGH) and one SCG014 on
+`bootstrap-servers=localhost:9092` (MEDIUM); in
 `spring-cloud-stream-samples`, five SCG014 on binder `brokers` or
 `bootstrap-servers` at `localhost` (one HIGH for `SASL_PLAINTEXT`, four
-MEDIUM). Every other finding is identical. Two demo fixtures that
-showcase a HIGH used `localhost` and now use a remote host
+MEDIUM). The demo fixtures that showcase a HIGH use a remote host
 (`localstack.dev.internal`, `customers-db`).
