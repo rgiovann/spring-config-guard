@@ -8,6 +8,59 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.12.0
+
+**Added**
+- SCG009 reads `logging.level.<logger>`. A `DEBUG` or `TRACE` level on a
+  logger that writes secrets to the log, on an ancestor of one, or on Spring
+  Boot's `web` or `sql` group containing one is MEDIUM, unless a more
+  specific logger sets its own level; any other logger at those levels is
+  INFO, since what it writes can't be known statically. In a running app,
+  `logging.level.org.springframework.web=debug` wrote request query strings
+  and bodies, as `debug=true` does, and Apache HttpClient's loggers wrote
+  outbound Authorization headers; the rule only read `debug`, `trace` and
+  the root logger.
+
+**Fixed**
+- SCG009 reported `debug` and `trace` only for values Spring reads as true.
+  Spring Boot turns them on for any value except exactly `false`: `FALSE`,
+  `off`, `no`, `0`, an empty value, a trailing space and a quoted YAML
+  `"off"` all turned debug logging on, and the rule was silent. A key that
+  a profile overrides with null is reported too.
+- SCG009's messages said `debug` raises security loggers and logs SQL bound
+  parameters; each message now says what that setting wrote in a running
+  app.
+- SCG010's messages name the Spring Boot versions that read each prefix:
+  Spring Boot 4.0 and later ignore `server.error.*`, and earlier versions
+  ignore `spring.web.error.*`, so where a key is inert the fix is to remove
+  it. Neither rule's messages say "in production" anymore.
+
+**Detection changes**
+- **Lower severity**: SCG010's `include-stacktrace` goes from HIGH to
+  MEDIUM, like its other three properties: a stack trace carries the
+  exception's message and cause chain, more of what `include-message`
+  (MEDIUM) discloses, not a different risk. With the default
+  `--fail-on=HIGH`, SCG010 no longer fails a build.
+- **More findings**: SCG009 for `debug`/`trace` values other than exactly
+  `false`, and for `logging.level.<logger>` at `DEBUG`/`TRACE` (MEDIUM or
+  INFO, above). With `--fail-on=MEDIUM`, a project that sets one of the
+  loggers that write secrets to `DEBUG`/`TRACE` now fails.
+- Each change was checked in running Spring Boot apps (4.1.1, and 3.5.16 for
+  SCG010's prefixes); see `VALIDATION.md`, "SCG010 error response scenarios"
+  and "SCG009 verbose logging scenarios". The scenario scripts are in
+  `spring-env-benchmark`.
+- On the reference corpus, against `v1.11.0`: SCG009 adds 5 INFO in
+  `spring-boot`, 1 MEDIUM and 1 INFO in `spring-boot-admin`, and 1 INFO in
+  `spring-cloud-stream-samples`, and `spring-boot`'s `debug=true` finding
+  has a new message; every other finding, and the demo fixtures, are
+  identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.11.0...v1.12.0`.
+
 ## v1.11.0
 
 **Added**

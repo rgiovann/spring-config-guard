@@ -1251,7 +1251,7 @@ message, B = binding errors; with `on-param`, what a request adding the
 `trace`, `message` or `errors` parameter gets. Unless noted, keys are
 `spring.web.error.*` on Spring MVC 4.1.1.
 
-| # | Configuration | Spring Boot | v1.11.0 | (unreleased) |
+| # | Configuration | Spring Boot | v1.11.0 | v1.12.0 |
 |---|---|---|---|---|
 | D0, F0, T0 | defaults (no key) | nothing | silent | silent |
 | S1, S6 | `include-stacktrace=always` (or `ALWAYS`) | T on every error | HIGH | MEDIUM |
@@ -1297,7 +1297,7 @@ Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
 J = JPA bound parameter, O = outbound Authorization header, D = outbound
 body. Values are command-line arguments unless noted.
 
-| # | Configuration | Secrets in the log | v1.11.0 | (unreleased) |
+| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 |
 |---|---|---|---|---|
 | L0 | defaults | none | silent | silent |
 | L1 | `debug=true` | Q B D | MEDIUM | MEDIUM |
