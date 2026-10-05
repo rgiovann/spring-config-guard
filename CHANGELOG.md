@@ -8,6 +8,62 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.13.0
+
+**Added**
+- SCG013 reads Actuator health groups (`management.endpoint.health.group.<name>.show-details`
+  and `show-components`), served at `/actuator/health/<name>` and at their
+  `additional-path`, which can be on the main server port: a group with
+  `show-details=always` returned its details while the rule was silent. It
+  also reads `show-components`, which returns component names and status
+  without details: INFO.
+
+**Fixed**
+- SCG002 reported `spring.h2.console.enabled` as HIGH for `yes`, `on`, `1`
+  and a trailing space. Spring Boot turns the console on only for `true`,
+  in any case; with those values it stayed off. Its message now describes
+  the console as observed (a web SQL client that connects to any JDBC URL)
+  and says that without `web-allow-others` it answers loopback clients
+  only, which can include requests forwarded by a proxy on the same
+  machine.
+- SCG013 reported `show-details=always` as MEDIUM next to
+  `show-components=never`, which hides the details.
+- SCG015 missed `spring.rabbitmq.addresses` written as a YAML list; it now
+  reads the first entry, whose scheme Spring Boot decides TLS by.
+- SCG013's message said "any caller" for `when-authorized`; it now names
+  the path, and the roles when they are set.
+
+**Detection changes**
+- **Lower severity**: SCG013's `show-details=when-authorized` goes from
+  MEDIUM to INFO: anonymous callers got only the status, with or without
+  Spring Security. SCG002's `enabled` with a placeholder without a default
+  goes from HIGH to INFO, since its value can't be known statically. With
+  `--fail-on=MEDIUM`, a build that failed only on `when-authorized` now
+  passes.
+- **Fewer findings**: SCG002 for `enabled` values other than `true` (with
+  the default `--fail-on=HIGH`, such a project no longer fails), and SCG013
+  next to `show-components=never`.
+- **More findings**: SCG013 for health groups (MEDIUM for
+  `show-details=always`) and for `show-components` (INFO), and SCG015 for
+  an address list without a scheme (MEDIUM). With `--fail-on=MEDIUM`, a
+  project with such a group or list now fails.
+- Each change was checked in running Spring Boot 4.1.1 apps, the RabbitMQ
+  one on the wire; see `VALIDATION.md`, "SCG002 H2 console scenarios",
+  "SCG013 health details scenarios" and "SCG015 RabbitMQ transport
+  scenarios". The scenario scripts are in `spring-env-benchmark`.
+- On the reference corpus and the demo fixtures, against `v1.12.0`:
+  `spring-boot` adds 1 MEDIUM (SCG013, a health group in its Actuator smoke
+  test), and every SCG002 and SCG013 finding has a new message (9 in
+  `spring-boot`, 30 in `spring-boot-admin`, 1 in
+  `spring-cloud-stream-samples`, 4 in `demo-project`); every other finding
+  is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.12.0...v1.13.0`.
+
 ## v1.12.0
 
 **Added**

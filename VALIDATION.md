@@ -1374,7 +1374,7 @@ machine's non-loopback address (a remote client to H2), and through
 localhost as a proxy or sidecar on the same machine does. "blocked" is H2's
 "remote connections are disabled" page.
 
-| # | Configuration | Loopback / remote / proxied | v1.12.0 | (unreleased) |
+| # | Configuration | Loopback / remote / proxied | v1.12.0 | v1.13.0 |
 |---|---|---|---|---|
 | H0 | defaults | 404 / 404 / 404 | silent | silent |
 | H1, H2 | `enabled=true`, `TRUE` | console / blocked / console | HIGH | HIGH |
@@ -1419,7 +1419,7 @@ SSL chains), "components" their names and status only, "status" the
 overall status only. Keys are under `management.endpoint.health`; the
 group is `group.custom`, including `db`.
 
-| # | Configuration | Response | v1.12.0 | (unreleased) |
+| # | Configuration | Response | v1.12.0 | v1.13.0 |
 |---|---|---|---|---|
 | D0, D5 | defaults, `show-details=never` | status | silent | silent |
 | S0, S1 | Spring Security: defaults, `show-details=always` | anonymous and user: status, details | silent, MEDIUM | silent, MEDIUM |
@@ -1467,7 +1467,7 @@ connection at startup. Reproducible with
 same results. Keys are under `spring.rabbitmq`; `host` is `127.0.0.1`
 unless `addresses` is set.
 
-| # | Configuration | On the wire | v1.12.0 | (unreleased) |
+| # | Configuration | On the wire | v1.12.0 | v1.13.0 |
 |---|---|---|---|---|
 | H0 | `host` only | AMQP (5672) | MEDIUM | MEDIUM |
 | H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent | silent |
