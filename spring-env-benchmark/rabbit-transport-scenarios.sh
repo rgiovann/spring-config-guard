@@ -59,6 +59,7 @@ scenario "H4 host, ssl.enabled=TRUE"                                $R.host=127.
 scenario "H5 host, port=5671 (no ssl)"                              $R.host=127.0.0.1 $R.port=5671
 scenario "B1 host, ssl.bundle=rabbit"                               $R.host=127.0.0.1 $R.ssl.bundle=rabbit \
     $B.location=file:target/trust.p12 $B.password=changeit $B.type=PKCS12
+scenario "B2 host, ssl.bundle=\${SCG_BUNDLE:}"                       $R.host=127.0.0.1 $R.ssl.bundle='${SCG_BUNDLE:}'
 scenario "V1 host, ssl.enabled=true, validate-server-certificate=false" $R.host=127.0.0.1 $R.ssl.enabled=true \
     $R.ssl.validate-server-certificate=false
 scenario "A1 addresses=127.0.0.1:5672"                              $R.addresses=127.0.0.1:5672

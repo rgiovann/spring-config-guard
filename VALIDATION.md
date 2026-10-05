@@ -1502,22 +1502,24 @@ connection at startup. Reproducible with
 same results. Keys are under `spring.rabbitmq`; `host` is `127.0.0.1`
 unless `addresses` is set.
 
-| # | Configuration | On the wire | v1.12.0 | v1.13.0 |
-|---|---|---|---|---|
-| H0 | `host` only | AMQP (5672) | MEDIUM | MEDIUM |
-| H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent | silent |
-| H2 | `ssl.enabled=false` | AMQP (5672) | HIGH | HIGH |
-| H5 | `port=5671`, no `ssl.enabled` | AMQP (5671) | MEDIUM | MEDIUM |
-| B1 | `ssl.bundle` set | TLS (5672) | silent | silent |
-| V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent | silent |
-| A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM | MEDIUM |
-| A2 | `addresses=amqps://...` | TLS | silent | silent |
-| A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012) | HIGH (SCG012) |
-| A4 | `addresses=AMQPS://...` | app did not start | silent | silent |
-| A5 | `addresses=127.0.0.1:5672`, `ssl.enabled=true` | TLS | silent | silent |
-| A6 | `addresses=127.0.0.1:5672,amqps://...` | AMQP | MEDIUM | MEDIUM |
-| A7 | `addresses=amqps://...,127.0.0.1:5672` | TLS | silent | silent |
-| Y1 | YAML `addresses` as a list, `[127.0.0.1:5672]` | AMQP | silent | MEDIUM |
+| # | Configuration | On the wire | v1.12.0 | v1.13.0 | (unreleased) |
+|---|---|---|---|---|---|
+| H0 | `host` only | AMQP (5672) | MEDIUM | MEDIUM | MEDIUM |
+| H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent | silent | silent |
+| H2 | `ssl.enabled=false` | AMQP (5672) | HIGH | HIGH | HIGH |
+| H5 | `port=5671`, no `ssl.enabled` | AMQP (5671) | MEDIUM | MEDIUM | MEDIUM |
+| B1 | `ssl.bundle` set | TLS (5672) | silent | silent | silent |
+| B2 | `ssl.bundle=${SCG_BUNDLE:}` (resolves empty) | AMQP (5672) | silent | silent | MEDIUM |
+| B2u | `ssl.bundle=${SCG_BUNDLE}` (no default) | decided at runtime | silent | silent | INFO |
+| V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent | silent | silent |
+| A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM | MEDIUM | MEDIUM |
+| A2 | `addresses=amqps://...` | TLS | silent | silent | silent |
+| A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012) | HIGH (SCG012) | HIGH (SCG012) |
+| A4 | `addresses=AMQPS://...` | app did not start | silent | silent | silent |
+| A5 | `addresses=127.0.0.1:5672`, `ssl.enabled=true` | TLS | silent | silent | silent |
+| A6 | `addresses=127.0.0.1:5672,amqps://...` | AMQP | MEDIUM | MEDIUM | MEDIUM |
+| A7 | `addresses=amqps://...,127.0.0.1:5672` | TLS | silent | silent | silent |
+| Y1 | YAML `addresses` as a list, `[127.0.0.1:5672]` | AMQP | silent | MEDIUM | MEDIUM |
 
 Spring Boot's `RabbitProperties.Ssl.determineEnabled()` turns TLS on for
 `ssl.enabled` true (bound through the Binder, so `yes` too) or an
@@ -1532,6 +1534,16 @@ certificate, which SCG015 doesn't cover (`BACKLOG.md`, "TLS without
 verifying the server"). No reference project sets `spring.rabbitmq.host`
 or `addresses`, so every reference project and demo fixture reports the
 same findings as with the v1.12.0 jar.
+
+A sweep of every rule for values that resolve empty added B2 and B2u.
+`determineEnabled()` tests the bundle with `StringUtils.hasText`, so a
+placeholder that resolves empty left TLS off and the client spoke plain
+AMQP (B2), where the rule, checking only that the raw value was non-blank,
+was silent. It now resolves the bundle first: one that resolves empty
+counts as unset, and one without a default is INFO unless `ssl.enabled` is
+true, since the bundle may be set at runtime. The v1.13.0 column holds
+through v1.14.0, checked on B2 and B2u with that jar; the script, with B2,
+was run twice with the same results.
 
 ## SCG016 Vault transport scenarios (Spring Cloud Vault 5.0.2 client, on the wire)
 

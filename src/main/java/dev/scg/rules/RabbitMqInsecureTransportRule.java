@@ -17,8 +17,11 @@ import java.util.Optional;
  * wire, with a listener recording whether the client spoke plain AMQP or started a TLS handshake
  * (VALIDATION.md, "SCG015 RabbitMQ transport scenarios"): TLS is on only if
  * {@code spring.rabbitmq.ssl.enabled} is true ({@code true}, {@code yes}, ... — it is bound through
- * the Binder), or {@code spring.rabbitmq.ssl.bundle} is set; with {@code addresses}, the scheme of
- * the first address, when it has one, overrides both ({@code amqps://} on, {@code amqp://} off).
+ * the Binder), or {@code spring.rabbitmq.ssl.bundle} has text ({@code StringUtils.hasText}: a
+ * placeholder that resolves empty, {@code ${BUNDLE:}}, left it off, and the client spoke plain
+ * AMQP; one without a default is INFO, since the bundle may be set at runtime); with
+ * {@code addresses}, the scheme of the first address, when it has one, overrides both
+ * ({@code amqps://} on, {@code amqp://} off).
  * Absence of all of them connected in plain AMQP. So, unlike this project's opt-in-by-default
  * rules, absence is not safe here: {@link #check(EffectiveConfig)} treats an unset/blank
  * {@code spring.rabbitmq.ssl.enabled} like an explicit {@code false}, one level lower (ADR-010).
@@ -79,12 +82,34 @@ public final class RabbitMqInsecureTransportRule implements Rule {
             return List.of();
         }
 
+        String enabledRaw = RelaxedProperties.get(config.properties(), SSL_ENABLED_KEY);
         String bundleRaw = RelaxedProperties.get(config.properties(), SSL_BUNDLE_KEY);
         if (bundleRaw != null && !bundleRaw.isBlank()) {
-            return List.of();
+            Optional<String> bundle = EnvironmentPlaceholder.resolve(bundleRaw.strip());
+            if (bundle.isPresent() && !bundle.get().isBlank()) {
+                return List.of(); // a bundle turns TLS on, whatever ssl.enabled says
+            }
+            if (bundle.isEmpty() && !resolvesTrue(enabledRaw)) {
+                return List.of(new Finding(
+                        id(),
+                        Severity.INFO,
+                        ("RabbitMQ property '%s' relies on an unresolved environment placeholder '%s'. TLS is on " +
+                                "only if it resolves to a bundle name (or '%s' is true); static analysis cannot " +
+                                "verify that.")
+                                .formatted(SSL_BUNDLE_KEY, bundleRaw, SSL_ENABLED_KEY),
+                        config.sourceFile().toString(),
+                        config.profileLabel()
+                ));
+            }
         }
 
-        return evaluateSslEnabled(config, RelaxedProperties.get(config.properties(), SSL_ENABLED_KEY));
+        return evaluateSslEnabled(config, enabledRaw);
+    }
+
+    private static boolean resolvesTrue(String raw) {
+        return raw != null && EnvironmentPlaceholder.resolve(raw.strip())
+                .filter(RelaxedBoolean::isTrueLiteral)
+                .isPresent();
     }
 
     /**

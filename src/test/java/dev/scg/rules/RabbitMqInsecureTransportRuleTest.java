@@ -117,6 +117,84 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
+    @DisplayName("B2: a bundle placeholder that resolves empty leaves TLS off: MEDIUM, as without a bundle")
+    void bundleResolvingEmptyIsMedium() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_BUNDLE_KEY, "${SCG_BUNDLE:}"
+        ));
+
+        assertThat(rule.check(config)).singleElement()
+                .extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("B2: with a bundle that resolves empty, ssl.enabled=false is still HIGH")
+    void bundleResolvingEmptyWithSslDisabledIsHigh() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_ENABLED_KEY, "false",
+                SSL_BUNDLE_KEY, "${SCG_BUNDLE:}"
+        ));
+
+        assertThat(rule.check(config)).singleElement()
+                .extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "${SSL_ENABLED}"})
+    @DisplayName("B2u: a bundle placeholder without a default is INFO, whether ssl.enabled is false or unresolved")
+    void unresolvedBundleIsInfo(String enabled) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_ENABLED_KEY, enabled,
+                SSL_BUNDLE_KEY, "${SCG_BUNDLE}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains(SSL_BUNDLE_KEY, "${SCG_BUNDLE}");
+    }
+
+    @Test
+    @DisplayName("B2u: a bundle placeholder without a default is INFO when ssl.enabled is absent")
+    void unresolvedBundleWithoutSslEnabledIsInfo() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_BUNDLE_KEY, "${SCG_BUNDLE}"
+        ));
+
+        assertThat(rule.check(config)).singleElement()
+                .extracting(Finding::severity).isEqualTo(Severity.INFO);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"${SCG_BUNDLE}", "${SCG_BUNDLE:}"})
+    @DisplayName("A bundle placeholder doesn't matter when ssl.enabled is true: TLS is on either way")
+    void bundlePlaceholderWithSslEnabledIsSilent(String bundle) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_ENABLED_KEY, "true",
+                SSL_BUNDLE_KEY, bundle
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A bundle placeholder with a non-empty default sets the bundle: silent")
+    void bundlePlaceholderWithDefaultIsSilent() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                HOST_KEY, "127.0.0.1",
+                SSL_ENABLED_KEY, "false",
+                SSL_BUNDLE_KEY, "${SCG_BUNDLE:rabbit}"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
     @DisplayName("Should stay silent when ssl.bundle is configured, regardless of ssl.enabled")
     void shouldStaySilentWhenSslBundleConfigured() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
@@ -125,7 +203,7 @@ class RabbitMqInsecureTransportRuleTest {
                 SSL_BUNDLE_KEY, "rabbitmq-bundle"
         ));
 
-        // Matches RabbitProperties.Ssl#determineEnabled(): defaultEnabled = enabled || bundle != null,
+        // Matches RabbitProperties.Ssl#determineEnabled(): enabled || StringUtils.hasText(bundle),
         // so a configured bundle makes SSL effectively enabled even with ssl.enabled=false.
         assertThat(rule.check(config)).isEmpty();
     }
