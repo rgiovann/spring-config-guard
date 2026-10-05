@@ -11,7 +11,8 @@ evidence, each reproducible from this repository:
   ("ProfileMerger correctness benchmark").
 * **Each rule**: its scenarios run against a real Spring Boot 4.1.1 app, a
   client on the wire or the library's own source, one configuration at a
-  time, with the scripts in `spring-env-benchmark/`.
+  time, with the scripts in `spring-env-benchmark/` (its
+  [README](spring-env-benchmark/README.md) lists them and what each needs).
 
 Every number and every **SCG** column in this document is the result of
 **SCG v1.16.0**. Most scenario rows are pinned by a test named after
