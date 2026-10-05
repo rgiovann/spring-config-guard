@@ -19,30 +19,29 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: what changes findings users already see, then the
-GitHub Action, then new coverage with a wide reach, measured first. Items
-waiting for a need come after, and the `VALIDATION.md` rewrite last, once
-the rest has settled.
+Done in this order: the `VALIDATION.md` rewrite, once v1.16.0 has shipped
+the changes still unreleased, then the GitHub Action, then the one item of
+new coverage with a real case. Everything else waits in Deferred for a
+real case or a need.
 
-### Findings name the key as the rule spells it, not as it is written
+### Rewrite VALIDATION.md once every rule is reviewed
 
-A message quotes the key from the rule's own list, so
-`spring.web.error.includeStacktrace=always` is reported as
-`spring.web.error.include-stacktrace=always` (found while reviewing
-SCG010). Relaxed binding makes both the same property, so detection is
-unaffected, but a user searching the file for the quoted key won't find
-it. `RelaxedProperties.findActualKey()` returns the spelling written; only
-SCG011 uses it today. Applying it would touch every rule that quotes a key,
-so it is one change across the rules, not part of any single review.
+`VALIDATION.md` has grown into a history: columns per release, "used to /
+now" paragraphs, dated correction notes, numbers measured against earlier
+jars. It is heavy to read. Every rule has had its review, so rewrite it
+now to state only what holds:
 
-### A null in a profile purges the base's sub-keys (measure first)
+* per rule, the scenario table(s) and one or two paragraphs: what was
+  checked, against what (a running app, a driver, the metadata), and how to
+  re-run it;
+* the public repositories SCG is run against, with their pinned commits and
+  current findings;
+* no earlier releases, fix history or before/after comparisons; that
+  record stays in `CHANGELOG.md` and the git history.
 
-Found while fixing the YAML null in a base file: `app.x: ~` in a profile
-makes `ProfileMerger` remove the base's `app.x.*` keys, while Spring keeps
-both sources, and each one's binding picks a shape by type (CLAUDE.md,
-"Architecture"). The `/actuator/env` benchmark checks a null override of a
-scalar only. Add a null over a map to it before deciding whether the purge
-goes.
+Adjust what depends on the current shape in the same change: step 4 of
+the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
+columns) and the section names cited in the skills and in code comments.
 
 ### GitHub Action for the Marketplace
 
@@ -62,43 +61,10 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
   release means a matching action release.
 * **A CI gate first** (exit code and report). PR annotations and a SARIF
   upload for code scanning come later: they place each finding on a file,
-  so they depend on "Per-property origin in findings" below.
+  so they depend on "Per-property origin in findings" (Deferred).
 * **Order**: only after every rule is reviewed and released (the
   maintainer's decision), since false positives in a CI gate are what drive
   new users away first. Met with v1.15.0: every rule's review has shipped.
-
-### SCG012 cases left open (decide with measurements)
-
-Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
-
-* **Default modes that allow plaintext.** PostgreSQL's default
-  `sslmode=prefer` and MySQL's default `sslMode=PREFERRED` fall back to an
-  unencrypted connection when the server doesn't offer TLS. Reporting a
-  JDBC URL without an explicit mode would reach almost every PostgreSQL and
-  MySQL URL; measure on the corpus first, and decide between INFO
-  (CLAUDE.md, "Findings") and leaving it to the server's configuration.
-  The same decision covers these modes written explicitly: `sslmode=prefer`
-  (silent today) and MySQL's legacy `requireSSL=false`, which Connector/J
-  translates to `sslMode=PREFERRED` but SCG012 reports as HIGH.
-* **Redis `redis://` without `spring.data.redis.ssl.enabled`.** Plaintext
-  only when both hold, so it needs the two keys together (like SCG015 for
-  RabbitMQ), not a scheme alone.
-* **Artemis `tcp://`.** Artemis enables TLS with an `sslEnabled=true`
-  parameter on a `tcp://` URL, unlike ActiveMQ Classic's `ssl://` scheme;
-  confirm in Artemis' client before treating `tcp://` without it as
-  plaintext for `spring.artemis.broker-url`.
-
-### SCG003: Spring Cloud Gateway's CORS (decide with measurements)
-
-Found in the second review of SCG003 (`VALIDATION.md`, "SCG003 CORS
-scenarios"): a gateway's global CORS, set in properties
-(`spring.cloud.gateway.globalcors.cors-configurations.[/**].*`, and a
-`spring.cloud.gateway.server.webflux.` prefix in later releases, to
-confirm), is silent, also with `allowed-origin-patterns: "*"` and
-credentials. It is the other CORS commonly configured in properties, and a
-gateway usually sits in front of the services. Confirm the property names per
-Gateway release and the behavior in a running gateway, then decide whether
-SCG003 reads them like Actuator's and GraphQL's.
 
 ### TLS without verifying the server (candidate rule)
 
@@ -130,67 +96,6 @@ Decide then whether it extends SCG014 or is a rule of its own. A real case:
 `spring.cloud.stream.kafka.binder.configuration.ssl.endpoint.identification.algorithm:`
 empty in a base file (found while fixing the YAML null in a base file).
 
-### Per-property origin in findings (waiting for a real consumer)
-
-`sourceFile` identifies the evaluated configuration, not where the offending
-property is written: every `EffectiveConfig` carries one path, and rules
-copy it into each `Finding`. It points elsewhere whenever a configuration is
-assembled from several files — a property inherited from the base (since
-v1.0), `.yml` + `.properties` in one directory, a named profile file plus an
-on-profile block (both since v1.2.0), and the Global file in Config Server
-Mode (documented as intended in ADR-002). Detection is unaffected. The
-semantics are documented in README, "Output Format".
-
-Reporting the real origin would take: tracking a source file per property
-through `ConfigLoader` → `ConfigFileGrouper` → `ProfileMerger`, with the
-same list-replacement, explicit-null and relaxed-binding semantics as the
-values; rules reporting which keys triggered a finding (all 17 rules);
-a list of origins for rules that combine keys possibly written in different
-files (e.g. SCG003); and a new optional JSON field, which would be a
-MINOR change (CONTRIBUTING.md, "Releases").
-
-Worth it only once something consumes the location — e.g. PR annotations
-or code-scanning upload, where a wrong file would mark the wrong place. The
-planned GitHub Action (above) is that consumer once it adds annotations or
-SARIF.
-Until then, the documented semantics are enough.
-
-### `--config-name=<prefix>`: custom `spring.config.name`
-
-A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /
-`myapp-{profile}.yml`. `ConfigLoader` only recognizes the `application`
-prefix, so such a project scans clean — a silent false negative, not an
-error. Intended design: a `--config-name` flag (default `application`)
-parameterizing the prefix `ConfigLoader` already checks. Out of scope:
-`spring.config.location` and arbitrary paths. No confirmed need yet.
-
-### Version in the JSON report (waiting for a concrete need)
-
-`--version` tells which jar is installed, but a saved report still doesn't
-say which version produced it. A new optional field in each finding would
-be a MINOR change; moving to a top-level object with the version and the
-findings would change the report's shape, a MAJOR one. Worth it only once
-reports are stored or compared across versions, e.g. by an external tool.
-
-### Rewrite VALIDATION.md once every rule is reviewed
-
-`VALIDATION.md` has grown into a history: columns per release, "used to /
-now" paragraphs, dated correction notes, numbers measured against earlier
-jars. It is heavy to read. Every rule has had its review, so rewrite it
-now to state only what holds:
-
-* per rule, the scenario table(s) and one or two paragraphs: what was
-  checked, against what (a running app, a driver, the metadata), and how to
-  re-run it;
-* the public repositories SCG is run against, with their pinned commits and
-  current findings;
-* no earlier releases, fix history or before/after comparisons; that
-  record stays in `CHANGELOG.md` and the git history.
-
-Adjust what depends on the current shape in the same change: step 4 of
-the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
-columns) and the section names cited in the skills and in code comments.
-
 ## Deferred (post-1.0)
 
 Technically viable, deliberately postponed. **Triage criterion:** does the
@@ -212,11 +117,65 @@ exactly the kind of false positive that erodes trust in early runs.
 
 ### Coverage found during the rule reviews, waiting for a real case
 
-Settings next to a rule's subject that the reviews turned up, but that no
-reference project or demo writes with the risky value, and no user has
-reported (as of 2026-10-05). Each is noted with what it would take; it
-moves back to Pending when a real case appears, so the reviews' leftovers
-don't grow into a queue that never empties.
+Settings or cases that the reviews, and the fixes that followed them,
+turned up, but that no reference project or demo writes with the risky
+value, and no user has reported (as of 2026-10-05). Each is noted with
+what it would take; it moves back to Pending when a real case appears, so
+the reviews' leftovers don't grow into a queue that never empties.
+
+#### A null in a profile purges the base's sub-keys (measure first)
+
+Found while fixing the YAML null in a base file: `app.x: ~` in a profile
+makes `ProfileMerger` remove the base's `app.x.*` keys, while Spring keeps
+both sources, and each one's binding picks a shape by type (CLAUDE.md,
+"Architecture"). The `/actuator/env` benchmark checks a null override of a
+scalar only. Add a null over a map to it before deciding whether the purge
+goes.
+
+No profile in the reference projects or demo fixtures writes a null
+(checked with SCG's loader on 2026-10-05), so the divergence has no case
+yet.
+
+#### SCG012 cases left open (decide with measurements)
+
+Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
+
+* **Default modes that allow plaintext.** PostgreSQL's default
+  `sslmode=prefer` and MySQL's default `sslMode=PREFERRED` fall back to an
+  unencrypted connection when the server doesn't offer TLS. Reporting a
+  JDBC URL without an explicit mode would reach almost every PostgreSQL and
+  MySQL URL; measure on the corpus first, and decide between INFO
+  (CLAUDE.md, "Findings") and leaving it to the server's configuration.
+  The same decision covers these modes written explicitly: `sslmode=prefer`
+  (silent today) and MySQL's legacy `requireSSL=false`, which Connector/J
+  translates to `sslMode=PREFERRED` but SCG012 reports as HIGH.
+* **Redis `redis://` without `spring.data.redis.ssl.enabled`.** Plaintext
+  only when both hold, so it needs the two keys together (like SCG015 for
+  RabbitMQ), not a scheme alone.
+* **Artemis `tcp://`.** Artemis enables TLS with an `sslEnabled=true`
+  parameter on a `tcp://` URL, unlike ActiveMQ Classic's `ssl://` scheme;
+  confirm in Artemis' client before treating `tcp://` without it as
+  plaintext for `spring.artemis.broker-url`.
+
+On 2026-10-05 the reference projects held seven PostgreSQL, MySQL or
+MariaDB URLs, none with an explicit mode and all on `localhost`, now INFO
+as loopback; no Redis configuration; and one Artemis project without
+`broker-url`.
+
+#### SCG003: Spring Cloud Gateway's CORS (decide with measurements)
+
+Found in the second review of SCG003 (`VALIDATION.md`, "SCG003 CORS
+scenarios"): a gateway's global CORS, set in properties
+(`spring.cloud.gateway.globalcors.cors-configurations.[/**].*`, and a
+`spring.cloud.gateway.server.webflux.` prefix in later releases, to
+confirm), is silent, also with `allowed-origin-patterns: "*"` and
+credentials. It is the other CORS commonly configured in properties, and a
+gateway usually sits in front of the services. Confirm the property names per
+Gateway release and the behavior in a running gateway, then decide whether
+SCG003 reads them like Actuator's and GraphQL's.
+
+No reference project sets `globalcors` (2026-10-05), not even `spring-
+petclinic-microservices`, which has a gateway.
 
 #### Transports SCG012 doesn't look at (decide scope with measurements)
 
@@ -237,7 +196,7 @@ from its client.
 * Couchbase: `couchbase://` in `spring.couchbase.connection-string`,
   plaintext unless SSL is enabled (`spring.couchbase.env.ssl.enabled`, or
   an SSL bundle, which enables it): several keys together, like Redis in
-  "SCG012 cases left open" (Pending).
+  "SCG012 cases left open".
 
 Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
 properties) before reporting, then decide whether they extend SCG012 or
@@ -306,6 +265,71 @@ HIGH, but `headers.Authorization` (`Bearer ...`, `Basic ...`) and vendor
 headers such as `X-Honeycomb-Team` are silent. To decide with measurements:
 recognize the value (`Bearer `/`Basic ` prefixes) or the header names in
 these maps, and at which severity.
+
+#### Findings name the key as the rule spells it, not as it is written
+
+A message quotes the key from the rule's own list, so
+`spring.web.error.includeStacktrace=always` is reported as
+`spring.web.error.include-stacktrace=always` (found while reviewing
+SCG010). Relaxed binding makes both the same property, so detection is
+unaffected, but a user searching the file for the quoted key won't find
+it. `RelaxedProperties.findActualKey()` returns the spelling written; only
+SCG011 uses it today. Applying it would touch every rule that quotes a key,
+so it is one change across the rules, not part of any single review.
+
+Measured on 2026-10-05: of the 245 findings on the reference projects and
+demo fixtures, none quotes a key spelled differently from the file, since
+they write keys in kebab-case, as the rules do. Waiting for a real case,
+like the items above. If it comes, one step after `RuleEngine` that
+replaces each quoted key with the spelling written in the configuration
+would cover every rule at once.
+
+### Waiting for a need
+
+Features nothing asks for yet; each names the need that would bring it
+back.
+
+#### Per-property origin in findings (waiting for a real consumer)
+
+`sourceFile` identifies the evaluated configuration, not where the offending
+property is written: every `EffectiveConfig` carries one path, and rules
+copy it into each `Finding`. It points elsewhere whenever a configuration is
+assembled from several files — a property inherited from the base (since
+v1.0), `.yml` + `.properties` in one directory, a named profile file plus an
+on-profile block (both since v1.2.0), and the Global file in Config Server
+Mode (documented as intended in ADR-002). Detection is unaffected. The
+semantics are documented in README, "Output Format".
+
+Reporting the real origin would take: tracking a source file per property
+through `ConfigLoader` → `ConfigFileGrouper` → `ProfileMerger`, with the
+same list-replacement, explicit-null and relaxed-binding semantics as the
+values; rules reporting which keys triggered a finding (all 17 rules);
+a list of origins for rules that combine keys possibly written in different
+files (e.g. SCG003); and a new optional JSON field, which would be a
+MINOR change (CONTRIBUTING.md, "Releases").
+
+Worth it only once something consumes the location — e.g. PR annotations
+or code-scanning upload, where a wrong file would mark the wrong place. The
+planned GitHub Action (Pending) is that consumer once it adds annotations or
+SARIF.
+Until then, the documented semantics are enough.
+
+#### `--config-name=<prefix>`: custom `spring.config.name`
+
+A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /
+`myapp-{profile}.yml`. `ConfigLoader` only recognizes the `application`
+prefix, so such a project scans clean — a silent false negative, not an
+error. Intended design: a `--config-name` flag (default `application`)
+parameterizing the prefix `ConfigLoader` already checks. Out of scope:
+`spring.config.location` and arbitrary paths. No confirmed need yet.
+
+#### Version in the JSON report (waiting for a concrete need)
+
+`--version` tells which jar is installed, but a saved report still doesn't
+say which version produced it. A new optional field in each finding would
+be a MINOR change; moving to a top-level object with the version and the
+findings would change the report's shape, a MAJOR one. Worth it only once
+reports are stored or compared across versions, e.g. by an external tool.
 
 ## Discarded
 
