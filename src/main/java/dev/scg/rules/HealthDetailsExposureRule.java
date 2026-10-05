@@ -224,11 +224,23 @@ public final class HealthDetailsExposureRule implements Rule {
         return new Setting(key, raw, Optional.of(show), false);
     }
 
-    /** The roles, written as a comma-separated value or a list; null when none is set. */
+    /**
+     * The roles, written as a comma-separated value or a list, sorted: any one of them grants
+     * access, so their order means nothing, and sorting keeps the message the same whatever order
+     * the keys come in. Null when none is set.
+     */
     private static String roles(Map<String, String> properties, String key) {
-        List<String> roles = RelaxedProperties.valuesForKeyOrListChildren(properties, key).stream()
-                .filter(role -> role != null && !role.isBlank())
-                .toList();
+        Set<String> roles = new TreeSet<>();
+        for (String value : RelaxedProperties.valuesForKeyOrListChildren(properties, key)) {
+            if (value == null) {
+                continue;
+            }
+            for (String role : value.split(",")) {
+                if (!role.isBlank()) {
+                    roles.add(role.strip());
+                }
+            }
+        }
         return roles.isEmpty() ? null : String.join(",", roles);
     }
 

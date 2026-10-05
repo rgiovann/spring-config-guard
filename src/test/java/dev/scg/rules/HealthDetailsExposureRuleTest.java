@@ -221,14 +221,16 @@ class HealthDetailsExposureRuleTest {
     }
 
     @Test
-    @DisplayName("roles written as a list are all named")
+    @DisplayName("roles written as a list or comma-separated are all named, sorted, whatever order the keys come in")
     void rolesAsList() {
-        List<Finding> findings = check(Map.of(
-                KEY, "when-authorized",
-                "management.endpoint.health.roles[0]", "ADMIN",
-                "management.endpoint.health.roles[1]", "OPS"));
+        Map<String, String> listInReverseOrder = new LinkedHashMap<>();
+        listInReverseOrder.put(KEY, "when-authorized");
+        listInReverseOrder.put("management.endpoint.health.roles[1]", "OPS");
+        listInReverseOrder.put("management.endpoint.health.roles[0]", "ADMIN");
 
-        assertThat(findings.getFirst().message()).contains("with one of the roles 'ADMIN,OPS'");
+        assertThat(check(listInReverseOrder).getFirst().message()).contains("with one of the roles 'ADMIN,OPS'");
+        assertThat(check(Map.of(KEY, "when-authorized", "management.endpoint.health.roles", "OPS, ADMIN"))
+                .getFirst().message()).contains("with one of the roles 'ADMIN,OPS'");
     }
 
     @Test
