@@ -265,6 +265,10 @@ coinciding with the new fold:
 **Negative / Trade-offs**
 * `ConfigDocument.properties()` may now contain `null` values; every
   consumer of an intermediate (pre-merge) document must tolerate them.
+  Since 2026-10-05 an explicit-null override resolves to an empty string,
+  as Spring Boot's YAML loader turns a null into one (checked through
+  `/actuator/env`), so no merge produces a `null` value anymore; the
+  tolerant copy stays.
 * `ProfileMerger` exposes two merge entry points that differ only in
   sentinel stripping; picking the wrong one reintroduces the silent
   list-purge bug above, with no compile-time signal.

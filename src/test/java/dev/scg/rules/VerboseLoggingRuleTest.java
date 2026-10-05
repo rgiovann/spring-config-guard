@@ -128,9 +128,12 @@ class VerboseLoggingRuleTest {
 
         @ParameterizedTest
         @ValueSource(strings = {"debug:\n", "debug: ~\n"})
-        @DisplayName("Y4, Y5: a null debug in a base file stays silent: ProfileMerger drops the key, though Spring Boot turns it on (BACKLOG.md)")
-        void baseFileNullIsNotSeen(String yaml, @TempDir Path dir) throws IOException {
-            assertThat(checkYaml(dir, yaml)).isEmpty();
+        @DisplayName("Y4, Y5: a null debug in a base file is reported: Spring Boot loads it as empty, which turns debug on")
+        void baseFileNullIsOn(String yaml, @TempDir Path dir) throws IOException {
+            List<Finding> findings = checkYaml(dir, yaml);
+
+            assertThat(findings).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test

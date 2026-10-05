@@ -32,6 +32,14 @@ public final class ProfileMerger {
      */
     public static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
 
+    /**
+     * The value of a key written as a YAML null ({@code debug:}, {@code debug: ~}): an empty string,
+     * as Spring Boot's {@code OriginTrackedYamlLoader} loads it (checked in 4.1.1). The key stays
+     * present: Spring reads {@code debug=""} as debug logging on (VALIDATION.md, "SCG009 verbose
+     * logging scenarios", Y4 and Y5), so dropping it would hide the finding.
+     */
+    static final String NULL_VALUE = "";
+
     public List<EffectiveConfig> merge(ConfigFile configFile) {
         Map<String, String> baseProperties = findBaseProperties(configFile);
 
@@ -88,10 +96,8 @@ public final class ProfileMerger {
      * sentinel information that the later, real {@link #merge} pass against
      * the true base still needs: an empty-list sentinel folded away here
      * would otherwise never trigger the purge of a conflicting base list at
-     * that later pass. An explicit-null override still resolves to a real
-     * Java {@code null} value immediately (that part isn't deferrable), so
-     * callers folding at this level must tolerate {@code null} values in the
-     * result -- see {@code ConfigDocument}.
+     * that later pass. An explicit-null override still resolves to
+     * {@link #NULL_VALUE} immediately (that part isn't deferrable).
      */
     Map<String, String> mergeWithoutStrippingSentinels(Map<String, String> base, Map<String, String> overlay) {
         Map<String, String> merged = new LinkedHashMap<>(base);
@@ -103,7 +109,7 @@ public final class ProfileMerger {
         for (String key : overlay.keySet()) {
             if (key.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX)) {
                 String targetKey = key.substring(0, key.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
-                nullOverrides.put(targetKey, null);
+                nullOverrides.put(targetKey, NULL_VALUE);
 
                 String canonicalTarget = RelaxedProperties.canonicalize(targetKey);
                 canonicalListRootsInOverlay.add(canonicalTarget);
@@ -187,11 +193,25 @@ public final class ProfileMerger {
         });
     }
 
+    /**
+     * Removes the internal sentinel keys. A null-scalar sentinel left in place (a YAML null in the
+     * base that no profile redefined) becomes its key with {@link #NULL_VALUE}, where the sentinel
+     * was, unless the key is also written with a value.
+     */
     private static Map<String, String> stripInternalSentinels(Map<String, String> map) {
-        Map<String, String> stripped = new LinkedHashMap<>(map);
-        stripped.keySet().removeIf(k -> k.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)
-                || k.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX)
-                || k.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX));
+        Map<String, String> stripped = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            String key = entry.getKey();
+            if (key.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX)) {
+                String targetKey = key.substring(0, key.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
+                if (!map.containsKey(targetKey)) {
+                    stripped.put(targetKey, NULL_VALUE);
+                }
+            } else if (!key.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)
+                    && !key.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX)) {
+                stripped.put(key, entry.getValue());
+            }
+        }
         return stripped;
     }
 }

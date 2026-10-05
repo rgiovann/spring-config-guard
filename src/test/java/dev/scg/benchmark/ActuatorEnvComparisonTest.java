@@ -115,16 +115,19 @@ class ActuatorEnvComparisonTest {
         assertEquals("camel-override", RelaxedProperties.get(scg, "app.relaxedBindingTest"),
                 "And also written in camelCase -- it's the same property");
 
-        // 4. Override to an explicit null. /actuator/env serializes a null value
-        // as an empty string (a limitation of the comparison technique itself,
-        // not of SCG -- documented in VALIDATION.md); in SCG, the key remains
-        // in the map with a real Java null value.
+        // 4. Override to an explicit null. Spring Boot's YAML loader turns a null into an
+        // empty string (OriginTrackedYamlLoader), so the key is present and empty; SCG
+        // keeps it the same way.
         assertEquals("", spring.get(RelaxedProperties.canonicalize("app.nullable-override")),
-                "Real Spring serializes the null override as an empty string in the /actuator/env JSON");
-        assertTrue(scg.containsKey("app.nullable-override"),
-                "SCG must keep the key (not remove it) when the profile overrides it with null");
-        assertNull(scg.get("app.nullable-override"),
-                "SCG must resolve the null override as a real Java null, not an empty string");
+                "Real Spring loads the null override as an empty string");
+        assertEquals("", scg.get("app.nullable-override"),
+                "SCG must keep the key, with an empty string, when the profile overrides it with null");
+
+        // 4b. A null in the base file that no profile redefines: present and empty too.
+        for (String key : List.of("app.base-null", "app.base-tilde")) {
+            assertEquals("", spring.get(RelaxedProperties.canonicalize(key)), "Real Spring loads '" + key + "' as empty");
+            assertEquals("", scg.get(key), "SCG must keep '" + key + "' as an empty string, not drop it");
+        }
 
         // 5. Placeholder with a default, environment variable undefined on
         // both sides -- Spring resolves it at runtime; SCG keeps the raw

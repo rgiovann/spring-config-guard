@@ -24,18 +24,6 @@ GitHub Action, then new coverage with a wide reach, measured first. Items
 waiting for a need come after, and the `VALIDATION.md` rewrite last, once
 the rest has settled.
 
-### A YAML null in a base file is dropped before the rules run
-
-`debug:` or `debug: ~` in a base file is read by Spring Boot as an empty
-value, which turns debug logging on (`VALIDATION.md`, "SCG009 verbose
-logging scenarios", Y4 and Y5). `ConfigLoader` marks the null, but
-`ProfileMerger` drops the key when no profile overrides it, so no rule
-sees it; a profile overriding a key with null keeps it, with a null value.
-The same applies to any key a rule reads as a raw string rather than a
-bound type. Keeping the key would change the merge semantics every rule
-relies on (a null value next to an absent key), so it needs its own
-change, checked against the `/actuator/env` benchmark.
-
 ### Findings name the key as the rule spells it, not as it is written
 
 A message quotes the key from the rule's own list, so
@@ -46,6 +34,15 @@ unaffected, but a user searching the file for the quoted key won't find
 it. `RelaxedProperties.findActualKey()` returns the spelling written; only
 SCG011 uses it today. Applying it would touch every rule that quotes a key,
 so it is one change across the rules, not part of any single review.
+
+### A null in a profile purges the base's sub-keys (measure first)
+
+Found while fixing the YAML null in a base file: `app.x: ~` in a profile
+makes `ProfileMerger` remove the base's `app.x.*` keys, while Spring keeps
+both sources, and each one's binding picks a shape by type (CLAUDE.md,
+"Architecture"). The `/actuator/env` benchmark checks a null override of a
+scalar only. Add a null over a map to it before deciding whether the purge
+goes.
 
 ### GitHub Action for the Marketplace
 
@@ -128,7 +125,10 @@ building it: that the JDK skips the check for an empty value (a test
 against a TLS listener whose certificate doesn't match the host), and the
 keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm`,
 the per-client maps, the binder maps), with the same precedence as SCG014.
-Decide then whether it extends SCG014 or is a rule of its own.
+Decide then whether it extends SCG014 or is a rule of its own. A real case:
+`spring-cloud-stream-samples` writes
+`spring.cloud.stream.kafka.binder.configuration.ssl.endpoint.identification.algorithm:`
+empty in a base file (found while fixing the YAML null in a base file).
 
 ### Per-property origin in findings (waiting for a real consumer)
 

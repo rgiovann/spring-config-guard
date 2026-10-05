@@ -20,6 +20,8 @@ app:
     - "base-item-2"
   relaxed-binding-test: "kebab-from-base"
   nullable-override: "should-be-nullified-in-profile"
+  base-null: # 4b. A null in the base file, overridden by no profile
+  base-tilde: ~ # 4b. The same, written as ~
   placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
   # --- Bracketed map keys (ADR-007), read via /actuator/configprops ---
   bracket-map:

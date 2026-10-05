@@ -225,12 +225,12 @@ class ConfigFileGrouperTest {
     void shouldPreserveNullOverrideWhenFoldingSameProfileFiles(@TempDir Path dir) throws IOException {
         // Regression test: folding a NAMED profile's sources reuses
         // ProfileMerger's merge logic, which resolves an explicit-null
-        // override to a real Java null value as part of the fold itself
-        // (not deferrable). ConfigDocument must tolerate that -- it used to
-        // build its properties map via Map.copyOf, which throws on a null
-        // value. Found via the live /actuator/env benchmark above, not by
-        // inspection -- no purely local fixture had combined a multi-source
-        // fold with a null override before that run.
+        // override as part of the fold itself (not deferrable), now to an
+        // empty string, as Spring Boot loads a YAML null. It used to be a
+        // Java null, which ConfigDocument's Map.copyOf threw on. Found via the
+        // live /actuator/env benchmark above, not by inspection -- no purely
+        // local fixture had combined a multi-source fold with a null override
+        // before that run.
         Files.writeString(dir.resolve("application.yml"), "base.key: valor");
         Files.writeString(dir.resolve("application-prod.yml"), "app.other: value-a");
         Files.writeString(dir.resolve("application-prod.yaml"), "app.nullable: null");
@@ -240,7 +240,7 @@ class ConfigFileGrouperTest {
 
         assertThat(prod.properties())
                 .containsEntry("app.other", "value-a")
-                .containsEntry("app.nullable", null);
+                .containsEntry("app.nullable", "");
     }
 
     private ConfigDocument onlyBaseDocument(GroupedConfigFile group) {

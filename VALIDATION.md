@@ -455,7 +455,9 @@ property) for the same reason — it needs that app actually running.
 `application.properties` exercise 6 `ProfileMerger`/`ConfigFileGrouper`
 behaviors: scalar override, list replacement, relaxed binding across
 base/profile (kebab-case base key, camelCase profile key), explicit-null
-override, placeholder-with-default resolution, and — the same profile
+override (and a null in the base file no profile redefines, `debug:` and
+`~`: Spring loads both as an empty string, and so does SCG since
+2026-10-05), placeholder-with-default resolution, and — the same profile
 (`prod`) sourced from both a named file and an on-profile block inside the
 base file — the two merging together, with the named file winning a key
 conflict.
@@ -1340,51 +1342,54 @@ Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
 J = JPA bound parameter, O = outbound Authorization header, D = outbound
 body. Values are command-line arguments unless noted.
 
-| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 |
-|---|---|---|---|---|
-| L0 | defaults | none | silent | silent |
-| L1 | `debug=true` | Q B D | MEDIUM | MEDIUM |
-| L2, P4 | `debug=false`, `debug=${UNSET_VAR:false}` | none | silent | silent |
-| L3–L7 | `debug=FALSE`, `off`, `no`, `0`, empty | Q B D | silent | MEDIUM |
-| P2 | `debug=false ` (trailing space, `.properties`) | Q B D | silent | MEDIUM |
-| P3 | `debug=${UNSET_VAR:}` | Q B D | silent | MEDIUM |
-| L8, L9 | `trace=true`, `trace=off` | Q B S D | MEDIUM, silent | MEDIUM |
-| Y1, Y2 | YAML `debug: off`, `debug: no`, unquoted | none | silent | silent |
-| Y3 | YAML `debug: "off"`, quoted | Q B D | silent | MEDIUM |
-| Y4, Y5 | YAML `debug:` and `debug: ~` (null) in a base file | Q B D | silent | silent |
-| P1 | `DEBUG=true` in a `.properties` file | Q B D | MEDIUM | MEDIUM |
-| R1, R3 | `logging.level.root=DEBUG` (or `debug`) | Q B O D | MEDIUM | MEDIUM |
-| R2 | `logging.level.root=TRACE` | Q H B S J O D | MEDIUM | MEDIUM |
-| R4 | `logging.level.root=INFO` | none | silent | silent |
-| R5, R6 | `logging.level.root=ALL`, `true` | app did not start | silent | silent |
-| N1, N7, N8 | `web`, `org.springframework.web`, `org.springframework` at `debug` | Q B D | silent | MEDIUM |
-| N9 | `org=debug` | Q B O D | silent | MEDIUM |
-| N3 | `org.springframework=trace` | Q B S D | silent | MEDIUM |
-| N10, N11 | `sql`, `org.springframework.jdbc.core` at `trace` | S | silent | MEDIUM |
-| N4, N12 | `org.hibernate.orm.jdbc.bind`, `org.hibernate` at `trace` | J | silent | MEDIUM |
-| N5, N13 | `org.apache.hc.client5.http.wire`, `org.apache.hc` at `debug` | O D | silent | MEDIUM |
-| N2 | `sql=debug` | none (SQL without its parameters) | silent | INFO |
-| N14 | `org.apache.hc=info` | none | silent | silent |
-| N6 | `spring.mvc.log-request-details=true`, `web=debug` | Q B D | silent | MEDIUM |
-| N15 | `org.springframework.web.servlet.DispatcherServlet=debug` | Q | silent | MEDIUM |
-| N16 | `...mvc.method.annotation.RequestResponseBodyMethodProcessor=debug` | B D | silent | MEDIUM |
-| N17 | `org.springframework.web.client.DefaultRestClient=debug` | D | silent | MEDIUM |
-| N18 | `org.springframework.web.method.HandlerMethod=trace` | Q B D | silent | MEDIUM |
-| N19 | `org.springframework.jdbc.core.StatementCreatorUtils=trace` | S | silent | MEDIUM |
-| N20 | `org.hibernate.orm.resource.registry=trace` | J | silent | MEDIUM |
-| N21 | `org.apache.hc.client5.http.headers=debug` | O | silent | MEDIUM |
-| N22, N24 | `org.apache.coyote.http11.Http11InputBuffer`, `org.apache.tomcat.util.http.Parameters` at `debug` | none | silent | INFO |
-| N23 | `org.apache.coyote.http11.Http11InputBuffer=trace` | Q H B O D (the raw requests) | silent | MEDIUM |
-| N25 | `org=debug`, with `org.springframework.web` and `org.apache.hc` at `info` | none | silent | INFO |
-| N26 | `ORG.SPRINGFRAMEWORK.WEB=debug` | none: logger names are case-sensitive | silent | INFO |
+| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 | (unreleased) |
+|---|---|---|---|---|---|
+| L0 | defaults | none | silent | silent | silent |
+| L1 | `debug=true` | Q B D | MEDIUM | MEDIUM | MEDIUM |
+| L2, P4 | `debug=false`, `debug=${UNSET_VAR:false}` | none | silent | silent | silent |
+| L3–L7 | `debug=FALSE`, `off`, `no`, `0`, empty | Q B D | silent | MEDIUM | MEDIUM |
+| P2 | `debug=false ` (trailing space, `.properties`) | Q B D | silent | MEDIUM | MEDIUM |
+| P3 | `debug=${UNSET_VAR:}` | Q B D | silent | MEDIUM | MEDIUM |
+| L8, L9 | `trace=true`, `trace=off` | Q B S D | MEDIUM, silent | MEDIUM | MEDIUM |
+| Y1, Y2 | YAML `debug: off`, `debug: no`, unquoted | none | silent | silent | silent |
+| Y3 | YAML `debug: "off"`, quoted | Q B D | silent | MEDIUM | MEDIUM |
+| Y4, Y5 | YAML `debug:` and `debug: ~` (null) in a base file | Q B D | silent | silent | MEDIUM |
+| P1 | `DEBUG=true` in a `.properties` file | Q B D | MEDIUM | MEDIUM | MEDIUM |
+| R1, R3 | `logging.level.root=DEBUG` (or `debug`) | Q B O D | MEDIUM | MEDIUM | MEDIUM |
+| R2 | `logging.level.root=TRACE` | Q H B S J O D | MEDIUM | MEDIUM | MEDIUM |
+| R4 | `logging.level.root=INFO` | none | silent | silent | silent |
+| R5, R6 | `logging.level.root=ALL`, `true` | app did not start | silent | silent | silent |
+| N1, N7, N8 | `web`, `org.springframework.web`, `org.springframework` at `debug` | Q B D | silent | MEDIUM | MEDIUM |
+| N9 | `org=debug` | Q B O D | silent | MEDIUM | MEDIUM |
+| N3 | `org.springframework=trace` | Q B S D | silent | MEDIUM | MEDIUM |
+| N10, N11 | `sql`, `org.springframework.jdbc.core` at `trace` | S | silent | MEDIUM | MEDIUM |
+| N4, N12 | `org.hibernate.orm.jdbc.bind`, `org.hibernate` at `trace` | J | silent | MEDIUM | MEDIUM |
+| N5, N13 | `org.apache.hc.client5.http.wire`, `org.apache.hc` at `debug` | O D | silent | MEDIUM | MEDIUM |
+| N2 | `sql=debug` | none (SQL without its parameters) | silent | INFO | INFO |
+| N14 | `org.apache.hc=info` | none | silent | silent | silent |
+| N6 | `spring.mvc.log-request-details=true`, `web=debug` | Q B D | silent | MEDIUM | MEDIUM |
+| N15 | `org.springframework.web.servlet.DispatcherServlet=debug` | Q | silent | MEDIUM | MEDIUM |
+| N16 | `...mvc.method.annotation.RequestResponseBodyMethodProcessor=debug` | B D | silent | MEDIUM | MEDIUM |
+| N17 | `org.springframework.web.client.DefaultRestClient=debug` | D | silent | MEDIUM | MEDIUM |
+| N18 | `org.springframework.web.method.HandlerMethod=trace` | Q B D | silent | MEDIUM | MEDIUM |
+| N19 | `org.springframework.jdbc.core.StatementCreatorUtils=trace` | S | silent | MEDIUM | MEDIUM |
+| N20 | `org.hibernate.orm.resource.registry=trace` | J | silent | MEDIUM | MEDIUM |
+| N21 | `org.apache.hc.client5.http.headers=debug` | O | silent | MEDIUM | MEDIUM |
+| N22, N24 | `org.apache.coyote.http11.Http11InputBuffer`, `org.apache.tomcat.util.http.Parameters` at `debug` | none | silent | INFO | INFO |
+| N23 | `org.apache.coyote.http11.Http11InputBuffer=trace` | Q H B O D (the raw requests) | silent | MEDIUM | MEDIUM |
+| N25 | `org=debug`, with `org.springframework.web` and `org.apache.hc` at `info` | none | silent | INFO | INFO |
+| N26 | `ORG.SPRINGFRAMEWORK.WEB=debug` | none: logger names are case-sensitive | silent | INFO | INFO |
 
 Spring Boot's `LoggingApplicationListener` reads `debug` and `trace` as raw
 strings and turns them on for any value except exactly `false`, so every
 other spelling of "off" turned debug logging on (L3–L7, P2, P3, Y3), where
 v1.11.0 was silent. Unquoted YAML `off` and `no` are YAML booleans and stay
-off. A YAML null is read as an empty value and turns it on too (Y4, Y5), but
-`ProfileMerger` drops a null key from a base file, so no rule sees it there
-(`BACKLOG.md`); a profile overriding the key with null is reported. The secrets
+off. A YAML null is read as an empty value and turns it on too (Y4, Y5):
+Spring Boot's YAML loader turns a null into an empty string, so the key is
+present. `ProfileMerger` used to drop a null key from a base file, so no
+rule saw it there; it now keeps it as an empty string, in the base and in
+a profile that overrides a key with null, as Spring does (checked through
+`/actuator/env`, "ProfileMerger correctness benchmark", case 4). The secrets
 were written by the loggers of N15–N21 and N23, each turned on alone, and
 by their ancestors (N1, N3–N5, N7–N13); a more specific logger with its own
 level decides for its descendants (N25), and logger names are matched as

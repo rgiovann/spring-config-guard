@@ -560,7 +560,7 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Profile with explicit scalar null should redefine the base key to null")
+    @DisplayName("Profile with explicit scalar null should redefine the base key to an empty string, as Spring loads it")
     void profileWithExplicitNullShouldRedefineKeyToNull() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("app.feature-x.enabled", "true");
@@ -577,11 +577,11 @@ class ProfileMergerTest {
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertTrue(dev.properties().containsKey("app.feature-x.enabled"), "The key should exist in the map");
-        assertNull(dev.properties().get("app.feature-x.enabled"), "The key value should be null");
+        assertEquals("", dev.properties().get("app.feature-x.enabled"), "The key value should be empty");
     }
 
     @Test
-    @DisplayName("Profile with scalar null at a node that was an object in the base should purge sub-keys and result in null")
+    @DisplayName("Profile with scalar null at a node that was an object in the base should purge sub-keys and result in an empty string")
     void profileWithNullAtObjectNodeShouldPurgeSubKeys() {
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("db.connection.timeout", "30");
@@ -601,7 +601,54 @@ class ProfileMergerTest {
         assertFalse(dev.properties().containsKey("db.connection.timeout"));
         assertFalse(dev.properties().containsKey("db.connection.host"));
         assertTrue(dev.properties().containsKey("db.connection"));
-        assertNull(dev.properties().get("db.connection"));
+        assertEquals("", dev.properties().get("db.connection"));
+    }
+
+    @Test
+    @DisplayName("A null in the base is kept as an empty string, in the base and in a profile that doesn't redefine it")
+    void baseNullIsKeptAsEmptyString() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("debug.__null_scalar__", "true");
+        baseProps.put("server.port", "8080");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), Map.of("server.port", "9090"))
+        ));
+
+        List<EffectiveConfig> result = merger.merge(file);
+
+        for (String label : List.of(ProfileMerger.BASE_PROFILE_LABEL, "dev")) {
+            Map<String, String> properties = findByLabel(result, label).properties();
+            assertEquals("", properties.get("debug"), label);
+            assertFalse(properties.keySet().stream().anyMatch(key -> key.contains("__null_scalar__")), label);
+        }
+        assertEquals(List.of("debug", "server.port"),
+                List.copyOf(findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().keySet()),
+                "The key takes the sentinel's place");
+    }
+
+    @Test
+    @DisplayName("A null in the base is replaced by a profile's value, and kept next to a profile's sub-key, as Spring keeps both")
+    void baseNullAgainstProfileValues() {
+        Map<String, String> baseProps = new LinkedHashMap<>();
+        baseProps.put("debug.__null_scalar__", "true");
+        baseProps.put("app.x.__null_scalar__", "true");
+
+        Map<String, String> devProps = new LinkedHashMap<>();
+        devProps.put("debug", "false");
+        devProps.put("app.x.y", "1");
+
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), baseProps),
+                new ConfigDocument(Optional.of("dev"), devProps)
+        ));
+
+        Map<String, String> dev = findByLabel(merger.merge(file), "dev").properties();
+
+        assertEquals("false", dev.get("debug"));
+        assertEquals("", dev.get("app.x"));
+        assertEquals("1", dev.get("app.x.y"));
     }
 
     @Test

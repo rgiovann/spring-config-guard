@@ -15,12 +15,13 @@ import java.util.Optional;
  * consumes a list of ConfigDocument objects (all from the same file) and
  * produces an EffectiveConfig (the already-merged result, ready for the rules).
  * <p>
- * {@code properties} may contain a {@code null} value: ConfigFileGrouper can
- * fold multiple physical sources of the same precedence tier together before
- * ProfileMerger ever sees them, and an explicit-null override resolves to a
- * real Java {@code null} immediately as part of that fold (not deferrable —
- * see {@code ProfileMerger.mergeWithoutStrippingSentinels}). {@code Map.copyOf}
- * would reject that value, so a plain unmodifiable copy is used instead.
+ * ConfigFileGrouper can fold multiple physical sources of the same precedence
+ * tier together before ProfileMerger ever sees them, and an explicit-null
+ * override resolves immediately as part of that fold (not deferrable — see
+ * {@code ProfileMerger.mergeWithoutStrippingSentinels}), to an empty string,
+ * as Spring Boot loads a YAML null. A plain unmodifiable copy is used rather
+ * than {@code Map.copyOf}, which would reject a {@code null} value from any
+ * caller.
  */
 public record ConfigDocument(
         Optional<String> profile,
