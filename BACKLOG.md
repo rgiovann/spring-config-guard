@@ -19,29 +19,9 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the `VALIDATION.md` rewrite, once v1.16.0 has shipped
-the changes still unreleased, then the GitHub Action, then the one item of
-new coverage with a real case. Everything else waits in Deferred for a
-real case or a need.
-
-### Rewrite VALIDATION.md once every rule is reviewed
-
-`VALIDATION.md` has grown into a history: columns per release, "used to /
-now" paragraphs, dated correction notes, numbers measured against earlier
-jars. It is heavy to read. Every rule has had its review, so rewrite it
-now to state only what holds:
-
-* per rule, the scenario table(s) and one or two paragraphs: what was
-  checked, against what (a running app, a driver, the metadata), and how to
-  re-run it;
-* the public repositories SCG is run against, with their pinned commits and
-  current findings;
-* no earlier releases, fix history or before/after comparisons; that
-  record stays in `CHANGELOG.md` and the git history.
-
-Adjust what depends on the current shape in the same change: step 4 of
-the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
-columns) and the section names cited in the skills and in code comments.
+Done in this order: the GitHub Action, then the one item of new coverage
+with a real case. Everything else waits in Deferred for a real case or a
+need.
 
 ### GitHub Action for the Marketplace
 

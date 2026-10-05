@@ -622,8 +622,9 @@ fixture — see the first entry in [VALIDATION.md](VALIDATION.md).
 
 ## Validated against real-world code
 
-Extended, run-by-run validation reports (exact repositories, pinned commits,
-finding tables, and how to reproduce each run) live in a separate document
+The evidence behind what SCG reports (public repositories at pinned
+commits with their findings, each rule's scenarios against a running Spring
+Boot app or client, and how to reproduce each) lives in a separate document
 so this README stays focused on what the tool is and how to use it:
 see **[VALIDATION.md](VALIDATION.md)**.
 

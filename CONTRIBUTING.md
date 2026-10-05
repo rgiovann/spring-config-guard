@@ -124,9 +124,11 @@ Publishing is automated by `.github/workflows/release.yml`.
 2. Set `pom.xml` to `X.Y.Z` (drop `-SNAPSHOT`).
 3. Update the pinned version in README's CI/CD Integration example (skip
    for a pre-release).
-4. In `VALIDATION.md`, replace each table column labelled "... (unreleased)"
-   with `vX.Y.Z`: a rule review labels the column with its results that
-   way until they ship.
+4. If the release has **Detection changes**, set the version
+   `VALIDATION.md` states at its top to `vX.Y.Z`. The rows and counts a
+   change moves are already updated, in the commit that moved them, so
+   between releases they hold the unreleased result; without detection
+   changes the results are the same and the version stays.
 5. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md`, using the
    template below.
 6. After approval, the assistant commits and pushes to `main`, then runs
