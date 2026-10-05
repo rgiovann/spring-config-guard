@@ -1406,3 +1406,52 @@ A4's console answered 500. Every reference project and demo fixture
 reports the same findings as with the v1.12.0 jar, except the wording of
 the SCG002 message (3 findings in `spring-boot`, 2 in `demo-project`): all
 of them set `enabled=true`.
+
+## SCG013 health details scenarios (running Spring Boot 4.1.1 apps)
+
+What `/actuator/health` returns for each health setting was checked in two
+apps with Spring MVC, Actuator and an H2 datasource, one without Spring
+Security and one with it (every request permitted, one HTTP Basic user with
+role USER), reproducible with `spring-env-benchmark/health-details-scenarios.sh`,
+run twice with the same results. "details" is every component with its
+details (the database vendor, diskSpace's absolute path and free space, the
+SSL chains), "components" their names and status only, "status" the
+overall status only. Keys are under `management.endpoint.health`; the
+group is `group.custom`, including `db`.
+
+| # | Configuration | Response | v1.12.0 | (unreleased) |
+|---|---|---|---|---|
+| D0, D5 | defaults, `show-details=never` | status | silent | silent |
+| S0, S1 | Spring Security: defaults, `show-details=always` | anonymous and user: status, details | silent, MEDIUM | silent, MEDIUM |
+| D1, D7 | `show-details=always` (or `ALWAYS`) | details | MEDIUM | MEDIUM |
+| D2–D4 | `show-details=when-authorized` (or `WHEN_AUTHORIZED`, `whenAuthorized`), no Spring Security | status | MEDIUM | INFO |
+| S2 | `show-details=when-authorized`, Spring Security | anonymous: status; user: details | MEDIUM | INFO |
+| S3 | S2 with `roles=ADMIN` | anonymous and user: status | MEDIUM | INFO |
+| D6 | `show-details=true` | app did not start | silent | silent |
+| C1 | `show-components=always` | components | silent | INFO |
+| S4 | `show-components=when-authorized`, Spring Security | anonymous: status; user: components | silent | INFO |
+| C2 | `show-components=never`, `show-details=always` | status | MEDIUM | silent |
+| G1, G2 | group `show-details=always`: the group, the endpoint | details, status | silent | MEDIUM |
+| G3 | group `show-components=always` | components | silent | INFO |
+| G4 | G1 with `additional-path=server:/healthz` | `/healthz`: details | silent | MEDIUM |
+| G5 | `show-details=always`, the group without its own | details | MEDIUM (endpoint) | MEDIUM (endpoint) |
+| G7 | `show-details=always`, group `show-details=` (empty) | details | MEDIUM (endpoint) | MEDIUM (endpoint) |
+| G6 | `show-details=always`, group `show-components=never` | group: status | MEDIUM (endpoint) | MEDIUM (endpoint) |
+| S5 | group `show-details=when-authorized`, Spring Security | anonymous: status; user: details | silent | INFO |
+| X1, X2 | `show-details=always` with `access=none`, or health excluded from exposure | 404 | MEDIUM | MEDIUM |
+
+`when-authorized` returned nothing extra to an anonymous caller, with or
+without Spring Security; only an authenticated user got the details, and
+`roles` narrowed that further (D2, S2, S3), so it is INFO, as is
+`show-components` alone, which returned names and status without details
+(C1, S4). `show-components` defaults to `show-details`, and at `never` it
+hid the details too (C2), so the lower of the two decides. A health group
+has its own keys, falls back to the endpoint's for those it doesn't set or
+sets to an empty value (G5–G7), and is served at `/actuator/health/<name>` and at its
+`additional-path`, which can be on the main server port (G1–G4); a group is
+reported when it sets one of the keys itself. X1 and X2 remain the rule's
+documented scope decision. On the reference corpus, against the v1.12.0
+jar: `spring-boot` adds 1 MEDIUM, the `comp` group of its Actuator smoke
+test (`group.comp.show-details=always`), and every SCG013 finding has a new
+message; severities, files and profiles are otherwise unchanged, and so are
+the other rules and the demo fixtures.

@@ -122,7 +122,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG010 | MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot before 4.0) or `spring.web.error.include-*` (4.0 and later) properties |
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
 | SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
-| SCG013 | MEDIUM / INFO | Actuator health endpoint discloses component details via `management.endpoint.health.show-details` |
+| SCG013 | MEDIUM / INFO | Actuator health endpoint or a health group discloses component details via `show-details`/`show-components` (MEDIUM to any caller; INFO to authenticated users, or component names only) |
 | SCG014 | HIGH / MEDIUM / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
 | SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
 | SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
