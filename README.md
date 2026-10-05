@@ -118,7 +118,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG006 | HIGH / INFO | Hardcoded plaintext credentials or sensitive secrets in configuration files |
 | SCG007 | HIGH / INFO | Embedded plaintext credentials in connection URIs or JAAS configurations |
 | SCG008 | MEDIUM / INFO | Exposed Swagger/OpenAPI documentation or UI endpoints |
-| SCG009 | MEDIUM / INFO | Verbose logging enabled via `debug`/`trace` or a `DEBUG`/`TRACE` root logger level |
+| SCG009 | MEDIUM / INFO | Verbose logging that writes secrets to the log: `debug`/`trace` set to anything but `false`, or a `DEBUG`/`TRACE` level on the root logger or on a logger known to log secrets (other loggers at those levels: INFO) |
 | SCG010 | MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot before 4.0) or `spring.web.error.include-*` (4.0 and later) properties |
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
 | SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |

@@ -301,8 +301,9 @@ reactive, servlet, servlet-graalvm, war, zookeeper — `--json --fail-on=NONE`):
 |---|---|---|---|---|
 | SCG001 | 31 | — | — | 31 |
 | SCG006 | 24 | — | — | 24 |
+| SCG009 | — | 1 | 1 | 2 |
 | SCG013 | — | 30 | — | 30 |
-| **Total** | **55** | **30** | **0** | **85** |
+| **Total** | **55** | **31** | **1** | **87** |
 
 Same story as Spring Boot: every finding is under
 `spring-boot-admin-samples/`, whose entire purpose is to showcase one
@@ -359,8 +360,9 @@ Run against [spring-cloud/spring-cloud-stream-samples](https://github.com/spring
 `--json --fail-on=NONE`), with SCG commit
 [`018c045`](https://github.com/rgiovann/spring-config-guard/commit/018c04565436100c1501d51ca602b7c7d7c3cb64),
 not `b0d15ec` like the four runs above, then re-run after each fix below:
-the SCG006 fix (3 findings added), ADR-009 (34 added) and ADR-010 (31
-SCG014 findings from HIGH to MEDIUM). Nothing else changed. Added as the corpus's only real
+the SCG006 fix (3 findings added), ADR-009 (34 added), ADR-010 (31
+SCG014 findings from HIGH to MEDIUM) and the SCG009 review (1 INFO added).
+Nothing else changed. Added as the corpus's only real
 Kafka security surface: hardcoded keystore passwords, `SASL_PLAINTEXT`, and
 JAAS credentials configured through the Spring Cloud Stream Kafka binder
 rather than `spring.kafka.*`.
@@ -370,9 +372,10 @@ rather than `spring.kafka.*`.
 | SCG001 | 1 | — | — | 1 |
 | SCG006 | 8 | — | — | 8 |
 | SCG007 | 2 | — | — | 2 |
+| SCG009 | — | — | 1 | 1 |
 | SCG013 | — | 1 | — | 1 |
 | SCG014 | 3 | 31 | — | 34 |
-| **Total** | **14** | **32** | **0** | **46** |
+| **Total** | **14** | **32** | **1** | **47** |
 
 31 of the 34 SCG014 findings report a protocol that isn't set, MEDIUM since
 ADR-010: 2 modules
@@ -1282,3 +1285,80 @@ can't bind stops the application from starting (S9–S11, X6, X7, Y2), so
 the rule's silence on it is proven. Every reference project and demo
 fixture reports the same findings as with the v1.11.0 jar: none sets these
 keys.
+
+## SCG009 verbose logging scenarios (running Spring Boot 4.1.1 app)
+
+What each logging setting writes to the application log was checked in an
+app with Spring MVC, JdbcTemplate and JPA on H2, and a RestClient on Apache
+HttpClient 5. It receives one request with a secret in each place a log can
+pick up, reproducible with `spring-env-benchmark/verbose-logging-scenarios.sh`,
+run twice with the same results. Q = query string, H = inbound
+Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
+J = JPA bound parameter, O = outbound Authorization header, D = outbound
+body. Values are command-line arguments unless noted.
+
+| # | Configuration | Secrets in the log | v1.11.0 | (unreleased) |
+|---|---|---|---|---|
+| L0 | defaults | none | silent | silent |
+| L1 | `debug=true` | Q B D | MEDIUM | MEDIUM |
+| L2, P4 | `debug=false`, `debug=${UNSET_VAR:false}` | none | silent | silent |
+| L3–L7 | `debug=FALSE`, `off`, `no`, `0`, empty | Q B D | silent | MEDIUM |
+| P2 | `debug=false ` (trailing space, `.properties`) | Q B D | silent | MEDIUM |
+| P3 | `debug=${UNSET_VAR:}` | Q B D | silent | MEDIUM |
+| L8, L9 | `trace=true`, `trace=off` | Q B S D | MEDIUM, silent | MEDIUM |
+| Y1, Y2 | YAML `debug: off`, `debug: no`, unquoted | none | silent | silent |
+| Y3 | YAML `debug: "off"`, quoted | Q B D | silent | MEDIUM |
+| Y4, Y5 | YAML `debug:` and `debug: ~` (null) in a base file | Q B D | silent | silent |
+| P1 | `DEBUG=true` in a `.properties` file | Q B D | MEDIUM | MEDIUM |
+| R1, R3 | `logging.level.root=DEBUG` (or `debug`) | Q B O D | MEDIUM | MEDIUM |
+| R2 | `logging.level.root=TRACE` | Q H B S J O D | MEDIUM | MEDIUM |
+| R4 | `logging.level.root=INFO` | none | silent | silent |
+| R5, R6 | `logging.level.root=ALL`, `true` | app did not start | silent | silent |
+| N1, N7, N8 | `web`, `org.springframework.web`, `org.springframework` at `debug` | Q B D | silent | MEDIUM |
+| N9 | `org=debug` | Q B O D | silent | MEDIUM |
+| N3 | `org.springframework=trace` | Q B S D | silent | MEDIUM |
+| N10, N11 | `sql`, `org.springframework.jdbc.core` at `trace` | S | silent | MEDIUM |
+| N4, N12 | `org.hibernate.orm.jdbc.bind`, `org.hibernate` at `trace` | J | silent | MEDIUM |
+| N5, N13 | `org.apache.hc.client5.http.wire`, `org.apache.hc` at `debug` | O D | silent | MEDIUM |
+| N2 | `sql=debug` | none (SQL without its parameters) | silent | INFO |
+| N14 | `org.apache.hc=info` | none | silent | silent |
+| N6 | `spring.mvc.log-request-details=true`, `web=debug` | Q B D | silent | MEDIUM |
+| N15 | `org.springframework.web.servlet.DispatcherServlet=debug` | Q | silent | MEDIUM |
+| N16 | `...mvc.method.annotation.RequestResponseBodyMethodProcessor=debug` | B D | silent | MEDIUM |
+| N17 | `org.springframework.web.client.DefaultRestClient=debug` | D | silent | MEDIUM |
+| N18 | `org.springframework.web.method.HandlerMethod=trace` | Q B D | silent | MEDIUM |
+| N19 | `org.springframework.jdbc.core.StatementCreatorUtils=trace` | S | silent | MEDIUM |
+| N20 | `org.hibernate.orm.resource.registry=trace` | J | silent | MEDIUM |
+| N21 | `org.apache.hc.client5.http.headers=debug` | O | silent | MEDIUM |
+| N22, N24 | `org.apache.coyote.http11.Http11InputBuffer`, `org.apache.tomcat.util.http.Parameters` at `debug` | none | silent | INFO |
+| N23 | `org.apache.coyote.http11.Http11InputBuffer=trace` | Q H B O D (the raw requests) | silent | MEDIUM |
+| N25 | `org=debug`, with `org.springframework.web` and `org.apache.hc` at `info` | none | silent | INFO |
+| N26 | `ORG.SPRINGFRAMEWORK.WEB=debug` | none: logger names are case-sensitive | silent | INFO |
+
+Spring Boot's `LoggingApplicationListener` reads `debug` and `trace` as raw
+strings and turns them on for any value except exactly `false`, so every
+other spelling of "off" turned debug logging on (L3–L7, P2, P3, Y3), where
+v1.11.0 was silent. Unquoted YAML `off` and `no` are YAML booleans and stay
+off. A YAML null is read as an empty value and turns it on too (Y4, Y5), but
+`ProfileMerger` drops a null key from a base file, so no rule sees it there
+(`BACKLOG.md`); a profile overriding the key with null is reported. The secrets
+were written by the loggers of N15–N21 and N23, each turned on alone, and
+by their ancestors (N1, N3–N5, N7–N13); a more specific logger with its own
+level decides for its descendants (N25), and logger names are matched as
+written (N26). The rule reports at MEDIUM one of those loggers, an
+ancestor of one, or Spring Boot's `web` or `sql` group containing one, when
+its level reaches it and no more specific configured logger stands in
+between, and any other logger at `DEBUG`/`TRACE` as INFO, since what it
+writes can't be known statically (N2, N22, N24 wrote none of the secrets). Severity stays MEDIUM: the secrets reach whoever reads the log.
+
+On the reference corpus, against the v1.11.0 jar: `spring-boot`'s
+`debug=true` finding keeps its severity with the new message, and 5 INFO
+are added (`org.hibernate.SQL`, `org.springframework.security`,
+`org.springframework.integration.file`, Spring Boot's `AuditListener` and
+`org.thymeleaf` at `DEBUG`/`TRACE`; its table above predates ADR-006 and is
+kept as recorded); `spring-boot-admin` adds 1 MEDIUM
+(`org.springframework.web=debug`) and 1 INFO (`de.codecentric=trace`);
+`spring-cloud-stream-samples` adds 1 INFO
+(`org.springframework.kafka.config=debug`). `spring-petclinic`,
+`spring-petclinic-microservices-config` and the demo fixtures report the
+same findings.

@@ -64,6 +64,8 @@ Reviewed so far:
   (`VALIDATION.md`, "SCG005 methods and headers scenarios").
 * SCG010, against running Spring Boot 4.1.1 (Spring MVC and WebFlux) and
   3.5.16 apps (`VALIDATION.md`, "SCG010 error response scenarios").
+* SCG009, against a running Spring Boot 4.1.1 app (`VALIDATION.md`, "SCG009
+  verbose logging scenarios").
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -72,15 +74,16 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
-their first review with it (SCG004, SCG005 and SCG010 so far), pick two of
-them at random and give them a second, full review. If it finds nothing
-that matters, the procedure holds; if it does, adjust the skill.
+their first review with it (SCG004, SCG005, SCG010 and SCG009 so far), pick
+two of them at random and give them a second, full review. If it finds
+nothing that matters, the procedure holds; if it does, adjust the skill.
 
 Found while reviewing SCG003, to check in the rules concerned:
 `RelaxedBoolean.isTruthy` treats an unresolved placeholder as `true`, so a
 rule using it reports doubt at its certain severity (SCG003 now resolves
 `allow-credentials` itself; SCG010 reads a value it has already resolved,
-with `isTrueLiteral`).
+with `isTrueLiteral`; SCG009 no longer uses it). Of the rules not yet
+reviewed, only SCG002 uses it.
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
@@ -89,7 +92,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG002, SCG009, SCG013, SCG015, SCG016,
+rules (SCG002, SCG013, SCG015, SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
@@ -274,6 +277,18 @@ unaffected, but a user searching the file for the quoted key won't find
 it. `RelaxedProperties.findActualKey()` returns the spelling written; only
 SCG011 uses it today. Applying it would touch every rule that quotes a key,
 so it is one change across the rules, not part of any single review.
+
+### A YAML null in a base file is dropped before the rules run
+
+`debug:` or `debug: ~` in a base file is read by Spring Boot as an empty
+value, which turns debug logging on (`VALIDATION.md`, "SCG009 verbose
+logging scenarios", Y4 and Y5). `ConfigLoader` marks the null, but
+`ProfileMerger` drops the key when no profile overrides it, so no rule
+sees it; a profile overriding a key with null keeps it, with a null value.
+The same applies to any key a rule reads as a raw string rather than a
+bound type. Keeping the key would change the merge semantics every rule
+relies on (a null value next to an absent key), so it needs its own
+change, checked against the `/actuator/env` benchmark.
 
 ### `--config-name=<prefix>`: custom `spring.config.name`
 
