@@ -24,18 +24,6 @@ GitHub Action, then new coverage with a wide reach, measured first. Items
 waiting for a need come after, and the `VALIDATION.md` rewrite last, once
 the rest has settled.
 
-### Transport rules and loopback addresses (decide)
-
-Found while reviewing SCG017: Spring Boot's own
-`smoke-test-grpc-server-oauth` sets
-`jwk-set-uri: http://localhost:8080/oauth2/jwks`, which SCG017 reports as
-HIGH. Traffic to a loopback address doesn't leave the host, so nobody on
-the network can read or rewrite it. Only the CORS rules treat loopback as
-safe (`CorsOrigins`); SCG012, SCG015, SCG016 and SCG017 report `localhost`
-and `127.0.0.1` like any other host. Decide once for all of them, rather
-than per rule: silent, `INFO`, or unchanged (in a container or a sidecar
-setup, "localhost" may not be what it seems).
-
 ### A YAML null in a base file is dropped before the rules run
 
 `debug:` or `debug: ~` in a base file is read by Spring Boot as an empty

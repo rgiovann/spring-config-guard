@@ -533,4 +533,21 @@ class JwtResourceServerInsecureTransportRuleTest {
                 properties
         );
     }
+
+    @Test
+    @DisplayName("L13: an http:// jwk-set-uri on a loopback address is INFO, not HIGH")
+    void loopbackJwkSetUriIsInfo() {
+        List<Finding> findings = rule.check(configOf(Map.of(
+                JWK_SET_URI_KEY, "http://localhost:8080/oauth2/jwks")));
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("loopback addresses");
+    }
+
+    @Test
+    @DisplayName("L17: an http:// issuer-uri on a loopback address stays HIGH: its metadata may name keys elsewhere")
+    void loopbackIssuerUriStaysHigh() {
+        assertThat(rule.check(configOf(Map.of(ISSUER_URI_KEY, "http://localhost:9000"))))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
 }

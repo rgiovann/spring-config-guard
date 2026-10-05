@@ -39,6 +39,10 @@ import java.util.stream.Collectors;
  * certificate. Both are written in the file, so both are certain evidence; the difference is the
  * attack they allow.
  * <p>
+ * When every host of the value is a loopback address ({@code jdbc:mysql://localhost:3306/app}),
+ * either finding is {@link Severity#INFO}: the traffic doesn't leave the host unless something
+ * local relays it ({@link ConnectionHosts}).
+ * <p>
  * {@code sslmode=prefer} is deliberately NOT in {@code risky-query-params}: it's the
  * PostgreSQL JDBC driver's own default when the property is absent entirely (confirmed in
  * the official pgjdbc documentation), so flagging it would penalize writing the default
@@ -178,44 +182,49 @@ public final class InsecureDatabaseTransportRule implements ConfigurableRule {
             // goes first since it needs no "?"/";" boundary to exist at all -- a bare
             // "http://host:port" with no query string would never reach the other two checks.
             boolean isFromPlaceholderDefault = trimmedValue.contains("${");
+            boolean loopback = ConnectionHosts.allLoopback(trimmedValue);
 
             Optional<String> insecureScheme = isUriKey ? findSchemeMatch(valueToInspect) : Optional.empty();
             if (insecureScheme.isPresent()) {
-                findings.add(new Finding(
+                findings.add(onLoopback(loopback, new Finding(
                         id(),
                         Severity.HIGH,
                         buildInsecureSchemeMessage(entry.getKey(), rawValue, insecureScheme.get(), isFromPlaceholderDefault),
                         config.sourceFile().toString(),
                         config.profileLabel()
-                ));
+                )));
                 continue;
             }
 
             Optional<String> disabledTls = findMatch(valueToInspect, riskyQueryParams);
             if (disabledTls.isPresent()) {
-                findings.add(new Finding(
+                findings.add(onLoopback(loopback, new Finding(
                         id(),
                         Severity.HIGH,
                         buildDisabledTlsMessage(entry.getKey(), rawValue, disabledTls.get(), isFromPlaceholderDefault),
                         config.sourceFile().toString(),
                         config.profileLabel()
-                ));
+                )));
                 continue;
             }
 
             Optional<String> noVerify = findMatch(valueToInspect, noVerifyQueryParams);
             if (noVerify.isPresent()) {
-                findings.add(new Finding(
+                findings.add(onLoopback(loopback, new Finding(
                         id(),
                         Severity.MEDIUM,
                         buildNoVerifyMessage(entry.getKey(), rawValue, noVerify.get(), isFromPlaceholderDefault),
                         config.sourceFile().toString(),
                         config.profileLabel()
-                ));
+                )));
             }
         }
 
         return findings;
+    }
+
+    private static Finding onLoopback(boolean loopback, Finding finding) {
+        return loopback ? ConnectionHosts.onLoopback(finding) : finding;
     }
 
     /**

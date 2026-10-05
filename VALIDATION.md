@@ -1508,7 +1508,10 @@ or a TLS handshake, and an app with `spring-boot-starter-amqp` opens one
 connection at startup. Reproducible with
 `spring-env-benchmark/rabbit-transport-scenarios.sh`, run twice with the
 same results. Keys are under `spring.rabbitmq`; `host` is `127.0.0.1`
-unless `addresses` is set.
+unless `addresses` is set. The rule columns
+are for the same configuration on a remote host: on the scenario's own
+loopback address, a finding there is INFO (see "Loopback addresses in the
+transport rules").
 
 | # | Configuration | On the wire | v1.12.0 | v1.13.0 | v1.15.0 |
 |---|---|---|---|---|---|
@@ -1564,7 +1567,10 @@ imports configuration from Vault at startup
 Spring Cloud 2025.1.3, the latest GA release train, which pins Spring Boot
 4.0.8 and Spring Cloud Vault 5.0.2; the train for Spring Boot 4.1 is not
 GA yet. Reproducible with `spring-env-benchmark/vault-transport-scenarios.sh`,
-run twice with the same results. Keys are under `spring.cloud.vault`.
+run twice with the same results. Keys are under `spring.cloud.vault`. The rule columns
+are for the same configuration on a remote host: on the scenario's own
+loopback address, a finding there is INFO (see "Loopback addresses in the
+transport rules").
 
 | # | Configuration | On the wire | v1.13.0 | v1.14.0 |
 |---|---|---|---|---|
@@ -1603,7 +1609,10 @@ bearer token; the listener serves a generated public key for `.pub` paths.
 The response was 401 in every row: the test token is never valid, and
 forging one was not attempted. Reproducible with
 `spring-env-benchmark/jwt-transport-scenarios.sh`, run twice with the same
-results. Keys are under `spring.security.oauth2.resourceserver`.
+results. Keys are under `spring.security.oauth2.resourceserver`. The rule columns
+are for the same configuration on a remote host: on the scenario's own
+loopback address, a finding there is INFO (see "Loopback addresses in the
+transport rules").
 
 | # | Configuration | On the wire | v1.13.0 | v1.14.0 |
 |---|---|---|---|---|
@@ -1641,8 +1650,74 @@ On the reference projects and demo fixtures, the findings are the same as
 with the v1.13.0 jar except for the wording of SCG017's message: no
 reference project sets `public-key-location` or `introspection-uri`, and
 none sets more than one of the three key sources (checked with a grep for
-the four keys, in any of their relaxed forms, whatever their value). The one SCG017 finding in
-`spring-boot`, `jwk-set-uri: http://localhost:8080/oauth2/jwks`, is still
-reported: whether transport rules treat loopback addresses as safe is
-decided for all of them at once (BACKLOG.md, "Transport rules and loopback
-addresses").
+the four keys, in any of their relaxed forms, whatever their value). The
+one SCG017 finding in `spring-boot`, `jwk-set-uri:
+http://localhost:8080/oauth2/jwks`, was HIGH in v1.14.0 and is INFO since
+loopback addresses were decided for all the transport rules at once
+("Loopback addresses in the transport rules", L13).
+
+## Loopback addresses in the transport rules
+
+Traffic to a loopback address doesn't leave the host, so nobody on the
+network can read or alter it. SCG012, SCG014, SCG015, SCG016 and SCG017
+report a connection whose hosts are **all** loopback (`localhost`,
+127.0.0.0/8, `::1`) as INFO instead of HIGH or MEDIUM, with the reason in
+the message. It stays INFO, not silent: a local forwarder (a proxy or
+sidecar on the same machine or pod) may relay the traffic in plaintext,
+and a client that discovers other nodes from the first one (Kafka's
+advertised listeners, a MongoDB replica set) may then connect elsewhere.
+`*.localhost` doesn't count: unlike a browser, a server-side client asks
+the system resolver, which had no answer for `a.localhost` and so would
+ask DNS (`localhost-browser-probe.sh`, "SCG004 insecure origin
+scenarios"). A host that isn't written doesn't count either, though
+Spring's defaults are `localhost` (Kafka's `localhost:9092`, Vault's
+`host`): in deployments it is usually set outside the files. For the same
+reason, only a host written literally counts: one from a placeholder, even
+with a loopback default (`${RABBIT_HOST:localhost}`), keeps its severity,
+since the deployment usually replaces the host and not the insecure
+setting next to it (L15). A value is left as it was when its hosts can't
+all be read (Oracle's `@host:port:SID` and `@//host` forms, a TNS
+descriptor) or don't decide where the client connects: an SRV scheme
+(`mongodb+srv://`), looked up in DNS, or a parameter that overrides the
+host or routes elsewhere, such as PostgreSQL's `?host=` and SQL Server's
+`;serverName=` (both checked in pgjdbc 42.7.4 and mssql-jdbc 12.8.1), a
+SOCKS proxy or a failover partner (L14). SCG016 keeps its severity when
+Vault is located through service discovery (L16), and SCG017 when the
+URI is `issuer-uri`, whose metadata may name keys on another host (L17).
+
+| # | Rule | Configuration | v1.15.0 | (unreleased) |
+|---|---|---|---|---|
+| L1 | SCG012 | `spring.datasource.url=jdbc:mysql://localhost:3306/app?useSSL=false` | HIGH | INFO |
+| L2 | SCG012 | `jdbc:mysql://localhost,db.internal/app?useSSL=false` | HIGH | HIGH |
+| L3 | SCG012 | `jdbc:sqlserver://127.0.0.1;encrypt=false` | HIGH | INFO |
+| L4 | SCG012 | `spring.elasticsearch.uris=http://es.localhost:9200` | HIGH | HIGH |
+| L5 | SCG014 | `spring.kafka.bootstrap-servers=localhost:9092`, no protocol | MEDIUM | INFO |
+| L6 | SCG014 | L5 plus `spring.kafka.consumer.bootstrap-servers=kafka.internal:9092` | MEDIUM | MEDIUM |
+| L7 | SCG014 | binder `brokers=localhost:9092`, `configuration.security.protocol=SASL_PLAINTEXT` | HIGH | INFO |
+| L8 | SCG014 | no broker written, no protocol | MEDIUM | MEDIUM |
+| L9 | SCG015 | `spring.rabbitmq.host=localhost` | MEDIUM | INFO |
+| L10 | SCG015 | `addresses=localhost:5672,rabbit.internal:5672` | MEDIUM | MEDIUM |
+| L11 | SCG016 | `spring.cloud.vault.uri=http://127.0.0.1:8200` | HIGH | INFO |
+| L12 | SCG016 | `scheme=http`, `host=localhost` (HIGH without `host`) | HIGH | INFO |
+| L13 | SCG017 | `jwk-set-uri=http://localhost:8080/oauth2/jwks` | HIGH | INFO |
+| L14 | SCG012 | `jdbc:postgresql://localhost/db?host=prod-db.internal&sslmode=disable` | HIGH | HIGH |
+| L15 | SCG015 | `spring.rabbitmq.host=${RABBIT_HOST:localhost}` | MEDIUM | MEDIUM |
+| L16 | SCG016 | L12 plus `discovery.enabled=true` | HIGH | HIGH |
+| L17 | SCG017 | `issuer-uri=http://localhost:9000` | HIGH | HIGH |
+
+SCG014 counts the brokers across the whole file (`bootstrap-servers`, a
+`bootstrap.servers` map entry, a binder's `brokers`, in every context): one
+remote address anywhere keeps every finding (L6). SCG015 counts every
+entry of `addresses` when it is set, since the client fails over to them,
+else `host`.
+
+On the reference projects, against the v1.15.0 jar, nine findings become
+INFO, each on a written loopback host: in `spring-petclinic-microservices`,
+SCG012's `jdbc:mysql://localhost:3306/petclinic?...useSSL=false` (HIGH); in
+`spring-boot`, SCG017's `jwk-set-uri: http://localhost:8080/oauth2/jwks`
+(HIGH) and one SCG014 on `bootstrap-servers=localhost:9092` (MEDIUM); in
+`spring-cloud-stream-samples`, five SCG014 on binder `brokers` or
+`bootstrap-servers` at `localhost` (one HIGH for `SASL_PLAINTEXT`, four
+MEDIUM). Every other finding is identical. Two demo fixtures that
+showcase a HIGH used `localhost` and now use a remote host
+(`localstack.dev.internal`, `customers-db`).

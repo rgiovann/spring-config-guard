@@ -120,7 +120,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("B2: a bundle placeholder that resolves empty leaves TLS off: MEDIUM, as without a bundle")
     void bundleResolvingEmptyIsMedium() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_BUNDLE_KEY, "${SCG_BUNDLE:}"
         ));
 
@@ -132,7 +132,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("B2: with a bundle that resolves empty, ssl.enabled=false is still HIGH")
     void bundleResolvingEmptyWithSslDisabledIsHigh() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_ENABLED_KEY, "false",
                 SSL_BUNDLE_KEY, "${SCG_BUNDLE:}"
         ));
@@ -146,7 +146,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("B2u: a bundle placeholder without a default is INFO, whether ssl.enabled is false or unresolved")
     void unresolvedBundleIsInfo(String enabled) {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_ENABLED_KEY, enabled,
                 SSL_BUNDLE_KEY, "${SCG_BUNDLE}"
         ));
@@ -161,7 +161,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("B2u: a bundle placeholder without a default is INFO when ssl.enabled is absent")
     void unresolvedBundleWithoutSslEnabledIsInfo() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_BUNDLE_KEY, "${SCG_BUNDLE}"
         ));
 
@@ -174,7 +174,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("A bundle placeholder doesn't matter when ssl.enabled is true: TLS is on either way")
     void bundlePlaceholderWithSslEnabledIsSilent(String bundle) {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_ENABLED_KEY, "true",
                 SSL_BUNDLE_KEY, bundle
         ));
@@ -186,7 +186,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("A bundle placeholder with a non-empty default sets the bundle: silent")
     void bundlePlaceholderWithDefaultIsSilent() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                HOST_KEY, "127.0.0.1",
+                HOST_KEY, "rabbit.internal",
                 SSL_ENABLED_KEY, "false",
                 SSL_BUNDLE_KEY, "${SCG_BUNDLE:rabbit}"
         ));
@@ -250,7 +250,7 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("A4: silent for addresses=AMQPS://..., which stopped the app from starting")
     void shouldStaySilentForUpperCaseAmqps() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                ADDRESSES_KEY, "AMQPS://127.0.0.1:5672"
+                ADDRESSES_KEY, "AMQPS://rabbit.internal:5672"
         ));
 
         // Spring Boot's address parser compares the scheme case-sensitively, so AMQPS:// isn't
@@ -363,9 +363,9 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("H0, A1, H5: MEDIUM without ssl.enabled, for host, scheme-less addresses, and the TLS port alone: all spoke plain AMQP")
     void plainWithoutSslEnabled() {
         for (Map<String, String> properties : List.of(
-                Map.of(HOST_KEY, "127.0.0.1"),
-                Map.of(ADDRESSES_KEY, "127.0.0.1:5672"),
-                Map.of(HOST_KEY, "127.0.0.1", "spring.rabbitmq.port", "5671"))) {
+                Map.of(HOST_KEY, "rabbit.internal"),
+                Map.of(ADDRESSES_KEY, "rabbit.internal:5672"),
+                Map.of(HOST_KEY, "rabbit.internal", "spring.rabbitmq.port", "5671"))) {
             List<Finding> findings = check(properties);
             assertThat(findings).as(properties.toString()).hasSize(1);
             assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
@@ -376,27 +376,27 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("H1, H3, H4, B1, A5, V1: silent when ssl.enabled is a true literal or a bundle is set: all started a TLS handshake")
     void silentWhenTlsIsOn() {
         for (String value : List.of("true", "yes", "TRUE")) {
-            assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_ENABLED_KEY, value))).isEmpty();
+            assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, value))).isEmpty();
         }
-        assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_BUNDLE_KEY, "rabbit"))).isEmpty();
-        assertThat(check(Map.of(ADDRESSES_KEY, "127.0.0.1:5672", SSL_ENABLED_KEY, "true"))).isEmpty();
+        assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "rabbit"))).isEmpty();
+        assertThat(check(Map.of(ADDRESSES_KEY, "rabbit.internal:5672", SSL_ENABLED_KEY, "true"))).isEmpty();
         // V1: TLS without validating the server's certificate is out of this rule's scope (BACKLOG.md)
-        assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_ENABLED_KEY, "true",
+        assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true",
                 "spring.rabbitmq.ssl.validate-server-certificate", "false"))).isEmpty();
     }
 
     @Test
     @DisplayName("A6, A7: the first address decides: plain first is MEDIUM, amqps:// first is silent")
     void firstAddressDecides() {
-        assertThat(check(Map.of(ADDRESSES_KEY, "127.0.0.1:5672,amqps://127.0.0.1:5672")))
+        assertThat(check(Map.of(ADDRESSES_KEY, "rabbit.internal:5672,amqps://rabbit.internal:5672")))
                 .singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
-        assertThat(check(Map.of(ADDRESSES_KEY, "amqps://127.0.0.1:5672,127.0.0.1:5672"))).isEmpty();
+        assertThat(check(Map.of(ADDRESSES_KEY, "amqps://rabbit.internal:5672,rabbit.internal:5672"))).isEmpty();
     }
 
     @Test
     @DisplayName("Y1: addresses written as a YAML list is read, through ConfigLoader: a scheme-less first entry is MEDIUM")
     void yamlListIsRead(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve("application.yml"), "spring.rabbitmq.addresses:\n  - 127.0.0.1:5672\n");
+        Files.writeString(dir.resolve("application.yml"), "spring.rabbitmq.addresses:\n  - rabbit.internal:5672\n");
 
         List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
                 .flatMap(file -> new ProfileMerger().merge(file).stream())
@@ -411,15 +411,53 @@ class RabbitMqInsecureTransportRuleTest {
     @DisplayName("a list is read by its lowest index, whatever order the keys come in")
     void listReadByLowestIndex() {
         Map<String, String> secureFirst = new LinkedHashMap<>();
-        secureFirst.put(ADDRESSES_KEY + "[1]", "127.0.0.1:5672");
-        secureFirst.put(ADDRESSES_KEY + "[0]", "amqps://127.0.0.1:5671");
+        secureFirst.put(ADDRESSES_KEY + "[1]", "rabbit.internal:5672");
+        secureFirst.put(ADDRESSES_KEY + "[0]", "amqps://rabbit.internal:5671");
         Map<String, String> plainFirst = new LinkedHashMap<>();
-        plainFirst.put(ADDRESSES_KEY + "[1]", "amqps://127.0.0.1:5671");
-        plainFirst.put(ADDRESSES_KEY + "[0]", "127.0.0.1:5672");
+        plainFirst.put(ADDRESSES_KEY + "[1]", "amqps://rabbit.internal:5671");
+        plainFirst.put(ADDRESSES_KEY + "[0]", "rabbit.internal:5672");
 
         assertThat(check(secureFirst)).isEmpty();
         assertThat(check(plainFirst)).hasSize(1);
-        assertThat(check(Map.of(ADDRESSES_KEY + "[0]", "127.0.0.1:5672", SSL_ENABLED_KEY, "false")))
+        assertThat(check(Map.of(ADDRESSES_KEY + "[0]", "rabbit.internal:5672", SSL_ENABLED_KEY, "false")))
                 .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"localhost", "127.0.0.1"})
+    @DisplayName("L9: a loopback host is INFO, not MEDIUM")
+    void loopbackHostIsInfo(String host) {
+        List<Finding> findings = check(Map.of(HOST_KEY, host));
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("loopback addresses");
+    }
+
+    @Test
+    @DisplayName("L9: ssl.enabled=false on a loopback host is INFO, not HIGH")
+    void loopbackHostWithSslDisabledIsInfo() {
+        assertThat(check(Map.of(HOST_KEY, "localhost", SSL_ENABLED_KEY, "false")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+    }
+
+    @Test
+    @DisplayName("L10: addresses with one remote broker keep the MEDIUM, whatever host says")
+    void mixedAddressesStayMedium() {
+        assertThat(check(Map.of(ADDRESSES_KEY, "localhost:5672,rabbit.internal:5672", HOST_KEY, "localhost")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("Addresses decide over host: loopback addresses with a remote host are INFO")
+    void addressesDecideOverHost() {
+        assertThat(check(Map.of(ADDRESSES_KEY, "localhost:5672", HOST_KEY, "rabbit.internal")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+    }
+
+    @Test
+    @DisplayName("L15: a loopback host from a placeholder default keeps the MEDIUM")
+    void placeholderHostKeepsMedium() {
+        assertThat(check(Map.of(HOST_KEY, "${RABBIT_HOST:localhost}")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
     }
 }

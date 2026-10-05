@@ -19,7 +19,9 @@ import java.util.Optional;
  * and {@code opaquetoken.introspection-uri}. Whoever can read or rewrite that traffic can serve
  * their own keys (or an introspection answer saying any token is active) and get tokens the
  * application accepts — authentication bypass, not just traffic interception. {@link Severity#HIGH};
- * a value that is an unresolved placeholder is {@link Severity#INFO}.
+ * a value that is an unresolved placeholder, or a URI whose host is a loopback address
+ * ({@code http://localhost:8080/oauth2/jwks}, {@link ConnectionHosts}; not {@code issuer-uri}, whose
+ * metadata may send the client to another host for the keys), is {@link Severity#INFO}.
  * <p>
  * Measured on the wire in a running Spring Boot 4.1.1 resource server, with a listener recording
  * whether each fetch was plain HTTP or TLS (VALIDATION.md, "SCG017 resource server transport
@@ -140,8 +142,12 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
             boolean isFromStaticDefault = !rawValue.equalsIgnoreCase(resolvedValue);
             String message = buildHighSeverityMessage(key, rawValue, isFromStaticDefault);
             if (placeholderBefore == null) {
-                findings.add(new Finding(id(), Severity.HIGH, message,
-                        config.sourceFile().toString(), config.profileLabel()));
+                Finding finding = new Finding(id(), Severity.HIGH, message,
+                        config.sourceFile().toString(), config.profileLabel());
+                // Not issuer-uri: OIDC discovery fetches the keys from the jwks_uri the metadata names,
+                // which may be on another host.
+                boolean loopback = !key.equals(ISSUER_URI_KEY) && ConnectionHosts.allLoopback(rawValue);
+                findings.add(loopback ? ConnectionHosts.onLoopback(finding) : finding);
             } else {
                 findings.add(new Finding(id(), Severity.INFO,
                         message + " Used only if '%s', an unresolved placeholder, resolves empty at runtime."

@@ -48,7 +48,7 @@ class KafkaInsecureProtocolRuleTest {
     @DisplayName("Should report MEDIUM when Kafka is configured but security.protocol is absent (unsafe default, ADR-010)")
     void shouldReportMediumWhenKafkaConfiguredButProtocolAbsent() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092"
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092"
         ));
 
         List<Finding> findings = rule.check(config);
@@ -68,7 +68,7 @@ class KafkaInsecureProtocolRuleTest {
         // !common.isBlank() branch, which the null test short-circuits past without evaluating.
         // A blank value is not "configured" -- the unset finding must still fire.
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 COMMON_KEY, "   "
         ));
 
@@ -83,7 +83,7 @@ class KafkaInsecureProtocolRuleTest {
     @DisplayName("Should stay silent when common security.protocol is explicitly set to SSL or SASL_SSL")
     void shouldStaySilentWhenCommonProtocolIsSecure() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 COMMON_KEY, "SSL"
         ));
 
@@ -150,7 +150,7 @@ class KafkaInsecureProtocolRuleTest {
         // HealthDetailsExposureRule/VerboseErrorResponseRule for their own unrecognized values.
         // The key IS present and non-blank, so the "unset" finding must not fire either.
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 COMMON_KEY, "sometimes"
         ));
 
@@ -162,7 +162,7 @@ class KafkaInsecureProtocolRuleTest {
     void shouldReportMediumWhenCommonProtocolMissingEvenIfConsumerIsSecure() {
         // Consumer is explicitly secure, but producer/admin/streams fall back to common which is missing -> unsafe default
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 "spring.kafka.consumer.security.protocol", "SASL_SSL"
         ));
 
@@ -242,7 +242,7 @@ class KafkaInsecureProtocolRuleTest {
         // interaction between the two independent checks (Step 2's placeholder resolution vs.
         // Step 3's raw-text presence check) is not obvious from reading either method alone.
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 COMMON_KEY, "${KAFKA_PROTOCOL:}"
         ));
 
@@ -266,7 +266,7 @@ class KafkaInsecureProtocolRuleTest {
     @DisplayName("Should treat properties map override spring.kafka.properties.security.protocol as common configuration")
     void shouldAcceptPropertiesMapAsCommon() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.bootstrap-servers", "kafka.internal:9092",
                 "spring.kafka.properties.security.protocol", "SSL"
         ));
 
@@ -277,7 +277,7 @@ class KafkaInsecureProtocolRuleTest {
     @DisplayName("Should not throw and report MEDIUM when property value is null but Kafka prefix is present")
     void shouldNotThrowWhenPropertyValueIsNull() {
         Map<String, String> properties = new HashMap<>();
-        properties.put("spring.kafka.bootstrap-servers", "localhost:9092");
+        properties.put("spring.kafka.bootstrap-servers", "kafka.internal:9092");
         properties.put(COMMON_KEY, null);
 
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
@@ -413,5 +413,101 @@ class KafkaInsecureProtocolRuleTest {
             properties.put(keysAndValues[i], keysAndValues[i + 1]);
         }
         return new EffectiveConfig(FAKE_PATH, "prod", properties);
+    }
+
+    @Test
+    @DisplayName("L5: an absent protocol with only loopback brokers written is INFO, not MEDIUM")
+    void loopbackBrokersMakeAbsentProtocolInfo() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.bootstrap-servers", "localhost:9092"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("advertised listeners");
+    }
+
+    @Test
+    @DisplayName("L6: one remote broker address anywhere keeps every finding as it is")
+    void remoteBrokerKeepsFindings() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.consumer.bootstrap-servers", "kafka.internal:9092"
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("L7: a binder on loopback brokers with SASL_PLAINTEXT is INFO, not HIGH")
+    void loopbackBinderBrokersMakeWrittenProtocolInfo() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.cloud.stream.kafka.binder.brokers", "localhost:9092",
+                "spring.cloud.stream.kafka.binder.configuration.security.protocol", "SASL_PLAINTEXT"
+        ));
+
+        assertThat(rule.check(config)).isNotEmpty().allMatch(finding -> finding.severity() == Severity.INFO
+                && finding.message().contains("Lowered from HIGH to INFO"));
+    }
+
+    @Test
+    @DisplayName("L8: no broker written keeps the MEDIUM, though Spring Boot's default is localhost:9092")
+    void unwrittenBrokersDontCount() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.consumer.group-id", "app"
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("A broker address that is an unresolved placeholder isn't taken for loopback")
+    void unresolvedBrokerDoesntCount() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.producer.bootstrap-servers", "${KAFKA_BROKERS}"
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("L15: a loopback broker from a placeholder default keeps the MEDIUM")
+    void placeholderBrokerKeepsMedium() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.bootstrap-servers", "${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}"
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("A loopback address under another prefix isn't a Kafka broker: the HIGH stays")
+    void foreignBrokerKeyDoesntCount() {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "app.audit.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.security.protocol", "PLAINTEXT"
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Broker addresses count in a properties map and in a binder's environment")
+    void brokersCountInEveryContext() {
+        EffectiveConfig loopback = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.properties.bootstrap.servers", "localhost:9092",
+                "spring.kafka.security.protocol", "PLAINTEXT"
+        ));
+        EffectiveConfig remoteInBinder = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                "spring.kafka.bootstrap-servers", "localhost:9092",
+                "spring.kafka.security.protocol", "PLAINTEXT",
+                "spring.cloud.stream.binders.k2.type", "kafka",
+                "spring.cloud.stream.binders.k2.environment.spring.cloud.stream.kafka.binder.brokers", "kafka.internal:9092"
+        ));
+
+        assertThat(rule.check(loopback)).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(rule.check(remoteInBinder)).extracting(Finding::severity).contains(Severity.HIGH);
     }
 }

@@ -137,7 +137,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects useSSL=false in JDBC MySQL connections")
         void shouldDetectDisabledSslInMysqlUri() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?useSSL=false&serverTimezone=UTC"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?useSSL=false&serverTimezone=UTC"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -157,7 +157,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects sslmode=disable in PostgreSQL connection URIs")
         void shouldDetectDisabledSslInPostgresUri() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:postgresql://localhost:5432/db?sslmode=disable"
+                    "spring.datasource.url", "jdbc:postgresql://db.internal:5432/db?sslmode=disable"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -173,7 +173,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects semicolon-separated query parameters (e.g., SQL Server format)")
         void shouldDetectInsecureParamsWithSemicolonDelimiter() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;databaseName=db;encrypt=false"
+                    "spring.datasource.url", "jdbc:sqlserver://db.internal:1433;databaseName=db;encrypt=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -192,7 +192,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects verifyServerCertificate=false when TLS is enabled")
         void shouldDetectDisabledCertificateValidation() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?useSSL=true&verifyServerCertificate=false"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?useSSL=true&verifyServerCertificate=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -213,7 +213,7 @@ class InsecureDatabaseTransportRuleTest {
             // not "false" -- SQL Server's flag means "trust the server's certificate without
             // verifying it" when explicitly set to true.
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:sqlserver://localhost:1433;encrypt=true;trustServerCertificate=true"
+                    "spring.datasource.url", "jdbc:sqlserver://db.internal:1433;encrypt=true;trustServerCertificate=true"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -232,7 +232,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects MongoDB's own certificate/hostname validation opt-outs")
         void shouldDetectMongoNoVerifyParameters(String queryParam) {
             Map<String, String> properties = Map.of(
-                    "spring.data.mongodb.uri", "mongodb://user:pass@localhost:27017/db?" + queryParam
+                    "spring.data.mongodb.uri", "mongodb://user:pass@db.internal:27017/db?" + queryParam
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -251,7 +251,7 @@ class InsecureDatabaseTransportRuleTest {
             // parameters its own string-URI parser actually recognizes (NONE|CA|FULL) --
             // unlike a made-up "sslInsecure", which it would silently ignore.
             Map<String, String> properties = Map.of(
-                    "spring.redis.url", "rediss://localhost:6379?verifyPeer=NONE"
+                    "spring.redis.url", "rediss://db.internal:6379?verifyPeer=NONE"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -269,7 +269,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Prioritizes CWE-319 when both disabled TLS and no-verify parameters are present")
         void shouldPrioritizeDisabledTlsOverNoVerifyWhenBothArePresent() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?useSSL=false&verifyServerCertificate=false"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?useSSL=false&verifyServerCertificate=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -288,7 +288,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects http:// on an Elasticsearch URI with no query string at all")
         void shouldDetectHttpSchemeOnElasticsearch() {
             Map<String, String> properties = Map.of(
-                    "spring.elasticsearch.uris", "http://localhost:9200"
+                    "spring.elasticsearch.uris", "http://db.internal:9200"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -307,7 +307,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Stays silent when Elasticsearch URI uses https://")
         void shouldStaySilentOnHttpsElasticsearch() {
             Map<String, String> properties = Map.of(
-                    "spring.elasticsearch.uris", "https://localhost:9200"
+                    "spring.elasticsearch.uris", "https://db.internal:9200"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -318,7 +318,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects amqp:// on a RabbitMQ address written as a full AMQP URI")
         void shouldDetectAmqpSchemeOnRabbitMq() {
             Map<String, String> properties = Map.of(
-                    "spring.rabbitmq.addresses", "amqp://guest:guest@localhost:5672/vhost"
+                    "spring.rabbitmq.addresses", "amqp://guest:guest@db.internal:5672/vhost"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -332,7 +332,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Stays silent when RabbitMQ address uses amqps://")
         void shouldStaySilentOnAmqpsRabbitMq() {
             Map<String, String> properties = Map.of(
-                    "spring.rabbitmq.addresses", "amqps://guest:guest@localhost:5671/vhost"
+                    "spring.rabbitmq.addresses", "amqps://guest:guest@db.internal:5671/vhost"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -346,7 +346,7 @@ class InsecureDatabaseTransportRuleTest {
             // that's spring.rabbitmq.ssl.enabled's job (SCG015, RabbitMqInsecureTransportRule).
             // This mechanism only catches the explicit amqp:///amqps:// URI authoring style.
             Map<String, String> properties = Map.of(
-                    "spring.rabbitmq.addresses", "localhost:5672"
+                    "spring.rabbitmq.addresses", "db.internal:5672"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -357,7 +357,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects tcp:// on an ActiveMQ broker URL")
         void shouldDetectTcpSchemeOnActiveMq() {
             Map<String, String> properties = Map.of(
-                    "spring.activemq.broker-url", "tcp://localhost:61616"
+                    "spring.activemq.broker-url", "tcp://db.internal:61616"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -371,7 +371,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Stays silent when ActiveMQ broker URL uses ssl://")
         void shouldStaySilentOnSslActiveMq() {
             Map<String, String> properties = Map.of(
-                    "spring.activemq.broker-url", "ssl://localhost:61617"
+                    "spring.activemq.broker-url", "ssl://db.internal:61617"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -414,7 +414,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Detects http:// on a Spring Cloud AWS per-service endpoint override")
         void shouldDetectHttpSchemeOnAwsServiceEndpoint(String key) {
             Map<String, String> properties = Map.of(
-                    key, "http://localhost:4566"
+                    key, "http://db.internal:4566"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -481,7 +481,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Resolves static placeholder default and appends origin note to the finding message")
         void shouldDetectInsecureParamInPlaceholderDefaultAndAppendNote() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "${DB_URL:jdbc:mysql://localhost:3306/db?useSSL=false}"
+                    "spring.datasource.url", "${DB_URL:jdbc:mysql://db.internal:3306/db?useSSL=false}"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -499,7 +499,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Does not generate finding when resolved placeholder default is secure")
         void shouldNotFlagSecurePlaceholderDefault() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "${DB_URL:jdbc:mysql://localhost:3306/db?useSSL=true}"
+                    "spring.datasource.url", "${DB_URL:jdbc:mysql://db.internal:3306/db?useSSL=true}"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -515,7 +515,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Ignores connection URIs without query parameters")
         void shouldIgnoreUrisWithoutQueryParams() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:postgresql://localhost:5432/db"
+                    "spring.datasource.url", "jdbc:postgresql://db.internal:5432/db"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -526,7 +526,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Does NOT flag sslmode=prefer because it is driver default behavior")
         void shouldNotFlagSslModePrefer() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:postgresql://localhost:5432/db?sslmode=prefer"
+                    "spring.datasource.url", "jdbc:postgresql://db.internal:5432/db?sslmode=prefer"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -537,7 +537,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Handles uppercase and mixed-case parameter names and values correctly")
         void shouldBeCaseInsensitiveForParamsAndValues() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?USeSSL=FaLsE"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?USeSSL=FaLsE"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -571,7 +571,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Ignores non-uri-based properties even if they contain insecure query parameters")
         void shouldIgnoreNonUriProperties() {
             Map<String, String> properties = Map.of(
-                    "custom.app.my-query", "http://localhost/search?useSSL=false"
+                    "custom.app.my-query", "http://db.internal/search?useSSL=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -584,7 +584,7 @@ class InsecureDatabaseTransportRuleTest {
             // "spring.activemq.broker-url" is the one uri-based key with a real compound-word
             // segment among the seven configured in SCG012.yml -- written here as camelCase.
             Map<String, String> properties = Map.of(
-                    "spring.activemq.brokerUrl", "tcp://localhost:61616?ssl=false"
+                    "spring.activemq.brokerUrl", "tcp://db.internal:61616?ssl=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -621,7 +621,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Should stay silent for recognized parameter names with unrecognized/unmapped values")
         void shouldStaySilentForUnrecognizedParameterValues(String queryParam) {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:postgresql://localhost:5432/db?" + queryParam
+                    "spring.datasource.url", "jdbc:postgresql://db.internal:5432/db?" + queryParam
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -644,7 +644,7 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Should report findings regardless of active profile (Zero-Trust)")
         void shouldReportRegardlessOfProfile(String profile) {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?useSSL=false"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?useSSL=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, profile, properties);
 
@@ -655,8 +655,8 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Should report independent findings for multiple different insecure connection properties")
         void shouldReportIndependentFindingsAcrossDifferentProperties() {
             Map<String, String> properties = Map.of(
-                    "spring.datasource.url", "jdbc:mysql://localhost:3306/db?useSSL=false",
-                    "spring.data.mongodb.uri", "mongodb://localhost:27017/db?ssl=false"
+                    "spring.datasource.url", "jdbc:mysql://db.internal:3306/db?useSSL=false",
+                    "spring.data.mongodb.uri", "mongodb://db.internal:27017/db?ssl=false"
             );
             EffectiveConfig config = new EffectiveConfig(mockPath, "default", properties);
 
@@ -732,6 +732,71 @@ class InsecureDatabaseTransportRuleTest {
         @DisplayName("Stays silent for verified TLS, default modes, redis://, and http:// or a placeholder outside the connection keys")
         void shouldStaySilent(String key, String value) {
             assertThat(check(key, value)).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Loopback hosts (VALIDATION.md, \"Loopback addresses in the transport rules\")")
+    class LoopbackTests {
+
+        private List<Finding> check(String key, String value) {
+            return rule.check(new EffectiveConfig(mockPath, "default", Map.of(key, value)));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"jdbc:mysql://localhost:3306/app?useSSL=false",
+                "jdbc:sqlserver://127.0.0.1;encrypt=false",
+                "jdbc:postgresql://[::1]:5432/app?sslmode=require"})
+        @DisplayName("L1, L3: a URL whose hosts are all loopback is INFO, saying why")
+        void loopbackUrlIsInfo(String url) {
+            List<Finding> findings = check("spring.datasource.url", url);
+
+            assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+            assertThat(findings.getFirst().message()).contains("loopback addresses");
+        }
+
+        @Test
+        @DisplayName("L2: one remote host among loopback ones keeps the HIGH")
+        void mixedHostsStayHigh() {
+            assertThat(check("spring.datasource.url", "jdbc:mysql://localhost,db.internal/app?useSSL=false"))
+                    .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("L4: a *.localhost name isn't loopback for a server-side client: HIGH")
+        void localhostSubdomainStaysHigh() {
+            assertThat(check("spring.elasticsearch.uris", "http://es.localhost:9200"))
+                    .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("A loopback scheme finding is INFO too")
+        void loopbackSchemeIsInfo() {
+            assertThat(check("spring.cloud.aws.s3.endpoint", "http://localhost:4566"))
+                    .singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        }
+    }
+
+    @Nested
+    @DisplayName("Loopback hosts that don't decide where the connection goes")
+    class LoopbackOverrideTests {
+
+        private List<Finding> check(String value) {
+            return rule.check(new EffectiveConfig(mockPath, "default", Map.of("spring.datasource.url", value)));
+        }
+
+        @Test
+        @DisplayName("L14: ?host= overrides the URL's host for PostgreSQL: HIGH")
+        void hostParameterKeepsHigh() {
+            assertThat(check("jdbc:postgresql://localhost/db?host=prod-db.internal&sslmode=disable"))
+                    .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+        }
+
+        @Test
+        @DisplayName("L15: a loopback host from a placeholder default keeps the HIGH")
+        void placeholderHostKeepsHigh() {
+            assertThat(check("jdbc:mysql://${DB_HOST:localhost}:3306/app?useSSL=false"))
+                    .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
         }
     }
 }

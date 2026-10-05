@@ -5,6 +5,7 @@ import dev.scg.core.*;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -39,9 +40,10 @@ import java.util.function.Predicate;
  * Severity {@link Severity#HIGH} for an insecure protocol written in the file: unencrypted transport
  * exposes data — and for {@code SASL_PLAINTEXT}, credentials — to anyone with network visibility.
  * {@link Severity#MEDIUM} when the protocol is only absent: the same default applies, but the
- * protocol may be set outside the scanned files (ARCHITECTURE.md, ADR-010). No profile exemption
- * (Zero-Trust). Plain {@link Rule}: the protocol values are fixed facts of the Kafka wire
- * protocol, not organization-specific.
+ * protocol may be set outside the scanned files (ARCHITECTURE.md, ADR-010). Either is
+ * {@link Severity#INFO} when every Kafka broker address the file writes, literally, is a loopback
+ * address ({@link ConnectionHosts}). No profile exemption (Zero-Trust). Plain {@link Rule}: the
+ * protocol values are fixed facts of the Kafka wire protocol, not organization-specific.
  */
 public final class KafkaInsecureProtocolRule implements Rule {
 
@@ -103,7 +105,46 @@ public final class KafkaInsecureProtocolRule implements Rule {
         // Step 4: the Spring Cloud Stream Kafka binders (ADR-009)
         checkBinders(config, springKafkaUnsetReported, findings);
 
-        return findings;
+        return writesOnlyLoopbackBrokers(config)
+                ? findings.stream().map(ConnectionHosts::onLoopback).toList()
+                : findings;
+    }
+
+    /**
+     * Whether the file writes at least one broker address and every one it writes, in any context
+     * ({@code bootstrap-servers}, a {@code bootstrap.servers} map entry, a binder's {@code brokers}),
+     * is a loopback address. Deliberately not per client or per binder: one remote address anywhere
+     * keeps every finding as it is. An unwritten address doesn't count, though Spring Boot's default
+     * is {@code localhost:9092}: it is usually set outside the files.
+     */
+    private static boolean writesOnlyLoopbackBrokers(EffectiveConfig config) {
+        boolean written = false;
+        for (Map.Entry<String, String> entry : config.properties().entrySet()) {
+            String key = RelaxedProperties.canonicalRoot(RelaxedProperties.canonicalize(entry.getKey()));
+            if (!isBrokerKey(key)) {
+                continue;
+            }
+            String raw = entry.getValue();
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            if (!ConnectionHosts.allLoopback(raw)) {
+                return false; // a remote, unreadable or placeholder address
+            }
+            written = true;
+        }
+        return written;
+    }
+
+    /** A Spring Kafka or Spring Cloud Stream Kafka broker key, at the top level or in a binder's environment. */
+    private static boolean isBrokerKey(String canonicalKey) {
+        int environment = canonicalKey.indexOf(".environment.");
+        String key = canonicalKey.startsWith("spring.cloud.stream.binders.") && environment >= 0
+                ? canonicalKey.substring(environment + ".environment.".length())
+                : canonicalKey;
+        boolean kafkaKey = key.startsWith(SPRING_KAFKA_PREFIX + ".") || key.startsWith("spring.cloud.stream.kafka.");
+        return kafkaKey && (key.endsWith(".bootstrapservers") || key.endsWith(".bootstrap.servers")
+                || key.endsWith(".binder.brokers"));
     }
 
     /**

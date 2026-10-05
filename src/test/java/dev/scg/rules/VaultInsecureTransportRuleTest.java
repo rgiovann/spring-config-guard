@@ -337,4 +337,37 @@ class VaultInsecureTransportRuleTest {
 
         assertThat(rule.check(config)).hasSize(1);
     }
+
+    @Test
+    @DisplayName("L11: an http:// uri on a loopback address is INFO, not HIGH")
+    void loopbackUriIsInfo() {
+        List<Finding> findings = rule.check(new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                URI_KEY, "http://127.0.0.1:8200")));
+
+        assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("loopback addresses");
+    }
+
+    @Test
+    @DisplayName("L12: scheme=http with a written loopback host is INFO; with no host written it stays HIGH")
+    void schemeWithLoopbackHost() {
+        assertThat(rule.check(new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http", "spring.cloud.vault.host", "localhost"))))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+        assertThat(rule.check(new EffectiveConfig(FAKE_PATH, "prod", Map.of(SCHEME_KEY, "http"))))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("L16: a loopback host with Vault located through discovery keeps the HIGH")
+    void discoveryKeepsHigh() {
+        assertThat(rule.check(new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http", "spring.cloud.vault.host", "localhost",
+                "spring.cloud.vault.discovery.enabled", "true"))))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+        assertThat(rule.check(new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http", "spring.cloud.vault.host", "localhost",
+                "spring.cloud.vault.discovery.enabled", "false"))))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
+    }
 }

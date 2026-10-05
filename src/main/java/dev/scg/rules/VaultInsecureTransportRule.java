@@ -35,8 +35,11 @@ import java.util.Optional;
  * another the way {@code uri} overrides {@code scheme} here.
  * <p>
  * Severity {@link Severity#HIGH}: Vault carries the application's own bootstrap secrets, so an
- * unencrypted connection exposes those secrets in transit — same risk class as SCG007/SCG012. No
- * profile exemption (Zero-Trust). Plain {@link Rule}: both property keys are fixed facts of
+ * unencrypted connection exposes those secrets in transit — same risk class as SCG007/SCG012.
+ * {@link Severity#INFO} when the server is a loopback address written literally in {@code uri} or
+ * {@code host} ({@link ConnectionHosts}), unless Vault is located through service discovery;
+ * {@code host}'s default, {@code localhost}, doesn't count, since it is often set outside the
+ * files. No profile exemption (Zero-Trust). Plain {@link Rule}: both property keys are fixed facts of
  * Spring Cloud Vault's binding, not organization-specific.
  */
 public final class VaultInsecureTransportRule implements Rule {
@@ -45,6 +48,8 @@ public final class VaultInsecureTransportRule implements Rule {
 
     private static final String SCHEME_KEY = "spring.cloud.vault.scheme";
     private static final String URI_KEY = "spring.cloud.vault.uri";
+    private static final String HOST_KEY = "spring.cloud.vault.host";
+    private static final String DISCOVERY_ENABLED_KEY = "spring.cloud.vault.discovery.enabled";
     private static final String ENABLED_KEY = "spring.cloud.vault.enabled";
 
     @Override
@@ -88,7 +93,9 @@ public final class VaultInsecureTransportRule implements Rule {
         }
 
         if (value.startsWith("http://")) { // case-sensitive, as Spring Cloud Vault parses it
-            return List.of(insecureUriFinding(config, uriRaw));
+            Finding finding = insecureUriFinding(config, uriRaw);
+            return List.of(ConnectionHosts.allLoopback(uriRaw) && !usesDiscovery(config)
+                    ? ConnectionHosts.onLoopback(finding) : finding);
         }
 
         return List.of();
@@ -110,10 +117,23 @@ public final class VaultInsecureTransportRule implements Rule {
         }
 
         if ("http".equals(value)) { // case-sensitive: "HTTP" stops the application from starting
-            return List.of(insecureSchemeFinding(config, schemeRaw));
+            Finding finding = insecureSchemeFinding(config, schemeRaw);
+            boolean loopback = ConnectionHosts.allLoopback(RelaxedProperties.get(config.properties(), HOST_KEY))
+                    && !usesDiscovery(config);
+            return List.of(loopback ? ConnectionHosts.onLoopback(finding) : finding);
         }
 
         return List.of();
+    }
+
+    /**
+     * Whether Vault may be located through service discovery ({@code discovery.enabled} not a false
+     * literal), in which case the server isn't the one {@code uri} or {@code host} names.
+     */
+    private static boolean usesDiscovery(EffectiveConfig config) {
+        String raw = RelaxedProperties.get(config.properties(), DISCOVERY_ENABLED_KEY);
+        return raw != null && !raw.isBlank()
+                && EnvironmentPlaceholder.resolve(raw.strip()).filter(RelaxedBoolean::isFalseLiteral).isEmpty();
     }
 
     private Finding infoFinding(EffectiveConfig config, String key, String rawValue) {

@@ -16,7 +16,7 @@ spring:
   cloud:
     aws:
       s3:
-        endpoint: http://localhost:4566
+        endpoint: http://localstack.dev.internal:4566
 server:
   servlet:
     session:

@@ -2,6 +2,7 @@ package dev.scg.rules;
 
 import dev.scg.core.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,8 +41,9 @@ import java.util.Optional;
  * {@code PLAIN}, which sends the user name and password as they are), so an unencrypted connection exposes both those
  * credentials and message payloads to anyone with network visibility — the same risk class as
  * SCG012/SCG014. {@link Severity#MEDIUM} when SSL is only not enabled: the same default applies,
- * but TLS may be enabled outside the scanned files (ARCHITECTURE.md, ADR-010). No profile
- * exemption (Zero-Trust).
+ * but TLS may be enabled outside the scanned files (ARCHITECTURE.md, ADR-010). Either is
+ * {@link Severity#INFO} when every broker is a loopback address ({@link ConnectionHosts}). No
+ * profile exemption (Zero-Trust).
  * Plain {@link Rule}: the property keys are fixed facts of Spring AMQP's binding, not
  * organization-specific.
  */
@@ -103,7 +105,28 @@ public final class RabbitMqInsecureTransportRule implements Rule {
             }
         }
 
-        return evaluateSslEnabled(config, enabledRaw);
+        List<Finding> findings = evaluateSslEnabled(config, enabledRaw);
+        return loopbackOnly(config.properties(), hostRaw)
+                ? findings.stream().map(ConnectionHosts::onLoopback).toList()
+                : findings;
+    }
+
+    /**
+     * Whether every broker the client connects to is a loopback address: every entry of
+     * {@code addresses} when it is set (Spring Boot fails over to the others), else {@code host}, as
+     * written. False when a value can't be read or holds a placeholder.
+     */
+    private static boolean loopbackOnly(Map<String, String> properties, String hostRaw) {
+        List<String> addresses = new ArrayList<>();
+        for (String raw : RelaxedProperties.valuesForKeyOrListChildren(properties, ADDRESSES_KEY)) {
+            if (raw != null && !raw.isBlank()) {
+                addresses.add(raw.strip());
+            }
+        }
+        if (!addresses.isEmpty()) {
+            return ConnectionHosts.allLoopback(String.join(",", addresses));
+        }
+        return ConnectionHosts.allLoopback(hostRaw);
     }
 
     private static boolean resolvesTrue(String raw) {

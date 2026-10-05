@@ -121,12 +121,17 @@ should be updated in the same PR that adds or removes a rule.
 | SCG009 | MEDIUM / INFO | Verbose logging that writes secrets to the log: `debug`/`trace` set to anything but `false`, or a `DEBUG`/`TRACE` level on the root logger or on a logger known to log secrets (other loggers at those levels: INFO) |
 | SCG010 | MEDIUM / INFO | Verbose HTTP error responses enabled via `server.error.include-*` (Spring Boot before 4.0) or `spring.web.error.include-*` (4.0 and later) properties |
 | SCG011 | HIGH / MEDIUM / INFO | Insecure transport, management SSL, or session cookie settings in Spring Boot embedded server configuration |
-| SCG012 | HIGH / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
+| SCG012 | HIGH / MEDIUM / INFO | Disabled or insecure TLS transport in database/broker connection URIs |
 | SCG013 | MEDIUM / INFO | Actuator health endpoint or a health group discloses component details via `show-details`/`show-components` (MEDIUM to any caller; INFO to authenticated users, or component names only) |
 | SCG014 | HIGH / MEDIUM / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
 | SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
 | SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
 | SCG017 | HIGH / INFO | OAuth2 Resource Server fetches its JWT keys (from `jwk-set-uri`, `issuer-uri` or `public-key-location`, whichever Spring Boot uses) or its token introspection (`introspection-uri`) over HTTP |
+
+The transport rules (SCG012, SCG014, SCG015, SCG016, SCG017) report a
+connection whose hosts, written literally, are all loopback (`localhost`,
+127.0.0.0/8, `::1`) as `INFO`: its traffic doesn't leave the host, unless
+something local relays it ([VALIDATION.md](VALIDATION.md#loopback-addresses-in-the-transport-rules)).
 
 ## Scope & Limitations
 
