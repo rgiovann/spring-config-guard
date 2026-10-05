@@ -4,19 +4,26 @@ import dev.scg.core.*;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * SCG015 — detects RabbitMQ connections left without TLS when expressed via
  * {@code spring.rabbitmq.host} or a scheme-less {@code spring.rabbitmq.addresses}
- * (plain {@code host:port}, no {@code amqp://}/{@code amqps://} prefix).
+ * (plain {@code host:port}, no {@code amqp://}/{@code amqps://} prefix), written as one value or
+ * as a list.
  * <p>
- * Confirmed against Spring Boot's own {@code RabbitProperties.Ssl.determineEnabled()}: SSL is
- * enabled only if {@code spring.rabbitmq.ssl.enabled=true}, or {@code spring.rabbitmq.ssl.bundle}
- * is set, or the first parsed address carries an explicit {@code amqps://} scheme — absence of
- * all three defaults to unencrypted. So, unlike this project's opt-in-by-default rules, absence
- * is not safe here: {@link #check(EffectiveConfig)} treats an unset/blank
- * {@code spring.rabbitmq.ssl.enabled} the same as an explicit {@code false}.
+ * Confirmed against Spring Boot 4.1.1's {@code RabbitProperties.Ssl.determineEnabled()} and on the
+ * wire, with a listener recording whether the client spoke plain AMQP or started a TLS handshake
+ * (VALIDATION.md, "SCG015 RabbitMQ transport scenarios"): TLS is on only if
+ * {@code spring.rabbitmq.ssl.enabled} is true ({@code true}, {@code yes}, ... — it is bound through
+ * the Binder), or {@code spring.rabbitmq.ssl.bundle} is set; with {@code addresses}, the scheme of
+ * the first address, when it has one, overrides both ({@code amqps://} on, {@code amqp://} off).
+ * Absence of all of them connected in plain AMQP. So, unlike this project's opt-in-by-default
+ * rules, absence is not safe here: {@link #check(EffectiveConfig)} treats an unset/blank
+ * {@code spring.rabbitmq.ssl.enabled} like an explicit {@code false}, one level lower (ADR-010).
+ * Only the first address counts, so a list written in YAML ({@code addresses[0]}, ...) is read by
+ * its first entry, and a comma-separated value by its start.
  * <p>
  * Deliberately complementary to, not overlapping with, {@link InsecureDatabaseTransportRule}
  * (SCG012)'s {@code risky-schemes} mechanism: when {@code addresses} itself carries an
@@ -26,7 +33,8 @@ import java.util.Optional;
  * {@code ssl.enabled}, which Spring ignores once a scheme is present.
  * <p>
  * Severity {@link Severity#HIGH} for an explicit {@code ssl.enabled=false}: the AMQP handshake
- * itself carries the broker credentials, so an unencrypted connection exposes both those
+ * itself carries the broker credentials (the RabbitMQ Java client's default SASL mechanism is
+ * {@code PLAIN}, which sends the user name and password as they are), so an unencrypted connection exposes both those
  * credentials and message payloads to anyone with network visibility — the same risk class as
  * SCG012/SCG014. {@link Severity#MEDIUM} when SSL is only not enabled: the same default applies,
  * but TLS may be enabled outside the scanned files (ARCHITECTURE.md, ADR-010). No profile
@@ -56,7 +64,7 @@ public final class RabbitMqInsecureTransportRule implements Rule {
     @Override
     public List<Finding> check(EffectiveConfig config) {
         String hostRaw = RelaxedProperties.get(config.properties(), HOST_KEY);
-        String addressesRaw = RelaxedProperties.get(config.properties(), ADDRESSES_KEY);
+        String addressesRaw = firstAddresses(config.properties());
 
         boolean hostConfigured = hostRaw != null && !hostRaw.isBlank();
         boolean addressesConfigured = addressesRaw != null && !addressesRaw.isBlank();
@@ -77,6 +85,34 @@ public final class RabbitMqInsecureTransportRule implements Rule {
         }
 
         return evaluateSslEnabled(config, RelaxedProperties.get(config.properties(), SSL_ENABLED_KEY));
+    }
+
+    /**
+     * The {@code addresses} value Spring Boot takes its first address from: the value itself, or,
+     * for a list ({@code addresses[0]}, {@code addresses[1]}, ...), the entry with the lowest index,
+     * whatever order the keys come in.
+     */
+    private static String firstAddresses(Map<String, String> properties) {
+        String scalar = RelaxedProperties.get(properties, ADDRESSES_KEY);
+        if (scalar != null) {
+            return scalar;
+        }
+        String listPrefix = RelaxedProperties.canonicalize(ADDRESSES_KEY) + "[";
+        String first = null;
+        int lowest = Integer.MAX_VALUE;
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            String canonical = RelaxedProperties.canonicalize(entry.getKey());
+            if (!canonical.startsWith(listPrefix) || !canonical.endsWith("]")) {
+                continue;
+            }
+            String index = canonical.substring(listPrefix.length(), canonical.length() - 1);
+            if (!index.isEmpty() && index.length() <= 9 && index.chars().allMatch(Character::isDigit)
+                    && Integer.parseInt(index) < lowest) {
+                lowest = Integer.parseInt(index);
+                first = entry.getValue();
+            }
+        }
+        return first;
     }
 
     private boolean carriesExplicitScheme(String addressesRaw) {

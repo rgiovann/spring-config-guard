@@ -70,6 +70,8 @@ Reviewed so far:
   H2 console scenarios").
 * SCG013, against running Spring Boot 4.1.1 apps, without and with Spring
   Security (`VALIDATION.md`, "SCG013 health details scenarios").
+* SCG015, on the wire against a Spring Boot 4.1.1 client (`VALIDATION.md`,
+  "SCG015 RabbitMQ transport scenarios").
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -78,8 +80,8 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
-their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002 and
-SCG013 so far), pick two of them at random and give them a second, full
+their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002, SCG013
+and SCG015 so far), pick two of them at random and give them a second, full
 review. If it finds nothing that matters, the procedure holds; if it does,
 adjust the skill.
 
@@ -90,7 +92,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG015, SCG016,
+rules (SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
@@ -186,9 +188,20 @@ it is reported.
   one can fix a victim's session. Confirm on Tomcat and Jetty that it is
   written into URLs and accepted from them.
 
-### Kafka TLS without hostname verification (candidate rule)
+### TLS without verifying the server (candidate rule)
 
-Found while reviewing SCG014, which covers only an unencrypted protocol: a
+The transport rules report an unencrypted connection, not an encrypted one
+that accepts any server. Found in two clients so far; decide severity and
+whether it is one rule or an extension of each transport rule once, for
+all of them.
+
+RabbitMQ, found while reviewing SCG015: `spring.rabbitmq.ssl.validate-server-certificate=false`
+(or `ssl.verify-hostname=false`) with `ssl.enabled=true` still started a
+TLS handshake on the wire (`VALIDATION.md`, "SCG015 RabbitMQ transport
+scenarios", V1), with SCG015 silent. Still to measure: that the client then
+accepts a certificate that doesn't match or isn't trusted.
+
+Kafka, found while reviewing SCG014, which covers only an unencrypted protocol: a
 Kafka client on `SSL`/`SASL_SSL` with `ssl.endpoint.identification.algorithm`
 set to an empty value encrypts but doesn't check that the broker's
 certificate matches its host name, so a man in the middle with any trusted
@@ -201,6 +214,22 @@ against a TLS listener whose certificate doesn't match the host), and the
 keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm`,
 the per-client maps, the binder maps), with the same precedence as SCG014.
 Decide then whether it extends SCG014 or is a rule of its own.
+
+### RabbitMQ Streams transport (measure first)
+
+Found while reviewing SCG015: `spring.rabbitmq.stream.host`, `stream.port`
+and `stream.ssl.enabled`/`stream.ssl.bundle` configure a separate RabbitMQ
+Streams connection, with its own TLS settings, that SCG015 doesn't read.
+Measure on the wire, as for SCG015, what it sends without
+`stream.ssl.*` before deciding whether SCG015 covers it.
+
+### Spring Cloud Stream Rabbit binder environment (measure first)
+
+Found while reviewing SCG015: a Rabbit binder can carry its own connection
+in `spring.cloud.stream.binders.<name>.environment.spring.rabbitmq.*`, which
+SCG015 doesn't read. ADR-009 evaluates binder environments as their own
+contexts for Kafka only. Measure whether the Rabbit binder applies them the
+same way before extending the rule or the ADR.
 
 ### SCG006: credentials in the OTLP headers maps
 

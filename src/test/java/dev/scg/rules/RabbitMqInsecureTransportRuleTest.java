@@ -1,15 +1,21 @@
 package dev.scg.rules;
 
+import dev.scg.core.ConfigLoader;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
+import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -72,7 +78,7 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH with explicit-disable message when ssl.enabled=false")
+    @DisplayName("H2: HIGH with the explicit-disable message when ssl.enabled=false")
     void shouldReportHighWhenSslExplicitlyFalse() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 HOST_KEY, "rabbit.internal",
@@ -125,17 +131,18 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should defer to SCG012 when addresses carries an explicit amqp:// scheme")
+    @DisplayName("A3: defers to SCG012 when addresses carries an explicit amqp:// scheme, which overrides ssl.enabled")
     void shouldDeferWhenAddressesCarriesAmqpScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                ADDRESSES_KEY, "amqp://rabbit.internal:5672"
+                ADDRESSES_KEY, "amqp://rabbit.internal:5672",
+                SSL_ENABLED_KEY, "true"
         ));
 
         assertThat(rule.check(config)).isEmpty();
     }
 
     @Test
-    @DisplayName("Should stay silent when addresses carries an explicit amqps:// scheme")
+    @DisplayName("A2: silent when addresses carries an explicit amqps:// scheme")
     void shouldStaySilentWhenAddressesCarriesAmqpsScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 ADDRESSES_KEY, "amqps://rabbit.internal:5671",
@@ -161,17 +168,15 @@ class RabbitMqInsecureTransportRuleTest {
         assertThat(rule.check(config)).isEmpty();
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"AMQP://rabbit.internal:5672", "AMQPS://rabbit.internal:5671", "Amqp://rabbit.internal:5672"})
-    @DisplayName("Should detect the addresses scheme case-insensitively")
-    void shouldDetectSchemeCaseInsensitively(String addresses) {
+    @Test
+    @DisplayName("A4: silent for addresses=AMQPS://..., which stopped the app from starting")
+    void shouldStaySilentForUpperCaseAmqps() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                ADDRESSES_KEY, addresses,
-                SSL_ENABLED_KEY, "false"
+                ADDRESSES_KEY, "AMQPS://127.0.0.1:5672"
         ));
 
-        // Whether AMQP:// defers to SCG012 or AMQPS:// is inherently secure, ssl.enabled=false
-        // must not cause a finding either way -- both are scheme-governed cases.
+        // Spring Boot's address parser compares the scheme case-sensitively, so AMQPS:// isn't
+        // recognized and the host:port parse fails at startup: no connection can be made.
         assertThat(rule.check(config)).isEmpty();
     }
 
@@ -270,5 +275,73 @@ class RabbitMqInsecureTransportRuleTest {
         ));
 
         assertThat(rule.check(config)).hasSize(1);
+    }
+
+    private List<Finding> check(Map<String, String> properties) {
+        return rule.check(new EffectiveConfig(FAKE_PATH, "prod", properties));
+    }
+
+    @Test
+    @DisplayName("H0, A1, H5: MEDIUM without ssl.enabled, for host, scheme-less addresses, and the TLS port alone: all spoke plain AMQP")
+    void plainWithoutSslEnabled() {
+        for (Map<String, String> properties : List.of(
+                Map.of(HOST_KEY, "127.0.0.1"),
+                Map.of(ADDRESSES_KEY, "127.0.0.1:5672"),
+                Map.of(HOST_KEY, "127.0.0.1", "spring.rabbitmq.port", "5671"))) {
+            List<Finding> findings = check(properties);
+            assertThat(findings).as(properties.toString()).hasSize(1);
+            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        }
+    }
+
+    @Test
+    @DisplayName("H1, H3, H4, B1, A5, V1: silent when ssl.enabled is a true literal or a bundle is set: all started a TLS handshake")
+    void silentWhenTlsIsOn() {
+        for (String value : List.of("true", "yes", "TRUE")) {
+            assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_ENABLED_KEY, value))).isEmpty();
+        }
+        assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_BUNDLE_KEY, "rabbit"))).isEmpty();
+        assertThat(check(Map.of(ADDRESSES_KEY, "127.0.0.1:5672", SSL_ENABLED_KEY, "true"))).isEmpty();
+        // V1: TLS without validating the server's certificate is out of this rule's scope (BACKLOG.md)
+        assertThat(check(Map.of(HOST_KEY, "127.0.0.1", SSL_ENABLED_KEY, "true",
+                "spring.rabbitmq.ssl.validate-server-certificate", "false"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A6, A7: the first address decides: plain first is MEDIUM, amqps:// first is silent")
+    void firstAddressDecides() {
+        assertThat(check(Map.of(ADDRESSES_KEY, "127.0.0.1:5672,amqps://127.0.0.1:5672")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+        assertThat(check(Map.of(ADDRESSES_KEY, "amqps://127.0.0.1:5672,127.0.0.1:5672"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Y1: addresses written as a YAML list is read, through ConfigLoader: a scheme-less first entry is MEDIUM")
+    void yamlListIsRead(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "spring.rabbitmq.addresses:\n  - 127.0.0.1:5672\n");
+
+        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
+                .flatMap(file -> new ProfileMerger().merge(file).stream())
+                .flatMap(config -> rule.check(config).stream())
+                .toList();
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("a list is read by its lowest index, whatever order the keys come in")
+    void listReadByLowestIndex() {
+        Map<String, String> secureFirst = new LinkedHashMap<>();
+        secureFirst.put(ADDRESSES_KEY + "[1]", "127.0.0.1:5672");
+        secureFirst.put(ADDRESSES_KEY + "[0]", "amqps://127.0.0.1:5671");
+        Map<String, String> plainFirst = new LinkedHashMap<>();
+        plainFirst.put(ADDRESSES_KEY + "[1]", "amqps://127.0.0.1:5671");
+        plainFirst.put(ADDRESSES_KEY + "[0]", "127.0.0.1:5672");
+
+        assertThat(check(secureFirst)).isEmpty();
+        assertThat(check(plainFirst)).hasSize(1);
+        assertThat(check(Map.of(ADDRESSES_KEY + "[0]", "127.0.0.1:5672", SSL_ENABLED_KEY, "false")))
+                .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
     }
 }

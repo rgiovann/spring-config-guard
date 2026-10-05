@@ -1455,3 +1455,45 @@ jar: `spring-boot` adds 1 MEDIUM, the `comp` group of its Actuator smoke
 test (`group.comp.show-details=always`), and every SCG013 finding has a new
 message; severities, files and profiles are otherwise unchanged, and so are
 the other rules and the demo fixtures.
+
+## SCG015 RabbitMQ transport scenarios (Spring Boot 4.1.1 client, on the wire)
+
+Whether a Spring Boot RabbitMQ client speaks plain AMQP or TLS was checked
+on the wire, without a broker: `listener.py` listens on 127.0.0.1:5672 and
+5671 and records whether a connection starts with the AMQP protocol header
+or a TLS handshake, and an app with `spring-boot-starter-amqp` opens one
+connection at startup. Reproducible with
+`spring-env-benchmark/rabbit-transport-scenarios.sh`, run twice with the
+same results. Keys are under `spring.rabbitmq`; `host` is `127.0.0.1`
+unless `addresses` is set.
+
+| # | Configuration | On the wire | v1.12.0 | (unreleased) |
+|---|---|---|---|---|
+| H0 | `host` only | AMQP (5672) | MEDIUM | MEDIUM |
+| H1, H3, H4 | `ssl.enabled=true`, `yes`, `TRUE` | TLS (5671) | silent | silent |
+| H2 | `ssl.enabled=false` | AMQP (5672) | HIGH | HIGH |
+| H5 | `port=5671`, no `ssl.enabled` | AMQP (5671) | MEDIUM | MEDIUM |
+| B1 | `ssl.bundle` set | TLS (5672) | silent | silent |
+| V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent | silent |
+| A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM | MEDIUM |
+| A2 | `addresses=amqps://...` | TLS | silent | silent |
+| A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012) | HIGH (SCG012) |
+| A4 | `addresses=AMQPS://...` | app did not start | silent | silent |
+| A5 | `addresses=127.0.0.1:5672`, `ssl.enabled=true` | TLS | silent | silent |
+| A6 | `addresses=127.0.0.1:5672,amqps://...` | AMQP | MEDIUM | MEDIUM |
+| A7 | `addresses=amqps://...,127.0.0.1:5672` | TLS | silent | silent |
+| Y1 | YAML `addresses` as a list, `[127.0.0.1:5672]` | AMQP | silent | MEDIUM |
+
+Spring Boot's `RabbitProperties.Ssl.determineEnabled()` turns TLS on for
+`ssl.enabled` true (bound through the Binder, so `yes` too) or an
+`ssl.bundle`, and the scheme of the first address, when it has one,
+overrides both (A2, A3, A6, A7). An address list written in YAML reached
+the client like a single value (Y1), where v1.12.0 read only the scalar
+key; the rule now reads the list's first entry. The RabbitMQ Java client
+(amqp-client 5.30.0) authenticates with SASL `PLAIN` by default, which sends
+the user name and password as they are, so a plain connection carries the
+credentials in the clear. V1 is TLS without checking the broker's
+certificate, which SCG015 doesn't cover (`BACKLOG.md`, "TLS without
+verifying the server"). No reference project sets `spring.rabbitmq.host`
+or `addresses`, so every reference project and demo fixture reports the
+same findings as with the v1.12.0 jar.
