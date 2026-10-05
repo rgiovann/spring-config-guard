@@ -19,24 +19,68 @@ or in an ADR.
 
 ## Pending
 
-### Rewrite VALIDATION.md once every rule is reviewed
+Done in this order: what changes findings users already see, then the
+GitHub Action, then new coverage with a wide reach, measured first. Items
+waiting for a need come after, and the `VALIDATION.md` rewrite last, once
+the rest has settled.
 
-`VALIDATION.md` has grown into a history: columns per release, "used to /
-now" paragraphs, dated correction notes, numbers measured against earlier
-jars. It is heavy to read. Every rule has had its review, so rewrite it
-now to state only what holds:
+### Transport rules and loopback addresses (decide)
 
-* per rule, the scenario table(s) and one or two paragraphs: what was
-  checked, against what (a running app, a driver, the metadata), and how to
-  re-run it;
-* the public repositories SCG is run against, with their pinned commits and
-  current findings;
-* no earlier releases, fix history or before/after comparisons; that
-  record stays in `CHANGELOG.md` and the git history.
+Found while reviewing SCG017: Spring Boot's own
+`smoke-test-grpc-server-oauth` sets
+`jwk-set-uri: http://localhost:8080/oauth2/jwks`, which SCG017 reports as
+HIGH. Traffic to a loopback address doesn't leave the host, so nobody on
+the network can read or rewrite it. Only the CORS rules treat loopback as
+safe (`CorsOrigins`); SCG012, SCG015, SCG016 and SCG017 report `localhost`
+and `127.0.0.1` like any other host. Decide once for all of them, rather
+than per rule: silent, `INFO`, or unchanged (in a container or a sidecar
+setup, "localhost" may not be what it seems).
 
-Adjust what depends on the current shape in the same change: step 4 of
-the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
-columns) and the section names cited in the skills and in code comments.
+### A YAML null in a base file is dropped before the rules run
+
+`debug:` or `debug: ~` in a base file is read by Spring Boot as an empty
+value, which turns debug logging on (`VALIDATION.md`, "SCG009 verbose
+logging scenarios", Y4 and Y5). `ConfigLoader` marks the null, but
+`ProfileMerger` drops the key when no profile overrides it, so no rule
+sees it; a profile overriding a key with null keeps it, with a null value.
+The same applies to any key a rule reads as a raw string rather than a
+bound type. Keeping the key would change the merge semantics every rule
+relies on (a null value next to an absent key), so it needs its own
+change, checked against the `/actuator/env` benchmark.
+
+### Findings name the key as the rule spells it, not as it is written
+
+A message quotes the key from the rule's own list, so
+`spring.web.error.includeStacktrace=always` is reported as
+`spring.web.error.include-stacktrace=always` (found while reviewing
+SCG010). Relaxed binding makes both the same property, so detection is
+unaffected, but a user searching the file for the quoted key won't find
+it. `RelaxedProperties.findActualKey()` returns the spelling written; only
+SCG011 uses it today. Applying it would touch every rule that quotes a key,
+so it is one change across the rules, not part of any single review.
+
+### GitHub Action for the Marketplace
+
+Publish SCG as a GitHub Action (`uses: rgiovann/spring-config-guard-action@v1`)
+so a CI gate no longer needs the README's `curl` + `java -jar` step.
+
+* **In a separate repository** (`spring-config-guard-action`), as most
+  established CLI and security tools do: the action's own `action.yml` at
+  the root and its own `v1`-style tags, independent of this repository's CI
+  and release workflows. Confirm the Marketplace's current publishing
+  requirements (public repository, one action per repository, whether
+  workflow files are allowed, the developer agreement, 2FA) before creating
+  it.
+* **A composite action**: `actions/setup-java` (Java 21), download of a
+  pinned release jar with its sha256 checked, then SCG with the flags as
+  inputs (path, `fail-on`, `policy`, `config-server`, `json`). Each SCG
+  release means a matching action release.
+* **A CI gate first** (exit code and report). PR annotations and a SARIF
+  upload for code scanning come later: they place each finding on a file,
+  so they depend on "Per-property origin in findings" below.
+* **Order**: only after every rule is reviewed and released (the
+  maintainer's decision), since false positives in a CI gate are what drive
+  new users away first. Met with v1.15.0: every rule's review has shipped.
 
 ### SCG012 cases left open (decide with measurements)
 
@@ -59,31 +103,6 @@ Found in the SCG012 review (`VALIDATION.md`, "SCG012 driver modes"):
   confirm in Artemis' client before treating `tcp://` without it as
   plaintext for `spring.artemis.broker-url`.
 
-### Transports SCG012 doesn't look at (decide scope with measurements)
-
-Found in the second review of SCG012 (`VALIDATION.md`, "SCG012 driver
-modes"): these settings, written explicitly, are silent today. What each is
-noted to mean comes from its name and Spring Boot 4.1.1's metadata, not yet
-from its client.
-
-* Neo4j: `spring.neo4j.uri=neo4j+ssc://...` or `bolt+ssc://...` (TLS that
-  accepts self-signed certificates),
-  `spring.neo4j.security.trust-strategy=trust-all-certificates` (the
-  default is `trust-system-ca-signed-certificates`) and
-  `spring.neo4j.security.hostname-verification-enabled=false`.
-* Cassandra: `spring.cassandra.ssl.verify-hostname=false`.
-* Pulsar: `pulsar://` in `spring.pulsar.client.service-url` and `http://`
-  in `spring.pulsar.admin.service-url` (plaintext; TLS is `pulsar+ssl://`,
-  `https://`).
-* Couchbase: `couchbase://` in `spring.couchbase.connection-string`,
-  plaintext unless SSL is enabled (`spring.couchbase.env.ssl.enabled`, or
-  an SSL bundle, which enables it): several keys together, like Redis
-  above.
-
-Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
-properties) before reporting, then decide whether they extend SCG012 or
-form a rule of their own.
-
 ### SCG003: Spring Cloud Gateway's CORS (decide with measurements)
 
 Found in the second review of SCG003 (`VALIDATION.md`, "SCG003 CORS
@@ -95,21 +114,6 @@ credentials. It is the other CORS commonly configured in properties, and a
 gateway usually sits in front of the services. Confirm the property names per
 Gateway release and the behavior in a running gateway, then decide whether
 SCG003 reads them like Actuator's and GraphQL's.
-
-### SCG011: weak TLS protocols and session IDs in URLs (decide with measurements)
-
-Found in the second review of SCG011 (`VALIDATION.md`, "SCG011 transport
-scenarios"): these are silent today, and each needs a running app before
-it is reported.
-
-* `server.ssl.enabled-protocols=TLSv1,TLSv1.1` or `server.ssl.protocol=TLSv1`.
-  The JDK disables TLS 1.0/1.1 by default (`jdk.tls.disabledAlgorithms`),
-  so check whether these take effect, fail the handshake or fail the
-  startup on Java 21 before deciding a severity.
-* `server.servlet.session.tracking-modes=url`: the session ID travels in the
-  URL, where logs and the `Referer` header can leak it, and a link carrying
-  one can fix a victim's session. Confirm on Tomcat and Jetty that it is
-  written into URLs and accepted from them.
 
 ### TLS without verifying the server (candidate rule)
 
@@ -138,91 +142,6 @@ keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm
 the per-client maps, the binder maps), with the same precedence as SCG014.
 Decide then whether it extends SCG014 or is a rule of its own.
 
-### RabbitMQ Streams transport (measure first)
-
-Found while reviewing SCG015: `spring.rabbitmq.stream.host`, `stream.port`
-and `stream.ssl.enabled`/`stream.ssl.bundle` configure a separate RabbitMQ
-Streams connection, with its own TLS settings, that SCG015 doesn't read.
-Measure on the wire, as for SCG015, what it sends without
-`stream.ssl.*` before deciding whether SCG015 covers it.
-
-### Spring Cloud Stream Rabbit binder environment (measure first)
-
-Found while reviewing SCG015: a Rabbit binder can carry its own connection
-in `spring.cloud.stream.binders.<name>.environment.spring.rabbitmq.*`, which
-SCG015 doesn't read. ADR-009 evaluates binder environments as their own
-contexts for Kafka only. Measure whether the Rabbit binder applies them the
-same way before extending the rule or the ADR.
-
-### Vault located through service discovery (measure first)
-
-Found while reviewing SCG016: with `spring.cloud.vault.discovery.enabled=true`,
-Spring Cloud Vault finds the Vault server through a discovery client instead
-of `uri`/`host`, and the scheme may come from the discovered instance rather
-than `spring.cloud.vault.scheme`, which is all SCG016 reads. Measure, with a
-registry in the benchmark, which scheme the client uses before deciding
-whether SCG016 should say anything when discovery is on.
-
-### Transport rules and loopback addresses (decide)
-
-Found while reviewing SCG017: Spring Boot's own
-`smoke-test-grpc-server-oauth` sets
-`jwk-set-uri: http://localhost:8080/oauth2/jwks`, which SCG017 reports as
-HIGH. Traffic to a loopback address doesn't leave the host, so nobody on
-the network can read or rewrite it. Only the CORS rules treat loopback as
-safe (`CorsOrigins`); SCG012, SCG015, SCG016 and SCG017 report `localhost`
-and `127.0.0.1` like any other host. Decide once for all of them, rather
-than per rule: silent, `INFO`, or unchanged (in a container or a sidecar
-setup, "localhost" may not be what it seems).
-
-### OAuth2 Client provider URIs over HTTP (measure first)
-
-Found while reviewing SCG017: an OAuth2 Client (login) reads
-`spring.security.oauth2.client.provider.<name>.token-uri`, `jwk-set-uri`,
-`issuer-uri` and `user-info-uri`, where `http://` would expose the client
-secret, the authorization code exchange and the ID token keys. SCG017 reads
-only the resource server keys. Measure on the wire, with a login flow in the
-benchmark, which of these the client fetches and when, before deciding
-whether SCG017 or a rule of its own covers them.
-
-### SCG006: credentials in the OTLP headers maps
-
-Found while re-checking SCG006 (`VALIDATION.md`, "SCG006 key matching"):
-`management.otlp.metrics.export.headers`,
-`management.opentelemetry.tracing.export.otlp.headers` and
-`management.opentelemetry.logging.export.otlp.headers` are maps of HTTP
-headers sent to the telemetry backend, which often carry its credential
-(the metadata describes the two `opentelemetry` ones as "for example auth
-headers"). An entry named after a secret pattern (`headers.api-key`) is
-HIGH, but `headers.Authorization` (`Bearer ...`, `Basic ...`) and vendor
-headers such as `X-Honeycomb-Team` are silent. To decide with measurements:
-recognize the value (`Bearer `/`Basic ` prefixes) or the header names in
-these maps, and at which severity.
-
-### GitHub Action for the Marketplace
-
-Publish SCG as a GitHub Action (`uses: rgiovann/spring-config-guard-action@v1`)
-so a CI gate no longer needs the README's `curl` + `java -jar` step.
-
-* **In a separate repository** (`spring-config-guard-action`), as most
-  established CLI and security tools do: the action's own `action.yml` at
-  the root and its own `v1`-style tags, independent of this repository's CI
-  and release workflows. Confirm the Marketplace's current publishing
-  requirements (public repository, one action per repository, whether
-  workflow files are allowed, the developer agreement, 2FA) before creating
-  it.
-* **A composite action**: `actions/setup-java` (Java 21), download of a
-  pinned release jar with its sha256 checked, then SCG with the flags as
-  inputs (path, `fail-on`, `policy`, `config-server`, `json`). Each SCG
-  release means a matching action release.
-* **A CI gate first** (exit code and report). PR annotations and a SARIF
-  upload for code scanning come later: they place each finding on a file,
-  so they depend on "Per-property origin in findings" below.
-* **Order**: only after every rule is reviewed and released (the
-  maintainer's decision). So far SCG006 and SCG014 shipped in v1.7.0,
-  SCG007 and SCG012 in v1.8.0. False positives in a CI gate are what drive
-  new users away first.
-
 ### Per-property origin in findings (waiting for a real consumer)
 
 `sourceFile` identifies the evaluated configuration, not where the offending
@@ -248,29 +167,6 @@ planned GitHub Action (above) is that consumer once it adds annotations or
 SARIF.
 Until then, the documented semantics are enough.
 
-### Findings name the key as the rule spells it, not as it is written
-
-A message quotes the key from the rule's own list, so
-`spring.web.error.includeStacktrace=always` is reported as
-`spring.web.error.include-stacktrace=always` (found while reviewing
-SCG010). Relaxed binding makes both the same property, so detection is
-unaffected, but a user searching the file for the quoted key won't find
-it. `RelaxedProperties.findActualKey()` returns the spelling written; only
-SCG011 uses it today. Applying it would touch every rule that quotes a key,
-so it is one change across the rules, not part of any single review.
-
-### A YAML null in a base file is dropped before the rules run
-
-`debug:` or `debug: ~` in a base file is read by Spring Boot as an empty
-value, which turns debug logging on (`VALIDATION.md`, "SCG009 verbose
-logging scenarios", Y4 and Y5). `ConfigLoader` marks the null, but
-`ProfileMerger` drops the key when no profile overrides it, so no rule
-sees it; a profile overriding a key with null keeps it, with a null value.
-The same applies to any key a rule reads as a raw string rather than a
-bound type. Keeping the key would change the merge semantics every rule
-relies on (a null value next to an absent key), so it needs its own
-change, checked against the `/actuator/env` benchmark.
-
 ### `--config-name=<prefix>`: custom `spring.config.name`
 
 A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /
@@ -287,6 +183,25 @@ say which version produced it. A new optional field in each finding would
 be a MINOR change; moving to a top-level object with the version and the
 findings would change the report's shape, a MAJOR one. Worth it only once
 reports are stored or compared across versions, e.g. by an external tool.
+
+### Rewrite VALIDATION.md once every rule is reviewed
+
+`VALIDATION.md` has grown into a history: columns per release, "used to /
+now" paragraphs, dated correction notes, numbers measured against earlier
+jars. It is heavy to read. Every rule has had its review, so rewrite it
+now to state only what holds:
+
+* per rule, the scenario table(s) and one or two paragraphs: what was
+  checked, against what (a running app, a driver, the metadata), and how to
+  re-run it;
+* the public repositories SCG is run against, with their pinned commits and
+  current findings;
+* no earlier releases, fix history or before/after comparisons; that
+  record stays in `CHANGELOG.md` and the git history.
+
+Adjust what depends on the current shape in the same change: step 4 of
+the release checklist in `CONTRIBUTING.md` (relabelling "(unreleased)"
+columns) and the section names cited in the skills and in code comments.
 
 ## Deferred (post-1.0)
 
@@ -306,6 +221,103 @@ exactly the kind of false positive that erodes trust in early runs.
   OTLP `management.otlp.metrics.export.url`). Collectors usually run as a
   sidecar or inside the same private cluster; lower severity (MEDIUM), since
   only request/trace metadata is carried, not application credentials.
+
+### Coverage found during the rule reviews, waiting for a real case
+
+Settings next to a rule's subject that the reviews turned up, but that no
+reference project or demo writes with the risky value, and no user has
+reported (as of 2026-10-05). Each is noted with what it would take; it
+moves back to Pending when a real case appears, so the reviews' leftovers
+don't grow into a queue that never empties.
+
+#### Transports SCG012 doesn't look at (decide scope with measurements)
+
+Found in the second review of SCG012 (`VALIDATION.md`, "SCG012 driver
+modes"): these settings, written explicitly, are silent today. What each is
+noted to mean comes from its name and Spring Boot 4.1.1's metadata, not yet
+from its client.
+
+* Neo4j: `spring.neo4j.uri=neo4j+ssc://...` or `bolt+ssc://...` (TLS that
+  accepts self-signed certificates),
+  `spring.neo4j.security.trust-strategy=trust-all-certificates` (the
+  default is `trust-system-ca-signed-certificates`) and
+  `spring.neo4j.security.hostname-verification-enabled=false`.
+* Cassandra: `spring.cassandra.ssl.verify-hostname=false`.
+* Pulsar: `pulsar://` in `spring.pulsar.client.service-url` and `http://`
+  in `spring.pulsar.admin.service-url` (plaintext; TLS is `pulsar+ssl://`,
+  `https://`).
+* Couchbase: `couchbase://` in `spring.couchbase.connection-string`,
+  plaintext unless SSL is enabled (`spring.couchbase.env.ssl.enabled`, or
+  an SSL bundle, which enables it): several keys together, like Redis in
+  "SCG012 cases left open" (Pending).
+
+Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
+properties) before reporting, then decide whether they extend SCG012 or
+form a rule of their own.
+
+#### SCG011: weak TLS protocols and session IDs in URLs (decide with measurements)
+
+Found in the second review of SCG011 (`VALIDATION.md`, "SCG011 transport
+scenarios"): these are silent today, and each needs a running app before
+it is reported.
+
+* `server.ssl.enabled-protocols=TLSv1,TLSv1.1` or `server.ssl.protocol=TLSv1`.
+  The JDK disables TLS 1.0/1.1 by default (`jdk.tls.disabledAlgorithms`),
+  so check whether these take effect, fail the handshake or fail the
+  startup on Java 21 before deciding a severity.
+* `server.servlet.session.tracking-modes=url`: the session ID travels in the
+  URL, where logs and the `Referer` header can leak it, and a link carrying
+  one can fix a victim's session. Confirm on Tomcat and Jetty that it is
+  written into URLs and accepted from them.
+
+#### RabbitMQ Streams transport (measure first)
+
+Found while reviewing SCG015: `spring.rabbitmq.stream.host`, `stream.port`
+and `stream.ssl.enabled`/`stream.ssl.bundle` configure a separate RabbitMQ
+Streams connection, with its own TLS settings, that SCG015 doesn't read.
+Measure on the wire, as for SCG015, what it sends without
+`stream.ssl.*` before deciding whether SCG015 covers it.
+
+#### Spring Cloud Stream Rabbit binder environment (measure first)
+
+Found while reviewing SCG015: a Rabbit binder can carry its own connection
+in `spring.cloud.stream.binders.<name>.environment.spring.rabbitmq.*`, which
+SCG015 doesn't read. ADR-009 evaluates binder environments as their own
+contexts for Kafka only. Measure whether the Rabbit binder applies them the
+same way before extending the rule or the ADR.
+
+#### Vault located through service discovery (measure first)
+
+Found while reviewing SCG016: with `spring.cloud.vault.discovery.enabled=true`,
+Spring Cloud Vault finds the Vault server through a discovery client instead
+of `uri`/`host`, and the scheme may come from the discovered instance rather
+than `spring.cloud.vault.scheme`, which is all SCG016 reads. Measure, with a
+registry in the benchmark, which scheme the client uses before deciding
+whether SCG016 should say anything when discovery is on.
+
+#### OAuth2 Client provider URIs over HTTP (measure first)
+
+Found while reviewing SCG017: an OAuth2 Client (login) reads
+`spring.security.oauth2.client.provider.<name>.token-uri`, `jwk-set-uri`,
+`issuer-uri` and `user-info-uri`, where `http://` would expose the client
+secret, the authorization code exchange and the ID token keys. SCG017 reads
+only the resource server keys. Measure on the wire, with a login flow in the
+benchmark, which of these the client fetches and when, before deciding
+whether SCG017 or a rule of its own covers them.
+
+#### SCG006: credentials in the OTLP headers maps
+
+Found while re-checking SCG006 (`VALIDATION.md`, "SCG006 key matching"):
+`management.otlp.metrics.export.headers`,
+`management.opentelemetry.tracing.export.otlp.headers` and
+`management.opentelemetry.logging.export.otlp.headers` are maps of HTTP
+headers sent to the telemetry backend, which often carry its credential
+(the metadata describes the two `opentelemetry` ones as "for example auth
+headers"). An entry named after a secret pattern (`headers.api-key`) is
+HIGH, but `headers.Authorization` (`Bearer ...`, `Basic ...`) and vendor
+headers such as `X-Honeycomb-Team` are silent. To decide with measurements:
+recognize the value (`Bearer `/`Basic ` prefixes) or the header names in
+these maps, and at which severity.
 
 ## Discarded
 
