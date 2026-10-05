@@ -93,6 +93,11 @@ review found no wrong result; it measured an assumption the first had
 taken for granted, that a browser resolves `*.localhost` itself rather
 than asking DNS (`VALIDATION.md`, "SCG004 insecure origin scenarios";
 Chromium only), and renamed a test whose name overstated what it checked.
+SCG005's second review found a false positive the first had missed: an
+origin whose placeholder resolves empty (`${ORIGINS:}`) allows no origin,
+and the rule reported `allowed-methods=*` as MEDIUM. It also reports, as
+INFO, exposed headers whose name suggests a token (`VALIDATION.md`,
+"SCG005 methods and headers scenarios", E1 and T1).
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each

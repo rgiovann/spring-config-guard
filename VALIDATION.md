@@ -1219,24 +1219,27 @@ permitted origin was checked in this benchmark app (Actuator, with `env`
 and `loggers` exposed) and in Chromium, reproducible with
 `spring-env-benchmark/cors-methods-headers-scenarios.sh`, run twice with the
 same results. Spring Boot 4.1.1 builds Actuator's and GraphQL's CORS
-configuration only when `allowed-origins` or `allowed-origin-patterns` is
-set (`toCorsConfiguration()` returns null otherwise); unset methods default
-to GET and HEAD. Which response headers a script reads is decided by the
+configuration only when `allowed-origins` or `allowed-origin-patterns`
+binds to a non-empty list (`toCorsConfiguration()` returns null
+otherwise); unset methods default to GET and HEAD. Which response headers a script reads is decided by the
 browser, so it was checked against a minimal server.
 
-| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | v1.11.0 |
-|---|---|---|---|---|
-| M1 | `allowed-methods=*`, no origin key | no CORS headers at all | MEDIUM | silent |
-| M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM | MEDIUM |
-| M7 | `allowed-methods=*`, no credentials | allowed, without credentials | MEDIUM | LOW |
-| M5 | `allowed-methods=*`, a JSON POST | preflight 403: `Content-Type` not allowed | — | — |
-| B1 | `allowed-methods=*` and `allowed-headers=*`, credentials | a JSON POST set the ROOT logger to TRACE (204) | — | — |
-| H1 | `exposed-headers=*`, credentials | `Access-Control-Expose-Headers: *`; Chromium exposed no header | MEDIUM | LOW (ineffective) |
-| H3 | `exposed-headers=*`, no origin key | no CORS headers at all | MEDIUM | silent |
-| H4 | `exposed-headers=X-Auth-Token`, credentials | Chromium exposed it to the script | MEDIUM | MEDIUM |
-| H5 | `exposed-headers=X-Auth-Token`, no credentials | exposed on anonymous responses | MEDIUM | LOW |
-| H6 | `exposed-headers=Set-Cookie, Cookie` | Chromium never exposed `Set-Cookie` | LOW, INFO | LOW, INFO |
-| G1 | GraphQL `allowed-methods=*`, `exposed-headers=X-Auth-Token`, credentials | GraphQL binds the same keys | silent | MEDIUM, MEDIUM |
+| # | Configuration (`allowed-origins` set unless noted) | Spring 4.1.1 / Chromium | v1.10.0 | v1.11.0 | (unreleased) |
+|---|---|---|---|---|---|
+| M1 | `allowed-methods=*`, no origin key | no CORS headers at all | MEDIUM | silent | silent |
+| M2 | `allowed-methods=*`, credentials | POST preflight allowed with credentials | MEDIUM | MEDIUM | MEDIUM |
+| M4 | `allowed-methods=GET,DELETE`, credentials | DELETE preflight allowed with credentials | silent | silent | silent |
+| M7 | `allowed-methods=*`, no credentials | allowed, without credentials | MEDIUM | LOW | LOW |
+| M5 | `allowed-methods=*`, a JSON POST | preflight 403: `Content-Type` not allowed | — | — | — |
+| B1 | `allowed-methods=*` and `allowed-headers=*`, credentials | a JSON POST set the ROOT logger to TRACE (204) | — | — | — |
+| H1 | `exposed-headers=*`, credentials | `Access-Control-Expose-Headers: *`; Chromium exposed no header | MEDIUM | LOW (ineffective) | LOW (ineffective) |
+| H3 | `exposed-headers=*`, no origin key | no CORS headers at all | MEDIUM | silent | silent |
+| E1 | `allowed-origins=${SCG_ORIGINS:}`, `allowed-methods=*`, credentials | no CORS headers at all | MEDIUM | MEDIUM | silent |
+| H4 | `exposed-headers=X-Auth-Token`, credentials | Chromium exposed it to the script | MEDIUM | MEDIUM | MEDIUM |
+| H5 | `exposed-headers=X-Auth-Token`, no credentials | exposed on anonymous responses | MEDIUM | LOW | LOW |
+| H6 | `exposed-headers=Set-Cookie, Cookie` | Chromium never exposed `Set-Cookie` | LOW, INFO | LOW, INFO | LOW, INFO |
+| T1 | `exposed-headers=X-Access-Token`, credentials | `Access-Control-Expose-Headers: X-Access-Token` | silent | silent | INFO |
+| G1 | GraphQL `allowed-methods=*`, `exposed-headers=X-Auth-Token`, credentials | GraphQL binds the same keys | silent | MEDIUM, MEDIUM | MEDIUM, MEDIUM |
 
 M5 and B1 show that a JSON write needs both `allowed-methods` and
 `allowed-headers`; `allowed-methods=*` alone still lets DELETE and a POST
@@ -1249,6 +1252,27 @@ session. `exposed-headers=*` in Chromium exposed `X-Auth-Token` only to a
 request without credentials, so it is LOW with or without them. Every
 reference project and demo fixture reports the same findings as with the
 v1.10.0 jar: none sets these keys.
+
+A second review added three rows. E1: an origin whose placeholder resolves
+empty allowed no origin (the app sent no CORS headers); the rule used to
+check only that the raw value was non-blank, and reported MEDIUM. It now
+resolves it first and counts the origins it yields, so a value of only
+blanks or commas is silent too; a placeholder without a default still
+counts as an origin, since it may be set at runtime. M4: an explicit list
+of methods lets DELETE through with credentials, but it is not reported:
+listing the methods clients need is the fix the `*` finding asks for. T1:
+Spring sends any header listed in `exposed-headers` in
+`Access-Control-Expose-Headers`, the same mechanism by which Chromium
+exposed `X-Auth-Token` (H4; Chromium was not run with `X-Access-Token`); a
+header whose name suggests a token or a session (`authorization`, `token`,
+`jwt`, `session`, `secret`, `apikey`, ignoring `-` and `_`) is INFO, since
+whether it carries one depends on the application. The v1.11.0 column
+holds through v1.14.0: E1, M4 and T1 were also run with the v1.13.0 jar,
+with the same results. The script, with these rows, was run twice with the same
+results. The output on every reference project and demo fixture is
+byte-identical to v1.14.0's: the only files there that set these keys are
+three `src/test` resources in `spring-boot`, which SCG doesn't scan
+(ADR-006).
 
 ## SCG010 error response scenarios (running Spring Boot 4.1.1 and 3.5.16 apps)
 

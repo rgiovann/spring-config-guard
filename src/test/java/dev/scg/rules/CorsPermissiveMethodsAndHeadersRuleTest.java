@@ -57,6 +57,66 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
     }
 
     @Test
+    @DisplayName("E1: an origin that resolves empty builds no CORS configuration, so the rule is silent")
+    void silentWhenOriginResolvesEmpty() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, "${SCG_ORIGINS:}");
+        properties.put(ALLOWED_METHODS_KEY, "*");
+        properties.put(EXPOSED_HEADERS_KEY, "Authorization");
+        properties.put(CREDENTIALS, "true");
+
+        assertThat(check(properties)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"${SCG_ORIGINS: }", "${SCG_ORIGINS:},", " , "})
+    @DisplayName("An origin value that yields no origin, blank or only commas, is silent like E1")
+    void silentWhenOriginValueYieldsNoOrigin(String origin) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, origin);
+        properties.put(ALLOWED_METHODS_KEY, "*");
+        properties.put(CREDENTIALS, "true");
+
+        assertThat(check(properties)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An empty origin list item next to a real one still enables the checks")
+    void emptyOriginListItemNextToRealOne() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS + "[0]", "${SCG_ORIGINS:}");
+        properties.put(ORIGINS + "[1]", "https://trusted.example");
+        properties.put(ALLOWED_METHODS_KEY, "*");
+        properties.put(CREDENTIALS, "true");
+
+        assertThat(severities(check(properties))).containsExactly(Severity.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("E1 under GraphQL: an empty GraphQL origin is silent, whatever Actuator's origins are")
+    void graphQlOriginResolvingEmptyIsSilent() {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, "https://trusted.example");
+        properties.put("spring.graphql.cors.allowed-origins", "${GRAPHQL_ORIGINS:}");
+        properties.put("spring.graphql.cors.allowed-methods", "*");
+        properties.put("spring.graphql.cors.allow-credentials", "true");
+
+        assertThat(check(properties)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"${SCG_ORIGINS}", "${SCG_ORIGINS:https://trusted.example}"})
+    @DisplayName("An origin that is a placeholder without a default, or with a non-empty one, enables the checks")
+    void originPlaceholderEnablesChecks(String origin) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put(ORIGINS, origin);
+        properties.put(ALLOWED_METHODS_KEY, "*");
+        properties.put(CREDENTIALS, "true");
+
+        assertThat(severities(check(properties))).containsExactly(Severity.MEDIUM);
+    }
+
+    @Test
     @DisplayName("An origin pattern also enables the configuration")
     void originPatternEnablesConfiguration() {
         Map<String, String> properties = new LinkedHashMap<>();
@@ -85,8 +145,9 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
     }
 
     @Test
-    @DisplayName("M4: an explicit list of methods is silent")
+    @DisplayName("M4: an explicit list of methods is silent, though it lets DELETE through: listing them is the fix")
     void explicitMethodsAreSilent() {
+        assertThat(check(cors(ALLOWED_METHODS_KEY, "GET,DELETE", "true"))).isEmpty();
         assertThat(check(cors(ALLOWED_METHODS_KEY, "GET, POST, PUT, DELETE", "true"))).isEmpty();
     }
 
@@ -145,6 +206,26 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
     @DisplayName("Safe operational headers are silent")
     void safeHeadersAreSilent() {
         assertThat(check(cors(EXPOSED_HEADERS_KEY, "Content-Disposition, X-Total-Count", "true"))).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"X-Access-Token", "x-refresh-token", "X-JWT", "X-Session-Id", "X_Client_Secret",
+            "X-Api-Key", "X-APIKEY", "X-Authorization"})
+    @DisplayName("T1: a header whose name suggests a token or a session is INFO, with or without credentials")
+    void tokenLikeHeaderIsInfo(String header) {
+        for (String credentials : new String[]{"true", null}) {
+            List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, header, credentials));
+
+            assertThat(severities(findings)).containsExactly(Severity.INFO);
+            assertThat(findings.getFirst().message()).contains(header, "suggests a token or a session");
+        }
+    }
+
+    @Test
+    @DisplayName("Headers that keep their own finding aren't also reported as token-like")
+    void knownHeadersKeepTheirOwnFinding() {
+        assertThat(severities(check(cors(EXPOSED_HEADERS_KEY, "X-Auth-Token, Set-Cookie", "true"))))
+                .containsExactly(Severity.MEDIUM, Severity.LOW);
     }
 
     @Test

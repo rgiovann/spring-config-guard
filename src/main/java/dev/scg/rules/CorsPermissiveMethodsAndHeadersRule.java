@@ -12,16 +12,23 @@ import java.util.stream.Stream;
  * Covers the two CORS configurations Spring Boot binds from properties, as SCG003 and SCG004 do:
  * Actuator's {@code management.endpoints.web.cors.*} and Spring for GraphQL's
  * {@code spring.graphql.cors.*}. Spring Boot 4.1.1 builds either configuration only when
- * {@code allowed-origins} or {@code allowed-origin-patterns} is set
- * ({@code toCorsConfiguration()} returns null otherwise), so without an origin key these keys
- * have no effect and the rule is silent. Checked against a running Spring Boot 4.1.1 app and
- * Chromium (VALIDATION.md, "SCG005 methods and headers scenarios"):
+ * {@code allowed-origins} or {@code allowed-origin-patterns} binds to a non-empty list
+ * ({@code toCorsConfiguration()} returns null otherwise). Without an origin, or with one that
+ * resolves empty ({@code ${ORIGINS:}}) and so allows no origin, these keys have no effect and the
+ * rule is silent; an origin that is a placeholder without a default may be set at runtime, so the
+ * rule checks these keys then. Checked against a running Spring Boot 4.1.1 app and Chromium
+ * (VALIDATION.md, "SCG005 methods and headers scenarios"):
  * <ul>
  *     <li>{@code allowed-methods=*} lets a permitted origin's script send any method, DELETE
  *     included; a JSON POST (an Actuator write operation such as {@code /actuator/loggers}) also
- *     needs {@code allowed-headers} to allow {@code Content-Type}. The default is GET and HEAD.</li>
+ *     needs {@code allowed-headers} to allow {@code Content-Type}. The default is GET and HEAD.
+ *     An explicit list ({@code GET,DELETE}) is not reported, though it lets DELETE through: listing
+ *     the methods clients need is the fix this rule asks for.</li>
  *     <li>{@code Authorization} or {@code X-Auth-Token} (Spring Session's header) in
- *     {@code exposed-headers} lets that script read the token and use it outside the browser.</li>
+ *     {@code exposed-headers} lets that script read the token and use it outside the browser. A
+ *     header whose name only suggests a token or a session ({@code X-Access-Token},
+ *     {@code X-Api-Key}) is INFO: Spring sends it in {@code Access-Control-Expose-Headers} like any
+ *     listed header, but whether it carries one depends on the application.</li>
  *     <li>{@code exposed-headers=*}: browsers honor the wildcard only for requests without
  *     credentials; with credentials it is a header literally named {@code *}, and Chromium exposed
  *     nothing.</li>
@@ -48,6 +55,13 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
 
     /** Request headers, meaningless in exposed-headers. */
     private static final Set<String> REQUEST_HEADERS = Set.of("cookie");
+
+    /**
+     * Name fragments, without {@code -} and {@code _}, of headers that may carry a token or a session.
+     * A list, not a set: matched in order, the first match named in the message.
+     */
+    private static final List<String> TOKEN_NAME_FRAGMENTS =
+            List.of("authorization", "token", "jwt", "session", "secret", "apikey");
 
     @Override
     public String id() {
@@ -78,11 +92,18 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
         return findings;
     }
 
-    /** Whether Spring Boot builds this prefix's CORS configuration: an origin key holds a value. */
+    /**
+     * Whether Spring Boot may build this prefix's CORS configuration and allow an origin: an origin key
+     * holds a value that resolves to at least one origin, or holds a placeholder without a default,
+     * which may be set at runtime.
+     */
     private static boolean hasOrigins(EffectiveConfig config, String prefix) {
         return Stream.of(prefix + ".allowed-origins", prefix + ".allowed-origin-patterns")
                 .flatMap(key -> RelaxedProperties.valuesForKeyOrListChildren(config.properties(), key).stream())
-                .anyMatch(value -> value != null && !value.isBlank());
+                .filter(Objects::nonNull)
+                .anyMatch(value -> EnvironmentPlaceholder.resolve(value.strip())
+                        .map(resolved -> !tokens(resolved).isEmpty())
+                        .orElse(true));
     }
 
     private void checkAllowedMethods(EffectiveConfig config, String key, String credentialsKey,
@@ -155,9 +176,20 @@ public final class CorsPermissiveMethodsAndHeadersRule implements Rule {
                             ("Header '%s' in key '%s' is a request header, not a response header; exposing it has " +
                                     "no effect.")
                                     .formatted(header, key)));
+                } else {
+                    tokenNameFragment(name).ifPresent(fragment -> findings.add(finding(config, Severity.INFO,
+                            ("CORS key '%s' exposes '%s', whose name contains '%s', which suggests a token or a " +
+                                    "session: if it carries one, a script on a permitted origin can read it and use " +
+                                    "it outside the browser. Don't expose token headers cross-origin.")
+                                    .formatted(key, header, fragment))));
                 }
             }
         }
+    }
+
+    private static Optional<String> tokenNameFragment(String lowerCaseName) {
+        String compact = lowerCaseName.replace("-", "").replace("_", "");
+        return TOKEN_NAME_FRAGMENTS.stream().filter(compact::contains).findFirst();
     }
 
     private static List<String> tokens(String value) {

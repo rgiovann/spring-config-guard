@@ -4,11 +4,12 @@
 # scenarios").
 #
 # Part 1 starts this benchmark app per scenario (port 8081, env and loggers exposed), sends a
-# preflight for POST /actuator/loggers/ROOT and a GET /actuator/env with a foreign Origin, and prints
-# the CORS response headers. Part 2 loads a page on port 9000 in Chromium that POSTs JSON to
-# /actuator/loggers/ROOT with credentials, then prints the logger's level. Part 3 checks, against a
-# minimal server on port 9100, which response headers a script can read: '*' in
-# Access-Control-Expose-Headers with and without credentials, and an explicitly exposed Set-Cookie.
+# preflight for POST /actuator/loggers/ROOT (or for the method in METHOD) and a GET /actuator/env
+# with a foreign Origin, and prints the CORS response headers. Part 2 loads a page on port 9000 in
+# Chromium that POSTs JSON to /actuator/loggers/ROOT with credentials, then prints the logger's
+# level. Part 3 checks, against a minimal server on port 9100, which response headers a script can
+# read: '*' in Access-Control-Expose-Headers with and without credentials, and an explicitly
+# exposed Set-Cookie.
 #
 # Needs Node.js and Playwright with a Chromium (NODE_PATH pointing at the node_modules that has it).
 set -u
@@ -41,10 +42,10 @@ stop() {
 
 # scenario <name> <Access-Control-Request-Headers or empty> <args...>
 scenario() {
-    local name=$1 request_headers=$2; shift 2
+    local name=$1 request_headers=$2 method=${METHOD:-POST}; shift 2
     start "$@"
-    printf '%-48s preflight POST: %s\n' "$name" "$(curl -s -o /dev/null -D - -X OPTIONS localhost:8081/actuator/loggers/ROOT \
-        -H 'Origin: https://trusted.example' -H 'Access-Control-Request-Method: POST' \
+    printf '%-48s preflight %s: %s\n' "$name" "$method" "$(curl -s -o /dev/null -D - -X OPTIONS localhost:8081/actuator/loggers/ROOT \
+        -H 'Origin: https://trusted.example' -H "Access-Control-Request-Method: $method" \
         ${request_headers:+-H "Access-Control-Request-Headers: $request_headers"} | cors_headers)"
     printf '%-48s GET env:        %s\n' "$name" "$(curl -s -o /dev/null -D - localhost:8081/actuator/env \
         -H 'Origin: https://trusted.example' | cors_headers)"
@@ -59,6 +60,10 @@ scenario "M5 origins, methods=*, JSON preflight"        content-type $A.allowed-
 scenario "M6 origins, methods=*, headers=*, JSON"       content-type $A.allowed-origins=https://trusted.example $A.allowed-methods='*' $A.allowed-headers='*' $A.allow-credentials=true
 scenario "H1 origins, exposed-headers=*, credentials"   ""           $A.allowed-origins=https://trusted.example $A.exposed-headers='*' $A.allow-credentials=true
 scenario "H3 exposed-headers=*, no origin key"          ""           $A.exposed-headers='*'
+scenario "E1 origins=\${SCG_ORIGINS:}, methods=*"        ""           $A.allowed-origins='${SCG_ORIGINS:}' $A.allowed-methods='*' $A.allow-credentials=true
+METHOD=DELETE \
+scenario "M4 origins, methods=GET,DELETE, credentials"  ""           $A.allowed-origins=https://trusted.example $A.allowed-methods=GET,DELETE $A.allow-credentials=true
+scenario "T1 origins, exposed-headers=X-Access-Token"   ""           $A.allowed-origins=https://trusted.example $A.exposed-headers=X-Access-Token $A.allow-credentials=true
 
 cat > "$WORK/index.html" <<'HTML'
 <html><body><script>
