@@ -1342,7 +1342,7 @@ Authorization header, B = inbound body, S = JdbcTemplate bound parameter,
 J = JPA bound parameter, O = outbound Authorization header, D = outbound
 body. Values are command-line arguments unless noted.
 
-| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 | (unreleased) |
+| # | Configuration | Secrets in the log | v1.11.0 | v1.12.0 | v1.16.0 |
 |---|---|---|---|---|---|
 | L0 | defaults | none | silent | silent | silent |
 | L1 | `debug=true` | Q B D | MEDIUM | MEDIUM | MEDIUM |
@@ -1690,7 +1690,7 @@ SOCKS proxy or a failover partner (L14). SCG016 keeps its severity when
 Vault is located through service discovery (L16), and SCG017 when the
 URI is `issuer-uri`, whose metadata may name keys on another host (L17).
 
-| # | Rule | Configuration | v1.15.0 | (unreleased) |
+| # | Rule | Configuration | v1.15.0 | v1.16.0 |
 |---|---|---|---|---|
 | L1 | SCG012 | `spring.datasource.url=jdbc:mysql://localhost:3306/app?useSSL=false` | HIGH | INFO |
 | L2 | SCG012 | `jdbc:mysql://localhost,db.internal/app?useSSL=false` | HIGH | HIGH |

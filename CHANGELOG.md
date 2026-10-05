@@ -8,6 +8,50 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.16.0
+
+**Added**
+- SCG009 reports `debug:` or `debug: ~` (a YAML null) in a base file, as
+  MEDIUM: Spring Boot loads a YAML null as an empty string, and an empty
+  `debug` turns debug logging on. `ProfileMerger` used to drop such a key
+  before any rule saw it.
+
+**Fixed**
+- A YAML null is now an empty string in the effective configuration, as
+  Spring Boot's YAML loader produces it, in a base file and in a profile
+  override (it used to be dropped in a base file and a Java null in a
+  profile). Checked through `/actuator/env` against a running Spring Boot
+  4.1.1 app. Every rule but SCG009 reads it as unset, as before.
+
+**Detection changes**
+- **Lower severity**: SCG012, SCG014, SCG015, SCG016 and SCG017 report a
+  connection whose hosts, written literally, are all loopback (`localhost`,
+  127.0.0.0/8, `::1`) as INFO instead of HIGH or MEDIUM, saying why: the
+  traffic doesn't leave the host, unless a local forwarder relays it or
+  the client is sent on to other hosts. Not lowered: a host from a
+  placeholder, an unwritten default (Kafka's `localhost:9092`), a
+  `*.localhost` name, a value with a parameter that overrides the host
+  (PostgreSQL's `?host=`, SQL Server's `;serverName=`) or an SRV scheme,
+  Vault found through discovery, and SCG017's `issuer-uri`. With the
+  default `--fail-on=HIGH`, a project that failed only on such a
+  connection now passes.
+- **More findings**: SCG009 for a YAML null `debug` in a base file
+  (MEDIUM; with `--fail-on=MEDIUM`, such a project now fails).
+- Checked against Spring Boot 4.1.1; see `VALIDATION.md`, "Loopback
+  addresses in the transport rules" (L1–L17), "SCG009 verbose logging
+  scenarios" (Y4, Y5) and "ProfileMerger correctness benchmark".
+- On the reference corpus and the demo fixtures, against `v1.15.0`: nine
+  findings on a written `localhost` become INFO (one SCG012 in
+  `spring-petclinic-microservices`; one SCG017 and one SCG014 in
+  `spring-boot`; five SCG014 in `spring-cloud-stream-samples`); every
+  other finding is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.15.0...v1.16.0`.
+
 ## v1.15.0
 
 **Added**
