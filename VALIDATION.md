@@ -1512,7 +1512,7 @@ Spring Cloud 2025.1.3, the latest GA release train, which pins Spring Boot
 GA yet. Reproducible with `spring-env-benchmark/vault-transport-scenarios.sh`,
 run twice with the same results. Keys are under `spring.cloud.vault`.
 
-| # | Configuration | On the wire | v1.13.0 | (unreleased) |
+| # | Configuration | On the wire | v1.13.0 | v1.14.0 |
 |---|---|---|---|---|
 | D0 | defaults (`host=127.0.0.1`) | TLS | silent | silent |
 | S1 | `scheme=http` | HTTP, token in the clear | HIGH | HIGH |
@@ -1551,7 +1551,7 @@ forging one was not attempted. Reproducible with
 `spring-env-benchmark/jwt-transport-scenarios.sh`, run twice with the same
 results. Keys are under `spring.security.oauth2.resourceserver`.
 
-| # | Configuration | On the wire | v1.13.0 | (unreleased) |
+| # | Configuration | On the wire | v1.13.0 | v1.14.0 |
 |---|---|---|---|---|
 | J1 | `jwt.jwk-set-uri=http://...` | HTTP | HIGH | HIGH |
 | J2 | `jwt.jwk-set-uri=https://...` | TLS | silent | silent |

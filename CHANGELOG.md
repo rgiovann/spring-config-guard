@@ -8,6 +8,62 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.14.0
+
+**Added**
+- SCG017 reads `spring.security.oauth2.resourceserver.jwt.public-key-location`
+  and `spring.security.oauth2.resourceserver.opaquetoken.introspection-uri`:
+  with `http://`, the application started with a public key fetched in plain
+  HTTP, and introspection sent the client secret in the clear, while the rule
+  was silent. Both are HIGH.
+
+**Fixed**
+- SCG017 reported every `http://` key on its own. Spring Boot takes the JWT
+  keys from the first of `jwk-set-uri`, `issuer-uri` and
+  `public-key-location` that is set and never fetches the others, so an
+  `http://` `issuer-uri` next to an `https://` `jwk-set-uri` was a HIGH false
+  positive. The rule now reports only the key in use. When a key before it
+  is a placeholder without a default, which may resolve empty at runtime, an
+  `http://` value after it is INFO.
+- SCG016 reported `spring.cloud.vault.scheme=http` (or an `http://` `uri`)
+  as HIGH with `spring.cloud.vault.enabled` set to a false literal (`false`,
+  `FALSE`, `off`, `no`, `0`), where the client made no connection.
+- SCG016 reported `scheme=HTTP` and an `HTTP://` `uri` as HIGH. Spring Cloud
+  Vault compares the scheme case-sensitively, and those values stopped the
+  application from starting ("Scheme must be http or https").
+- SCG017's message no longer speaks of a forged JWKS, which doesn't fit a
+  public key or introspection; it says what is fetched in plain HTTP and
+  what whoever can rewrite that traffic gets.
+
+**Detection changes**
+- **Lower severity**: SCG017's `http://` `issuer-uri` next to a
+  `jwk-set-uri` that is a placeholder without a default goes from HIGH to
+  INFO. With the default `--fail-on=HIGH`, a project that failed only on it
+  now passes.
+- **Fewer findings**: SCG017 for an `issuer-uri` next to a set
+  `jwk-set-uri`, which Spring Boot doesn't fetch, and SCG016 for a disabled
+  client or an upper-case scheme. With the default `--fail-on=HIGH`, a project that
+  failed only on those now passes.
+- **More findings**: SCG017 for an `http://` `public-key-location` when it
+  is the key in use, and for an `http://` `introspection-uri` (HIGH; with
+  the default `--fail-on=HIGH`, such a project now fails), and for an
+  `http://` `public-key-location` after a placeholder without a default
+  (INFO).
+- Each change was checked on the wire: SCG016 against a Spring Cloud Vault
+  5.0.2 client, SCG017 against a running Spring Boot 4.1.1 resource server;
+  see `VALIDATION.md`, "SCG016 Vault transport scenarios" and "SCG017
+  resource server transport scenarios". The scenario scripts are in
+  `spring-env-benchmark`.
+- On the reference corpus and the demo fixtures, against `v1.13.0`: the one
+  SCG017 finding in `spring-boot` and the one in `demo-project` have the new
+  message; every other finding is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.13.0...v1.14.0`.
+
 ## v1.13.0
 
 **Added**
