@@ -17,8 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Covers SCG016's opt-in-to-insecure trigger (absence is safe -- default 'https'), the
- * uri-overrides-scheme precedence (including uri falling back to scheme when blank), all three
- * placeholder states for both properties, and Zero-Trust across profiles.
+ * uri-overrides-scheme precedence (including uri falling back to scheme when blank), the
+ * case-sensitive scheme, the spring.cloud.vault.enabled switch, all three placeholder states for
+ * both properties, and Zero-Trust across profiles. Row IDs (S1, U4, E1, ...) are the rows of
+ * VALIDATION.md, "SCG016 Vault transport scenarios", measured in spring-env-benchmark/vault-transport.
  */
 class VaultInsecureTransportRuleTest {
 
@@ -28,7 +30,7 @@ class VaultInsecureTransportRuleTest {
     private static final String URI_KEY = "spring.cloud.vault.uri";
 
     @Test
-    @DisplayName("Should stay silent when neither scheme nor uri is configured (default is https)")
+    @DisplayName("D0: silent when neither scheme nor uri is configured: the client used TLS")
     void shouldStaySilentWhenNeitherPropertyConfigured() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 "spring.cloud.vault.host", "vault.internal"
@@ -38,7 +40,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should stay silent when scheme is explicitly https")
+    @DisplayName("S3: silent when scheme is explicitly https")
     void shouldStaySilentWhenSchemeIsHttps() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(SCHEME_KEY, "https"));
 
@@ -46,7 +48,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH when scheme is explicitly http")
+    @DisplayName("S1: HIGH when scheme is explicitly http: the token went in the clear")
     void shouldReportHighWhenSchemeIsHttp() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(SCHEME_KEY, "http"));
 
@@ -60,15 +62,15 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should detect scheme=http case-insensitively")
-    void shouldDetectSchemeCaseInsensitively() {
+    @DisplayName("S2: silent for scheme=HTTP: Spring Cloud Vault compares it case-sensitively and the app didn't start")
+    void shouldStaySilentForUpperCaseScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(SCHEME_KEY, "HTTP"));
 
-        assertThat(rule.check(config)).hasSize(1);
+        assertThat(rule.check(config)).isEmpty();
     }
 
     @Test
-    @DisplayName("Should stay silent when scheme resolves to blank (same as absent -- default https applies)")
+    @DisplayName("S4: silent when scheme is blank: the app didn't start")
     void shouldStaySilentWhenSchemeIsBlank() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(SCHEME_KEY, "   "));
 
@@ -76,7 +78,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH when uri starts with http://")
+    @DisplayName("U1: HIGH when uri starts with http://: the token went in the clear")
     void shouldReportHighWhenUriIsHttp() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "http://vault.internal:8200"
@@ -91,17 +93,57 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should detect uri http:// case-insensitively")
-    void shouldDetectUriSchemeCaseInsensitively() {
+    @DisplayName("U5: silent for uri=HTTP://...: Spring Cloud Vault compares the scheme case-sensitively and the app didn't start")
+    void shouldStaySilentForUpperCaseUriScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "HTTP://vault.internal:8200"
         ));
 
-        assertThat(rule.check(config)).hasSize(1);
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "FALSE", "off", "no", "0", "${VAULT_ENABLED:false}"})
+    @DisplayName("E1-E5: silent when spring.cloud.vault.enabled is a false literal (false, FALSE, off, no, 0), or a placeholder whose default is one: the client made no connection")
+    void shouldStaySilentWhenVaultIsDisabled(String value) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http",
+                "spring.cloud.vault.enabled", value
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
     }
 
     @Test
-    @DisplayName("Should stay silent when uri starts with https:// on its own, with no scheme present")
+    @DisplayName("enabled=false is checked first: it silences an unresolved uri too, and works with a relaxed spelling")
+    void disabledWinsOverUnresolvedUri() {
+        EffectiveConfig unresolvedUri = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                URI_KEY, "${VAULT_URI}",
+                "spring.cloud.vault.enabled", "false"
+        ));
+        EffectiveConfig relaxedSpelling = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http",
+                "SPRING.CLOUD.VAULT.ENABLED", "false"
+        ));
+
+        assertThat(rule.check(unresolvedUri)).isEmpty();
+        assertThat(rule.check(relaxedSpelling)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "${VAULT_ENABLED}"})
+    @DisplayName("still HIGH when enabled is true or unknown (a placeholder without a default)")
+    void shouldReportWhenVaultIsNotProvablyDisabled(String value) {
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
+                SCHEME_KEY, "http",
+                "spring.cloud.vault.enabled", value
+        ));
+
+        assertThat(rule.check(config)).singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("U2: silent when uri starts with https://, with no scheme present")
     void shouldStaySilentWhenUriIsHttpsAlone() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "https://vault.internal:8200"
@@ -111,7 +153,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should stay silent when uri starts with https://, even if scheme=http is also present")
+    @DisplayName("U3: silent when uri starts with https://, even if scheme=http is also present: uri wins")
     void shouldStaySilentWhenUriIsHttpsRegardlessOfScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "https://vault.internal:8200",
@@ -123,7 +165,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH from uri even when scheme=https is also present")
+    @DisplayName("U4: HIGH from uri even when scheme=https is also present: uri wins")
     void shouldReportHighFromUriRegardlessOfScheme() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "http://vault.internal:8200",
@@ -147,7 +189,7 @@ class VaultInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should fall back to evaluating scheme when uri is blank")
+    @DisplayName("U6: falls back to scheme when uri is blank")
     void shouldFallBackToSchemeWhenUriIsBlank() {
         EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
                 URI_KEY, "   ",

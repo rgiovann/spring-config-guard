@@ -1497,3 +1497,40 @@ certificate, which SCG015 doesn't cover (`BACKLOG.md`, "TLS without
 verifying the server"). No reference project sets `spring.rabbitmq.host`
 or `addresses`, so every reference project and demo fixture reports the
 same findings as with the v1.12.0 jar.
+
+## SCG016 Vault transport scenarios (Spring Cloud Vault 5.0.2 client, on the wire)
+
+Whether a Spring Cloud Vault client speaks plain HTTP or TLS was checked on
+the wire, without a Vault server: `listener.py` listens on 127.0.0.1:8200
+and records whether a connection starts with a TLS handshake or a plain
+HTTP request, and whether that request carries the Vault token. The app
+imports configuration from Vault at startup
+(`spring.config.import=optional:vault://`, token authentication). It uses
+Spring Cloud 2025.1.3, the latest GA release train, which pins Spring Boot
+4.0.8 and Spring Cloud Vault 5.0.2; the train for Spring Boot 4.1 is not
+GA yet. Reproducible with `spring-env-benchmark/vault-transport-scenarios.sh`,
+run twice with the same results. Keys are under `spring.cloud.vault`.
+
+| # | Configuration | On the wire | v1.13.0 | (unreleased) |
+|---|---|---|---|---|
+| D0 | defaults (`host=127.0.0.1`) | TLS | silent | silent |
+| S1 | `scheme=http` | HTTP, token in the clear | HIGH | HIGH |
+| S2 | `scheme=HTTP` | app did not start | HIGH | silent |
+| S3 | `scheme=https` | TLS | silent | silent |
+| S4 | `scheme=` (empty) | app did not start | silent | silent |
+| U1 | `uri=http://...` | HTTP, token in the clear | HIGH | HIGH |
+| U2 | `uri=https://...` | TLS | silent | silent |
+| U3 | `uri=https://...`, `scheme=http` | TLS | silent | silent |
+| U4 | `uri=http://...`, `scheme=https` | HTTP, token in the clear | HIGH | HIGH |
+| U5 | `uri=HTTP://...` | app did not start | HIGH | silent |
+| U6 | `uri=` (empty), `scheme=http` | HTTP, token in the clear | HIGH | HIGH |
+| E1–E5 | `scheme=http`, `enabled=false` (or `FALSE`, `off`, `no`, `0`) | no connection | HIGH | silent |
+
+`uri` overrides `scheme` (U3, U4), and an empty `uri` leaves it to `scheme`
+(U6). Spring Cloud Vault compares the scheme case-sensitively: `HTTP`,
+`HTTP://` and an empty `scheme` stopped the application from starting
+("Scheme must be http or https"), where v1.13.0 reported `HTTP` and
+`HTTP://` as HIGH. `enabled` set to any false literal turned the client
+off. No reference project configures `spring.cloud.vault.*`, so every
+reference project and demo fixture reports the same findings as with the
+v1.13.0 jar.

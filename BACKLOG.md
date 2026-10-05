@@ -72,6 +72,8 @@ Reviewed so far:
   Security (`VALIDATION.md`, "SCG013 health details scenarios").
 * SCG015, on the wire against a Spring Boot 4.1.1 client (`VALIDATION.md`,
   "SCG015 RabbitMQ transport scenarios").
+* SCG016, on the wire against a Spring Cloud Vault 5.0.2 client
+  (`VALIDATION.md`, "SCG016 Vault transport scenarios").
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -80,8 +82,8 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
-their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002, SCG013
-and SCG015 so far), pick two of them at random and give them a second, full
+their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002, SCG013,
+SCG015 and SCG016 so far), pick two of them at random and give them a second, full
 review. If it finds nothing that matters, the procedure holds; if it does,
 adjust the skill.
 
@@ -92,8 +94,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG016,
-SCG017). Where a rule relies on Spring Boot behavior, check it
+rule, SCG017. Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
 ### Rewrite VALIDATION.md once every rule is reviewed
@@ -230,6 +231,15 @@ in `spring.cloud.stream.binders.<name>.environment.spring.rabbitmq.*`, which
 SCG015 doesn't read. ADR-009 evaluates binder environments as their own
 contexts for Kafka only. Measure whether the Rabbit binder applies them the
 same way before extending the rule or the ADR.
+
+### Vault located through service discovery (measure first)
+
+Found while reviewing SCG016: with `spring.cloud.vault.discovery.enabled=true`,
+Spring Cloud Vault finds the Vault server through a discovery client instead
+of `uri`/`host`, and the scheme may come from the discovered instance rather
+than `spring.cloud.vault.scheme`, which is all SCG016 reads. Measure, with a
+registry in the benchmark, which scheme the client uses before deciding
+whether SCG016 should say anything when discovery is on.
 
 ### SCG006: credentials in the OTLP headers maps
 

@@ -3,7 +3,6 @@ package dev.scg.rules;
 import dev.scg.core.*;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -15,6 +14,15 @@ import java.util.Optional;
  * defaults to {@code "https"} and {@code uri} is {@code @Nullable}. Unlike this project's
  * absence-is-insecure rules (SCG014/SCG015), absence here is safe — {@link #check(EffectiveConfig)}
  * only fires on an explicit opt-out.
+ * <p>
+ * Measured on the wire with Spring Cloud 2025.1.3 (Spring Boot 4.0.8, Spring Cloud Vault 5.0.2),
+ * with a listener on Vault's port recording whether the client spoke plain HTTP or started a TLS
+ * handshake (VALIDATION.md, "SCG016 Vault transport scenarios"): with {@code scheme=http} or an
+ * {@code http://} {@code uri}, the request carried the Vault token in the clear. The scheme is
+ * compared case-sensitively, as Spring Cloud Vault does: {@code HTTP}, {@code HTTP://} or an empty
+ * {@code scheme} stopped the application from starting ("Scheme must be http or https"), so they
+ * are silent. {@code spring.cloud.vault.enabled=false} turned the client off, with no connection
+ * made, so it is silent too.
  * <p>
  * {@code uri}, when present and non-blank after placeholder resolution, takes precedence over
  * {@code scheme} entirely — that's Spring Cloud Vault's own real precedence (the URI's own scheme
@@ -37,6 +45,7 @@ public final class VaultInsecureTransportRule implements Rule {
 
     private static final String SCHEME_KEY = "spring.cloud.vault.scheme";
     private static final String URI_KEY = "spring.cloud.vault.uri";
+    private static final String ENABLED_KEY = "spring.cloud.vault.enabled";
 
     @Override
     public String id() {
@@ -50,6 +59,12 @@ public final class VaultInsecureTransportRule implements Rule {
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
+        String enabledRaw = RelaxedProperties.get(config.properties(), ENABLED_KEY);
+        if (enabledRaw != null && EnvironmentPlaceholder.resolve(enabledRaw.strip())
+                .filter(RelaxedBoolean::isFalseLiteral).isPresent()) {
+            return List.of(); // Spring Cloud Vault turned off: no connection is made
+        }
+
         String uriRaw = RelaxedProperties.get(config.properties(), URI_KEY);
 
         if (uriRaw != null && !uriRaw.isBlank()) {
@@ -72,7 +87,7 @@ public final class VaultInsecureTransportRule implements Rule {
             return evaluateScheme(config, RelaxedProperties.get(config.properties(), SCHEME_KEY));
         }
 
-        if (value.toLowerCase(Locale.ROOT).startsWith("http://")) {
+        if (value.startsWith("http://")) { // case-sensitive, as Spring Cloud Vault parses it
             return List.of(insecureUriFinding(config, uriRaw));
         }
 
@@ -91,10 +106,10 @@ public final class VaultInsecureTransportRule implements Rule {
 
         String value = resolved.get().strip();
         if (value.isBlank()) {
-            return List.of(); // blank resolved value -- same as absent -- default 'https' applies
+            return List.of(); // blank: the application doesn't start ("Scheme must be http or https")
         }
 
-        if ("http".equalsIgnoreCase(value)) {
+        if ("http".equals(value)) { // case-sensitive: "HTTP" stops the application from starting
             return List.of(insecureSchemeFinding(config, schemeRaw));
         }
 
