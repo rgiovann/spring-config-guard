@@ -312,13 +312,27 @@ class CorsInsecureProtocolsRuleTest {
     @ValueSource(strings = {
             "http://127.attacker.com",
             "http://127.0.0.1.evil.org",
+            "http://127.0.0.1.com"
+    })
+    @DisplayName("Should generate MEDIUM Finding for remote domains disguised as 127.x.x.x loopback")
+    void shouldDetectBypassAttemptsDisguisedAsLoopback(String origin) {
+        assertThat(check(withCredentials(ORIGINS, origin)))
+                .singleElement()
+                .extracting(Finding::severity)
+                .isEqualTo(Severity.MEDIUM);
+    }
+
+    // A browser sends none of these as an Origin header: it normalizes 127.0.0.01 to 127.0.0.1 and
+    // 0127.0.0.1 (octal) to 87.0.0.1, and rejects 127.1.2.256. Such an entry matches nothing; the
+    // rule doesn't read it as loopback, so it reports a broken entry rather than miss a remote one.
+    @ParameterizedTest
+    @ValueSource(strings = {
             "http://127.1.2.256",
-            "http://127.0.0.1.com",
             "http://0127.0.0.1",
             "http://127.0.0.01"
     })
-    @DisplayName("Should generate MEDIUM Finding for malicious domains disguised as 127.x.x.x loopback")
-    void shouldDetectBypassAttemptsDisguisedAsLoopback(String origin) {
+    @DisplayName("Non-canonical IPv4 forms aren't read as loopback and are reported, though they match no browser origin")
+    void nonCanonicalIpv4FormsAreReported(String origin) {
         assertThat(check(withCredentials(ORIGINS, origin)))
                 .singleElement()
                 .extracting(Finding::severity)

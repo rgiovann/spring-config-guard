@@ -88,7 +88,11 @@ first review). To check that change: now that the remaining nine rules
 have had their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002,
 SCG013, SCG015, SCG016 and SCG017), pick two of them at random and give them
 a second, full review. If it finds nothing that matters, the procedure holds; if it does,
-adjust the skill.
+adjust the skill. Drawn on 2026-10-05: SCG004 and SCG005. SCG004's second
+review found no wrong result; it measured an assumption the first had
+taken for granted, that a browser resolves `*.localhost` itself rather
+than asking DNS (`VALIDATION.md`, "SCG004 insecure origin scenarios";
+Chromium only), and renamed a test whose name overstated what it checked.
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each

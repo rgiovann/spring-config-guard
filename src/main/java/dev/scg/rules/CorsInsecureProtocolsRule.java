@@ -27,7 +27,10 @@ import java.util.regex.Pattern;
  *     <li>a loopback host is not reported, with any port, port wildcard or port list
  *     ({@code http://localhost:*}, {@code http://127.0.0.1:[8080,8081]}), nor are subdomains of
  *     {@code localhost} ({@code http://*.localhost}): no network attacker sits between a browser
- *     and its own machine. {@code http://localhost*} is reported: it matches
+ *     and its own machine. That holds as long as the browser resolves localhost names itself
+ *     rather than asking DNS, where an attacker could answer: Chromium 141 loaded
+ *     {@code http://a.localhost} from 127.0.0.1 while the system resolver had no answer for it;
+ *     Firefox and Safari were not measured. {@code http://localhost*} is reported: it matches
  *     {@code http://localhost.evil.com}.</li>
  * </ul>
  * The pattern {@code *} lets every origin in, plain HTTP included; it isn't a choice of

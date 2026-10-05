@@ -1198,6 +1198,16 @@ an origin is INFO only where the placeholder decides it. A4 is kept as a
 finding: the pattern matches nothing, but it is a broken configuration
 meant to allow plain HTTP. The pattern `*` is left to SCG003.
 
+Leaving loopback origins unreported (A8–A11) assumes the browser resolves
+`localhost` names itself: if it asked DNS, an attacker on the network could
+answer `a.localhost` with their own address, serve a page from it, and pass
+the CORS check. `spring-env-benchmark/localhost-browser-probe.sh` serves a
+page on 127.0.0.1 and loads it by name, run twice with the same results:
+Chromium 141 loaded it from `localhost`, `a.localhost` and
+`deep.a.localhost`, though the system resolver had no answer for the last
+two, and didn't load it from `example.test`, which the resolver didn't
+answer either. Firefox and Safari were not measured.
+
 Every reference project above and every demo fixture reports the same
 findings as with the v1.10.0 jar: none has an `http://` CORS origin. The
 script was run twice with the same results.
