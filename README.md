@@ -44,7 +44,7 @@ java -jar spring-config-guard.jar my-project --json --fail-on=NONE
   {
     "ruleId": "SCG002",
     "severity": "HIGH",
-    "message": "H2 console enabled (spring.h2.console.enabled=true). High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.",
+    "message": "H2 console enabled (spring.h2.console.enabled=true): a web SQL client that connects to any JDBC URL typed into its login form. It answers loopback clients only, which can include requests forwarded by a reverse proxy or sidecar on the same machine. Disable it via 'spring.h2.console.enabled=false'.",
     "sourceFile": "application.yml",
     "profileLabel": "__spring_config_guard_base__"
   }
@@ -111,7 +111,7 @@ should be updated in the same PR that adds or removes a rule.
 | ID | Severity | Description |
 |---|---|---|
 | SCG001 | HIGH / INFO | Sensitive Actuator endpoints exposed over HTTP without restricting access |
-| SCG002 | HIGH | H2 console enabled (flagged regardless of profile) |
+| SCG002 | HIGH / INFO | H2 console enabled (`spring.h2.console.enabled=true`, flagged regardless of profile) |
 | SCG003 | HIGH / MEDIUM / LOW / INFO | CORS wildcard or `null` origin combined with `allow-credentials=true` (Actuator and Spring for GraphQL) |
 | SCG004 | MEDIUM / LOW / INFO | Use of an insecure protocol (`http://`) in non-loopback CORS origins (Actuator and Spring for GraphQL) |
 | SCG005 | MEDIUM / LOW / INFO | Permissive CORS configuration exposing all HTTP methods or sensitive/wildcard response headers (Actuator and Spring for GraphQL) |
@@ -361,7 +361,7 @@ visually run into the next one:
 
 ```
 [HIGH] SCG002 - application.yml [profile: dev]
-    H2 console enabled (spring.h2.console.enabled=true). High risk of remote code execution (RCE) and data exposure. Disable it via 'spring.h2.console.enabled=false' outside local environments.
+    H2 console enabled (spring.h2.console.enabled=true): a web SQL client that connects to any JDBC URL typed into its login form. It answers loopback clients only, which can include requests forwarded by a reverse proxy or sidecar on the same machine. Disable it via 'spring.h2.console.enabled=false'.
 ```
 
 Format: `[severity] ruleId - sourceFile [profileDisplay]` header, then the
@@ -439,10 +439,10 @@ profile" case apart from the real `base` profile purely through the
     management.endpoints.web.exposure.include contains '*' and exposes all endpoints via HTTP ...
 
 [HIGH] SCG002 - application.yml [profile: base]
-    H2 console enabled (spring.h2.console.enabled=true). ...
+    H2 console enabled (spring.h2.console.enabled=true): ...
 
 [HIGH] SCG002 - application.yml [profile: dev]
-    H2 console enabled (spring.h2.console.enabled=true). ...
+    H2 console enabled (spring.h2.console.enabled=true): ...
 ```
 
 The equivalent `--json` output makes the same distinction through the raw
@@ -460,14 +460,14 @@ The equivalent `--json` output makes the same distinction through the raw
   {
     "ruleId": "SCG002",
     "severity": "HIGH",
-    "message": "H2 console enabled (spring.h2.console.enabled=true). ...",
+    "message": "H2 console enabled (spring.h2.console.enabled=true): ...",
     "sourceFile": "application.yml",
     "profileLabel": "base"
   },
   {
     "ruleId": "SCG002",
     "severity": "HIGH",
-    "message": "H2 console enabled (spring.h2.console.enabled=true). ...",
+    "message": "H2 console enabled (spring.h2.console.enabled=true): ...",
     "sourceFile": "application.yml",
     "profileLabel": "dev"
   }

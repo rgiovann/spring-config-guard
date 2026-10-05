@@ -1362,3 +1362,47 @@ kept as recorded); `spring-boot-admin` adds 1 MEDIUM
 (`org.springframework.kafka.config=debug`). `spring-petclinic`,
 `spring-petclinic-microservices-config` and the demo fixtures report the
 same findings.
+
+## SCG002 H2 console scenarios (running Spring Boot 4.1.1 app)
+
+Which values turn the H2 console on, and from where it answers, was checked
+in an app with Spring MVC and Spring Boot's H2 console module, reproducible
+with `spring-env-benchmark/h2-console-scenarios.sh`, run twice with the
+same results. Each scenario requests the console from loopback, from the
+machine's non-loopback address (a remote client to H2), and through
+`loopback-proxy.py`, a reverse proxy on that address forwarding to
+localhost as a proxy or sidecar on the same machine does. "blocked" is H2's
+"remote connections are disabled" page.
+
+| # | Configuration | Loopback / remote / proxied | v1.12.0 | (unreleased) |
+|---|---|---|---|---|
+| H0 | defaults | 404 / 404 / 404 | silent | silent |
+| H1, H2 | `enabled=true`, `TRUE` | console / blocked / console | HIGH | HIGH |
+| H3–H5 | `enabled=yes`, `on`, `1` | 404 / 404 / 404 | HIGH | silent |
+| P1 | `enabled=true ` (trailing space, `.properties`) | 404 / 404 / 404 | HIGH | silent |
+| H6–H9 | `enabled=false`, `off`, empty, `banana` | 404 / 404 / 404 | silent | silent |
+| H10 | `enabled=${H2_ENABLED}`, unset | app did not start | HIGH | INFO |
+| H11 | `enabled=${H2_ENABLED:true}` | console / blocked / console | HIGH | HIGH |
+| Y1 | YAML `enabled: on`, unquoted | console / blocked / console | HIGH | HIGH |
+| A1, A2 | `enabled=true`, `web-allow-others=true` or `yes` | console / console / console | HIGH, aggravating | HIGH, aggravating |
+| A5 | `enabled=true`, `web-allow-others=${UNSET:true}` | console / console / console | HIGH, aggravating | HIGH, aggravating |
+| A3 | `web-allow-others=true` alone | 404 / 404 / 404 | silent | silent |
+| A4 | A1 with a plain `web-admin-password` | 500 / 500 / 500 | HIGH, aggravating | HIGH, aggravating |
+| T1 | `enabled=true`, `path=/db` | console / blocked / console | HIGH | HIGH |
+
+Spring Boot turns the console on with `@ConditionalOnBooleanProperty`,
+which took only `true`, in any case (H1, H2): `yes`, `on`, `1` and a
+trailing space left it off (H3–H5, P1), where v1.12.0 reported HIGH.
+`web-allow-others` is bound through the Binder and took `yes` too (A2).
+Without it, H2 served only loopback clients, but through the same-host
+proxy, which sends no `X-Forwarded-For`, a remote client reached the
+console (H1, proxied); a proxy that sends that header, to an app that
+trusts it, was not measured. So the console stays HIGH either way and
+the message names `web-allow-others` when it is set. A placeholder without
+a default is INFO (H10); for `web-allow-others` (not in the table) the
+message says the console may accept remote clients rather than that it
+does. H2 rejects a `web-admin-password` that isn't in its encoded form, so
+A4's console answered 500. Every reference project and demo fixture
+reports the same findings as with the v1.12.0 jar, except the wording of
+the SCG002 message (3 findings in `spring-boot`, 2 in `demo-project`): all
+of them set `enabled=true`.

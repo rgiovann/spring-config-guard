@@ -1,224 +1,186 @@
 package dev.scg.rules;
 
+import dev.scg.core.ConfigLoader;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
 import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Row IDs (H1, P1, A2, ...) are the rows of VALIDATION.md, "SCG002 H2 console scenarios", measured in
+ * spring-env-benchmark/h2-console.
+ */
 class H2ConsoleExposedRuleTest {
+
+    private static final String ENABLED = "spring.h2.console.enabled";
+    private static final String ALLOW_OTHERS = "spring.h2.console.settings.web-allow-others";
 
     private final H2ConsoleExposedRule rule = new H2ConsoleExposedRule();
     private static final Path FAKE_PATH = Path.of("application.yml");
 
-    @Test
-    @DisplayName("Should generate a HIGH Finding when the H2 console is enabled in the base profile")
-    void shouldGenerateFindingWhenH2IsEnabledInBase() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                ProfileMerger.BASE_PROFILE_LABEL,
-                Map.of("spring.h2.console.enabled", "true")
-        );
+    private List<Finding> check(Map<String, String> properties) {
+        return rule.check(new EffectiveConfig(FAKE_PATH, "prod", properties));
+    }
 
-        List<Finding> findings = rule.check(config);
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "TRUE", "True", "${H2_ENABLED:true}"})
+    @DisplayName("H1, H2, H11: HIGH when enabled is true, in any case, the only value that turned the console on")
+    void highWhenTrue(String value) {
+        List<Finding> findings = check(Map.of(ENABLED, value));
 
-        assertEquals(1, findings.size());
+        assertThat(findings).hasSize(1);
         Finding finding = findings.getFirst();
-        assertEquals("SCG002", finding.ruleId());
-        assertEquals(Severity.HIGH, finding.severity());
-        assertTrue(finding.message().contains("spring.h2.console.enabled=true"));
+        assertThat(finding.ruleId()).isEqualTo("SCG002");
+        assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+        assertThat(finding.message())
+                .contains(ENABLED + "=" + value)
+                .contains("web SQL client")
+                .contains("reverse proxy");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"yes", "YES", "on", "1", "true ", "false", "off", "", "banana", "${H2_ENABLED:false}"})
+    @DisplayName("H3-H9: silent for every other value, including yes, on, 1 and a trailing space: the console stayed off")
+    void silentForAnyOtherValue(String value) {
+        assertThat(check(Map.of(ENABLED, value))).isEmpty();
     }
 
     @Test
-    @DisplayName("Should generate a finding when the H2 console is enabled in a production profile")
-    void shouldGenerateFindingWhenH2IsEnabledInProd() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of("spring.h2.console.enabled", "TRUE")
-        );
+    @DisplayName("H0: silent when the key is absent or null")
+    void silentWhenAbsent() {
+        Map<String, String> nullValue = new HashMap<>();
+        nullValue.put(ENABLED, null);
 
-        List<Finding> findings = rule.check(config);
-
-        assertEquals(1, findings.size());
+        assertThat(check(Map.of("server.port", "8080"))).isEmpty();
+        assertThat(check(nullValue)).isEmpty();
     }
 
     @Test
-    @DisplayName("Should generate a finding for Spring Boot truthy variants (yes, on, 1)")
-    void shouldGenerateFindingForTruthyVariants() {
-        List<String> truthyValues = List.of("yes", "YES", "on", "1");
+    @DisplayName("H10: INFO when enabled is a placeholder without a default: the value can't be known statically")
+    void infoWhenUnresolved() {
+        List<Finding> findings = check(Map.of(ENABLED, "${H2_ENABLED}"));
 
-        for (String value : truthyValues) {
-            EffectiveConfig config = new EffectiveConfig(
-                    FAKE_PATH,
-                    "prod",
-                    Map.of("spring.h2.console.enabled", value)
-            );
-
-            List<Finding> findings = rule.check(config);
-            assertEquals(1, findings.size(), "Should have generated a Finding for the truthy value: " + value);
-        }
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains("unresolved environment placeholder");
     }
 
     @Test
-    @DisplayName("Should generate a finding for profile names containing keywords as substrings (delivery, devices)")
-    void shouldGenerateFindingForProfilesWithSafeKeywordsAsSubstrings() {
-        List<String> unsafeProfiles = List.of("delivery", "devices", "contest");
+    @DisplayName("Y1: an unquoted YAML on is a YAML boolean, loaded as true, so it is HIGH")
+    void unquotedYamlOnIsHigh(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "spring.h2.console.enabled: on\n");
 
-        for (String profile : unsafeProfiles) {
-            EffectiveConfig config = new EffectiveConfig(
-                    FAKE_PATH,
-                    profile,
-                    Map.of("spring.h2.console.enabled", "true")
-            );
+        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
+                .flatMap(file -> new ProfileMerger().merge(file).stream())
+                .flatMap(config -> rule.check(config).stream())
+                .toList();
 
-            List<Finding> findings = rule.check(config);
-            assertEquals(1, findings.size(), "Should have generated a Finding for the profile: " + profile);
-        }
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
-    @DisplayName("Should NOT generate a Finding when the H2 console is disabled or absent")
-    void shouldNotGenerateFindingWhenDisabledOrAbsent() {
-        EffectiveConfig disabledConfig = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of("spring.h2.console.enabled", "false")
-        );
+    @DisplayName("P1: 'true ' with a trailing space in a .properties file reaches the rule as written, and is silent")
+    void trailingSpaceThroughTheLoaderIsSilent(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.properties"), "spring.h2.console.enabled=true \n");
 
-        EffectiveConfig missingConfig = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of("server.port", "8080")
-        );
+        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
+                .flatMap(file -> new ProfileMerger().merge(file).stream())
+                .flatMap(config -> rule.check(config).stream())
+                .toList();
 
-        assertTrue(rule.check(disabledConfig).isEmpty());
-        assertTrue(rule.check(missingConfig).isEmpty());
+        assertThat(findings).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "yes", "on", "1", "${UNSET:true}"})
+    @DisplayName("A1, A2, A5: web-allow-others, bound through the Binder, names the aggravating factor for every true literal")
+    void allowOthersEscalatesMessage(String value) {
+        List<Finding> findings = check(Map.of(ENABLED, "true", ALLOW_OTHERS, value));
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message())
+                .contains("AGGRAVATING FACTOR")
+                .contains(ALLOW_OTHERS + "=" + value);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "no"})
+    @DisplayName("H1: web-allow-others false or absent keeps the loopback-only message")
+    void allowOthersFalseKeepsLoopbackMessage(String value) {
+        List<Finding> withFalse = check(Map.of(ENABLED, "true", ALLOW_OTHERS, value));
+        List<Finding> absent = check(Map.of(ENABLED, "true"));
+
+        assertThat(withFalse.getFirst().message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
+        assertThat(absent.getFirst().message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
     }
 
     @Test
-    @DisplayName("Should NOT throw an exception or generate a Finding when the property value is null")
-    void shouldNotThrowExceptionWhenPropertyIsNull() {
-        Map<String, String> properties = new HashMap<>();
-        properties.put("spring.h2.console.enabled", null);
+    @DisplayName("web-allow-others as a placeholder without a default says it may let every client in, without claiming it does")
+    void allowOthersUnresolvedSaysMay() {
+        List<Finding> findings = check(Map.of(ENABLED, "true", ALLOW_OTHERS, "${ALLOW_REMOTE}"));
 
-        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", properties);
-
-        assertDoesNotThrow(() -> assertTrue(rule.check(config).isEmpty()));
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message())
+                .doesNotContain("AGGRAVATING FACTOR")
+                .contains("if it resolves to true");
     }
 
     @Test
-    @DisplayName("Should escalate the message when web-allow-others is enabled along with the console")
-    void shouldEscalateMessageWhenWebAllowOthersIsEnabled() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "spring.h2.console.enabled", "true",
-                        "spring.h2.console.settings.web-allow-others", "true"
-                )
-        );
+    @DisplayName("A4, T1: web-admin-password and a custom path don't change the finding")
+    void adminPasswordAndPathDontChangeTheFinding() {
+        List<Finding> withPassword = check(Map.of(ENABLED, "true", ALLOW_OTHERS, "true",
+                "spring.h2.console.settings.web-admin-password", "secret"));
+        List<Finding> withPath = check(Map.of(ENABLED, "true", "spring.h2.console.path", "/db"));
 
-        List<Finding> findings = rule.check(config);
-
-        assertEquals(1, findings.size());
-        Finding finding = findings.getFirst();
-        assertEquals(Severity.HIGH, finding.severity());
-        assertTrue(finding.message().contains("AGGRAVATING FACTOR"));
-        assertTrue(finding.message().contains("spring.h2.console.settings.web-allow-others=true"));
+        assertThat(withPassword).hasSize(1);
+        assertThat(withPassword.getFirst().message()).contains("AGGRAVATING FACTOR");
+        assertThat(withPath).hasSize(1);
+        assertThat(withPath.getFirst().severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
-    @DisplayName("Should NOT escalate the message when web-allow-others is absent")
-    void shouldNotEscalateMessageWhenWebAllowOthersIsAbsent() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of("spring.h2.console.enabled", "true")
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertEquals(1, findings.size());
-        assertFalse(findings.getFirst().message().contains("AGGRAVATING FACTOR"));
+    @DisplayName("A3: web-allow-others alone is silent: it didn't turn the console on")
+    void allowOthersAloneIsSilent() {
+        assertThat(check(Map.of(ALLOW_OTHERS, "true"))).isEmpty();
     }
 
     @Test
-    @DisplayName("Should NOT escalate the message when web-allow-others is explicitly false")
-    void shouldNotEscalateMessageWhenWebAllowOthersIsFalse() {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                "prod",
-                Map.of(
-                        "spring.h2.console.enabled", "true",
-                        "spring.h2.console.settings.web-allow-others", "false"
-                )
-        );
-
-        List<Finding> findings = rule.check(config);
-
-        assertEquals(1, findings.size());
-        assertFalse(findings.getFirst().message().contains("AGGRAVATING FACTOR"));
-    }
-
-    @Test
-    @DisplayName("Should generate a finding when enabled is a dynamic placeholder without a default")
-    void shouldGenerateFindingWhenEnabledIsDynamicPlaceholderWithoutDefault() {
-        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
-                Map.of("spring.h2.console.enabled", "${H2_ENABLED}"));
-
-        assertThat(rule.check(config)).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("Should NOT generate a Finding when enabled is a placeholder with a false default")
-    void shouldNotGenerateFindingWhenEnabledIsPlaceholderWithFalseDefault() {
-        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod",
-                Map.of("spring.h2.console.enabled", "${H2_ENABLED:false}"));
-
-        assertThat(rule.check(config)).isEmpty();
-    }
-
-    @Test
-    @DisplayName("Should escalate the message when web-allow-others is a dynamic placeholder without a default")
-    void shouldEscalateMessageWhenWebAllowOthersIsDynamicPlaceholderWithoutDefault() {
-        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, "prod", Map.of(
-                "spring.h2.console.enabled", "true",
-                "spring.h2.console.settings.web-allow-others", "${ALLOW_REMOTE}"
-        ));
-
-        List<Finding> findings = rule.check(config);
+    @DisplayName("Should respect relaxed binding: camelCase and upper-case keys")
+    void relaxedBinding() {
+        List<Finding> findings = check(Map.of(
+                "SPRING.H2.CONSOLE.ENABLED", "true",
+                "spring.h2.console.settings.webAllowOthers", "true"));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.getFirst().message()).contains("AGGRAVATING FACTOR");
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"dev", "test", "local", "dev-local", "cloud-test", "local_db", "test.ci", "prod", "qa"})
+    @ValueSource(strings = {"dev", "test", "local", "dev-local", "cloud-test", "local_db", "test.ci", "prod", "qa", "delivery", "devices"})
     @DisplayName("Should generate a Finding when H2 console is enabled regardless of the profile (Zero-Trust)")
     void shouldGenerateFindingRegardlessOfProfile(String profile) {
-        EffectiveConfig config = new EffectiveConfig(
-                FAKE_PATH,
-                profile,
-                Map.of("spring.h2.console.enabled", "true")
-        );
+        EffectiveConfig config = new EffectiveConfig(FAKE_PATH, profile, Map.of(ENABLED, "true"));
 
         List<Finding> findings = rule.check(config);
 
-        assertEquals(1, findings.size(), "Should report a violation for profile: " + profile);
-        assertEquals("SCG002", findings.getFirst().ruleId());
-        assertEquals(Severity.HIGH, findings.getFirst().severity());
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
     }
-
 }

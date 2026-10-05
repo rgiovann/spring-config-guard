@@ -66,6 +66,8 @@ Reviewed so far:
   3.5.16 apps (`VALIDATION.md`, "SCG010 error response scenarios").
 * SCG009, against a running Spring Boot 4.1.1 app (`VALIDATION.md`, "SCG009
   verbose logging scenarios").
+* SCG002, against a running Spring Boot 4.1.1 app (`VALIDATION.md`, "SCG002
+  H2 console scenarios").
 
 Each of these eight had a second, full review on 2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
@@ -74,16 +76,16 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
-their first review with it (SCG004, SCG005, SCG010 and SCG009 so far), pick
-two of them at random and give them a second, full review. If it finds
+their first review with it (SCG004, SCG005, SCG010, SCG009 and SCG002 so
+far), pick two of them at random and give them a second, full review. If it finds
 nothing that matters, the procedure holds; if it does, adjust the skill.
 
 Found while reviewing SCG003, to check in the rules concerned:
 `RelaxedBoolean.isTruthy` treats an unresolved placeholder as `true`, so a
 rule using it reports doubt at its certain severity (SCG003 now resolves
 `allow-credentials` itself; SCG010 reads a value it has already resolved,
-with `isTrueLiteral`; SCG009 no longer uses it). Of the rules not yet
-reviewed, only SCG002 uses it.
+with `isTrueLiteral`; SCG009 and SCG002 no longer use it). SCG003 still
+calls it, on a value it has already resolved.
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each
@@ -92,7 +94,7 @@ rule reviewed.
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
 each release's detection changes stay few enough to read. Next: the single-key
-rules (SCG002, SCG013, SCG015, SCG016,
+rules (SCG013, SCG015, SCG016,
 SCG017). Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
