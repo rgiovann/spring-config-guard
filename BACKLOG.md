@@ -77,15 +77,9 @@ SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 of truth, an attacker's round, the scope boundary and done criteria in the
 first review). To check that change: once the remaining nine rules have had
 their first review with it (SCG004, SCG005, SCG010, SCG009 and SCG002 so
-far), pick two of them at random and give them a second, full review. If it finds
-nothing that matters, the procedure holds; if it does, adjust the skill.
-
-Found while reviewing SCG003, to check in the rules concerned:
-`RelaxedBoolean.isTruthy` treats an unresolved placeholder as `true`, so a
-rule using it reports doubt at its certain severity (SCG003 now resolves
-`allow-credentials` itself; SCG010 reads a value it has already resolved,
-with `isTrueLiteral`; SCG009 and SCG002 no longer use it). SCG003 still
-calls it, on a value it has already resolved.
+far), pick two of them at random and give them a second, full review. If it
+finds nothing that matters, the procedure holds; if it does, adjust the
+skill.
 
 The severity of a finding based on an absent key is decided for every rule
 in ADR-010 (MEDIUM where a written value would be HIGH); apply it to each

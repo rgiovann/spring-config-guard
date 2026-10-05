@@ -149,7 +149,7 @@ public final class CorsWildcardWithCredentialsRule implements Rule {
         if (resolved.isEmpty()) {
             return Credentials.UNRESOLVED;
         }
-        return RelaxedBoolean.isTruthy(resolved.get()) ? Credentials.ENABLED : Credentials.DISABLED;
+        return RelaxedBoolean.isTrueLiteral(resolved.get()) ? Credentials.ENABLED : Credentials.DISABLED;
     }
 
     private Finding finding(EffectiveConfig config, Severity severity, String message) {

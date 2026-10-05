@@ -305,15 +305,15 @@ public final class InsecureServerTransportRule implements Rule {
     }
 
     /**
-     * Deliberately NOT {@code !RelaxedBoolean.isTruthy(value)}. Spring's true and false
+     * Deliberately NOT {@code !RelaxedBoolean.isTrueLiteral(value)}. Spring's true and false
      * literals are not complements of each other over the space of all
      * possible strings — an unrecognized literal (typo, garbage, a value Spring's own
      * StringToBooleanConverter would reject at startup) belongs to neither set. Negating
-     * isTruthy() would silently sweep that third bucket into "risk," misreporting a
+     * isTrueLiteral() would silently sweep that third bucket into "risk," misreporting a
      * value nobody wrote as a false literal ("SSL is explicitly disabled via '...=Flase'").
-     * This rule's risk direction is the opposite of isTruthy's (falsy = risk here, not
-     * truthy = risk), so it needs a positive-membership test against the specific
-     * falsy literals ({@link RelaxedBoolean#isFalseLiteral}), not a negation of the truthy one.
+     * This rule's risk direction is false = risk, so it needs a positive-membership test
+     * against the specific falsy literals ({@link RelaxedBoolean#isFalseLiteral}), not a
+     * negation of the truthy one.
      */
     private static boolean isExplicitlyFalsy(String value) {
         return RelaxedBoolean.isFalseLiteral(value);

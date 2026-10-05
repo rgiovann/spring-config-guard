@@ -1,9 +1,6 @@
 package dev.scg.rules;
 
-import dev.scg.core.EnvironmentPlaceholder;
-
 import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -24,18 +21,5 @@ public final class RelaxedBoolean {
     /** Whether a literal (placeholders already resolved) is one Spring reads as {@code false}. */
     public static boolean isFalseLiteral(String value) {
         return value != null && FALSY_VALUES.contains(value.strip().toLowerCase(Locale.ROOT));
-    }
-
-    public static boolean isTruthy(String value) {
-        if (value == null) {
-            return false; // missing key — unchanged behavior
-        }
-
-        Optional<String> resolved = EnvironmentPlaceholder.resolve(value);
-        // Dynamic placeholder without a default: the actual value only exists at
-        // runtime and cannot be determined through static analysis. Project security
-        // posture: assume the worst case (true) instead of suppressing a potential risk.
-        return resolved.map(RelaxedBoolean::isTrueLiteral).orElse(true);
-
     }
 }
