@@ -148,8 +148,9 @@ rules' precision (see "Rules with nothing to check here" below).
   grep -rlE "spring\.kafka" <repo-dir> --include="application*"
   grep -rlE "spring\.kafka(\.[a-z]+)?\.security\.protocol" <repo-dir> --include="application*"
 
-  # SCG017 (OAuth2 Resource Server issuer-uri/jwk-set-uri over http://):
-  grep -rlEi "(issuer-uri|jwk-set-uri)\s*[:=]\s*[\"']?http://" \
+  # SCG017 (OAuth2 Resource Server issuer-uri/jwk-set-uri/public-key-location/
+  # introspection-uri over http://):
+  grep -rlEi "(issuer-uri|jwk-set-uri|public-key-location|introspection-uri)\s*[:=]\s*[\"']?http://" \
     <repo-dir> --include="application*"
   ```
 
@@ -1534,3 +1535,60 @@ run twice with the same results. Keys are under `spring.cloud.vault`.
 off. No reference project configures `spring.cloud.vault.*`, so every
 reference project and demo fixture reports the same findings as with the
 v1.13.0 jar.
+
+## SCG017 resource server transport scenarios (Spring Boot 4.1.1, on the wire)
+
+Whether a Spring Boot OAuth2 resource server fetches its keys, its OIDC
+discovery document and its token introspection over plain HTTP or TLS was
+checked on the wire, without an authorization server: `listener.py`
+listens on 127.0.0.1:8300 and records whether a connection starts with a
+TLS handshake or a plain HTTP request, and whether that request carries the
+introspection client secret. The app (Spring Boot 4.1.1, Spring MVC and
+`spring-boot-starter-oauth2-resource-server`) receives one request with a
+bearer token; the listener serves a generated public key for `.pub` paths.
+The response was 401 in every row: the test token is never valid, and
+forging one was not attempted. Reproducible with
+`spring-env-benchmark/jwt-transport-scenarios.sh`, run twice with the same
+results. Keys are under `spring.security.oauth2.resourceserver`.
+
+| # | Configuration | On the wire | v1.13.0 | (unreleased) |
+|---|---|---|---|---|
+| J1 | `jwt.jwk-set-uri=http://...` | HTTP | HIGH | HIGH |
+| J2 | `jwt.jwk-set-uri=https://...` | TLS | silent | silent |
+| J3 | `jwt.jwk-set-uri=HTTP://...` | HTTP | HIGH | HIGH |
+| I1 | `jwt.issuer-uri=http://...` | HTTP | HIGH | HIGH |
+| I2 | `jwt.issuer-uri=https://...` | TLS | silent | silent |
+| I3 | `jwt.issuer-uri=HTTP://...` | HTTP | HIGH | HIGH |
+| B1 | `jwt.issuer-uri=https://...`, `jwt.jwk-set-uri=http://...` | HTTP | HIGH | HIGH |
+| B2 | `jwt.issuer-uri=http://...`, `jwt.jwk-set-uri=https://...` | TLS | HIGH | silent |
+| K1 | `jwt.public-key-location=http://...` | HTTP | silent | HIGH |
+| B3 | `jwt.issuer-uri=http://...`, `jwt.public-key-location=file:...` | HTTP | HIGH | HIGH |
+| B4 | `jwt.jwk-set-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent | silent |
+| B5 | `jwt.issuer-uri=https://...`, `jwt.public-key-location=http://...` | TLS | silent | silent |
+| O1 | `opaquetoken.introspection-uri=http://...`, client id and secret | HTTP, secret in the clear | silent | HIGH |
+| O2 | `opaquetoken.introspection-uri=https://...`, client id and secret | TLS | silent | silent |
+
+The keys come from the first of `jwk-set-uri`, `issuer-uri` and
+`public-key-location` that is set, as Spring Boot's `IssuerUriCondition`
+and `KeyValueCondition` state: next to a `jwk-set-uri`, neither
+`issuer-uri` (B2) nor `public-key-location` (B4) was fetched, so v1.13.0's
+B2 finding was a false positive; next to an `issuer-uri`,
+`public-key-location` wasn't (B5), and `issuer-uri` was (B3). The rule now
+reports only the key in use. When a key before it is an unresolved
+placeholder, which may resolve empty at runtime, an `http://` value after
+it is reported as INFO. The application reads `public-key-location` at
+startup and started with the key it fetched in plain HTTP (K1), which
+v1.13.0 didn't read; nor did it read `introspection-uri`, which sent the
+client secret in the clear (O1). The scheme is matched in any case (J3,
+I3). In O1 and O2, SCG006 also reports the client secret written in the
+file, in both versions.
+
+On the reference projects and demo fixtures, the findings are the same as
+with the v1.13.0 jar except for the wording of SCG017's message: no
+reference project sets `public-key-location` or `introspection-uri`, and
+none sets more than one of the three key sources (checked with a grep for
+the four keys, in any of their relaxed forms, whatever their value). The one SCG017 finding in
+`spring-boot`, `jwk-set-uri: http://localhost:8080/oauth2/jwks`, is still
+reported: whether transport rules treat loopback addresses as safe is
+decided for all of them at once (BACKLOG.md, "Transport rules and loopback
+addresses").

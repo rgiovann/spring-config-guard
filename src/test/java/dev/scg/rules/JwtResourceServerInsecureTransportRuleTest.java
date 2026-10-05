@@ -20,6 +20,8 @@ class JwtResourceServerInsecureTransportRuleTest {
 
     private static final String ISSUER_URI_KEY = "spring.security.oauth2.resourceserver.jwt.issuer-uri";
     private static final String JWK_SET_URI_KEY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";
+    private static final String PUBLIC_KEY_LOCATION_KEY = "spring.security.oauth2.resourceserver.jwt.public-key-location";
+    private static final String INTROSPECTION_URI_KEY = "spring.security.oauth2.resourceserver.opaquetoken.introspection-uri";
 
     private JwtResourceServerInsecureTransportRule rule;
 
@@ -29,7 +31,7 @@ class JwtResourceServerInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should stay silent when neither issuer-uri nor jwk-set-uri is present")
+    @DisplayName("Should stay silent when none of the four keys is present")
     void shouldStaySilentWithNoEvidenceOfTargetedKeys() {
         EffectiveConfig config = configOf(Map.of(
                 "server.port", "8080",
@@ -40,7 +42,7 @@ class JwtResourceServerInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should report HIGH when issuer-uri uses HTTP")
+    @DisplayName("I1: should report HIGH when issuer-uri uses HTTP")
     void shouldReportHighWhenIssuerUriIsHttp() {
         EffectiveConfig config = configOf(Map.of(
                 ISSUER_URI_KEY, "http://auth.example.com/realm"
@@ -52,11 +54,11 @@ class JwtResourceServerInsecureTransportRuleTest {
         Finding finding = findings.getFirst();
         assertThat(finding.ruleId()).isEqualTo("SCG017");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
-        assertThat(finding.message()).contains("forged JWKS");
+        assertThat(finding.message()).contains(ISSUER_URI_KEY).contains("authentication bypass");
     }
 
     @Test
-    @DisplayName("Should report HIGH when jwk-set-uri uses HTTP")
+    @DisplayName("J1: should report HIGH when jwk-set-uri uses HTTP")
     void shouldReportHighWhenJwkSetUriIsHttp() {
         EffectiveConfig config = configOf(Map.of(
                 JWK_SET_URI_KEY, "http://auth.example.com/.well-known/jwks.json"
@@ -66,12 +68,12 @@ class JwtResourceServerInsecureTransportRuleTest {
 
         assertThat(findings).hasSize(1);
         assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains("forged JWKS");
+        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY).contains("authentication bypass");
     }
 
     @Test
-    @DisplayName("Should report both findings independently when issuer-uri and jwk-set-uri are both HTTP")
-    void shouldReportBothFindingsWhenBothAreHttp() {
+    @DisplayName("Should report only jwk-set-uri when both it and issuer-uri are HTTP: issuer-uri isn't fetched then")
+    void shouldReportOnlyJwkSetUriWhenBothAreHttp() {
         EffectiveConfig config = configOf(Map.of(
                 ISSUER_URI_KEY, "http://auth.example.com/realm",
                 JWK_SET_URI_KEY, "http://auth.example.com/.well-known/jwks.json"
@@ -79,12 +81,243 @@ class JwtResourceServerInsecureTransportRuleTest {
 
         List<Finding> findings = rule.check(config);
 
-        assertThat(findings).hasSize(2);
-        assertThat(findings).allMatch(f -> f.severity() == Severity.HIGH);
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY).doesNotContain(ISSUER_URI_KEY);
     }
 
     @Test
-    @DisplayName("Should stay silent when issuer-uri uses HTTPS")
+    @DisplayName("B1: should report jwk-set-uri when it is HTTP next to an HTTPS issuer-uri")
+    void shouldReportJwkSetUriWhenHttpNextToHttpsIssuerUri() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "https://auth.example.com/realm",
+                JWK_SET_URI_KEY, "http://auth.example.com/.well-known/jwks.json"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("B2: should stay silent on an HTTP issuer-uri next to an HTTPS jwk-set-uri, which decides where the keys come from")
+    void shouldStaySilentOnHttpIssuerUriNextToHttpsJwkSetUri() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "http://auth.example.com/realm",
+                JWK_SET_URI_KEY, "https://auth.example.com/.well-known/jwks.json"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should report an HTTP issuer-uri as INFO next to a jwk-set-uri that is an unresolved placeholder, which may resolve empty")
+    void shouldReportHttpIssuerUriAsInfoNextToUnresolvedJwkSetUri() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "http://auth.example.com/realm",
+                JWK_SET_URI_KEY, "${JWK_SET_URI}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(2).allMatch(f -> f.severity() == Severity.INFO);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY).contains("unresolved placeholder");
+        assertThat(findings.get(1).message()).contains(ISSUER_URI_KEY)
+                .contains("Used only if '" + JWK_SET_URI_KEY + "', an unresolved placeholder, resolves empty");
+    }
+
+    @Test
+    @DisplayName("Should report only the placeholder when jwk-set-uri is unresolved and issuer-uri is HTTPS")
+    void shouldReportOnlyThePlaceholderWhenJwkSetUriIsUnresolvedAndIssuerUriIsHttps() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "https://auth.example.com/realm",
+                JWK_SET_URI_KEY, "${JWK_SET_URI}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("Should stop at the first key resolved after an unresolved placeholder")
+    void shouldStopAtFirstResolvedKeyAfterPlaceholder() {
+        EffectiveConfig config = configOf(Map.of(
+                JWK_SET_URI_KEY, "${JWK_SET_URI}",
+                ISSUER_URI_KEY, "https://auth.example.com/realm",
+                PUBLIC_KEY_LOCATION_KEY, "http://auth.example.com/key.pub"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("Should report an HTTP issuer-uri when jwk-set-uri resolves to an empty default, which leaves it unset")
+    void shouldReportIssuerUriWhenJwkSetUriResolvesEmpty() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "http://auth.example.com/realm",
+                JWK_SET_URI_KEY, "${JWK_SET_URI:}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("K1: should report HIGH when public-key-location uses HTTP")
+    void shouldReportHighWhenPublicKeyLocationIsHttp() {
+        EffectiveConfig config = configOf(Map.of(
+                PUBLIC_KEY_LOCATION_KEY, "http://auth.example.com/key.pub"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(PUBLIC_KEY_LOCATION_KEY);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"classpath:key.pub", "file:/etc/keys/key.pub", "https://auth.example.com/key.pub"})
+    @DisplayName("Should stay silent when public-key-location is not an HTTP URL")
+    void shouldStaySilentWhenPublicKeyLocationIsNotHttp(String location) {
+        EffectiveConfig config = configOf(Map.of(
+                PUBLIC_KEY_LOCATION_KEY, location
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("B3: should report an HTTP issuer-uri next to a public-key-location, since issuer-uri is still fetched")
+    void shouldReportHttpIssuerUriNextToPublicKeyLocation() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "http://auth.example.com/realm",
+                PUBLIC_KEY_LOCATION_KEY, "file:/etc/keys/key.pub"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("B4: should stay silent on an HTTP public-key-location next to an HTTPS jwk-set-uri, which decides where the keys come from")
+    void shouldStaySilentOnHttpPublicKeyLocationNextToHttpsJwkSetUri() {
+        EffectiveConfig config = configOf(Map.of(
+                JWK_SET_URI_KEY, "https://auth.example.com/.well-known/jwks.json",
+                PUBLIC_KEY_LOCATION_KEY, "http://auth.example.com/key.pub"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("B5: should stay silent on an HTTP public-key-location next to an HTTPS issuer-uri, which decides where the keys come from")
+    void shouldStaySilentOnHttpPublicKeyLocationNextToHttpsIssuerUri() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "https://auth.example.com/realm",
+                PUBLIC_KEY_LOCATION_KEY, "http://auth.example.com/key.pub"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should report only issuer-uri when both it and public-key-location are HTTP: the key isn't read then")
+    void shouldReportOnlyIssuerUriWhenItAndPublicKeyLocationAreHttp() {
+        EffectiveConfig config = configOf(Map.of(
+                ISSUER_URI_KEY, "http://auth.example.com/realm",
+                PUBLIC_KEY_LOCATION_KEY, "http://auth.example.com/key.pub"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY).doesNotContain(PUBLIC_KEY_LOCATION_KEY);
+    }
+
+    @Test
+    @DisplayName("Should report the key source before introspection-uri, in a fixed order")
+    void shouldReportKeySourceBeforeIntrospectionUri() {
+        EffectiveConfig config = configOf(Map.of(
+                INTROSPECTION_URI_KEY, "http://auth.example.com/introspect",
+                ISSUER_URI_KEY, "http://auth.example.com/realm"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).extracting(Finding::message)
+                .satisfiesExactly(
+                        m -> assertThat(m).contains(ISSUER_URI_KEY),
+                        m -> assertThat(m).contains(INTROSPECTION_URI_KEY));
+    }
+
+    @Test
+    @DisplayName("O1: should report HIGH when introspection-uri uses HTTP")
+    void shouldReportHighWhenIntrospectionUriIsHttp() {
+        EffectiveConfig config = configOf(Map.of(
+                INTROSPECTION_URI_KEY, "http://auth.example.com/introspect"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.getFirst().message()).contains(INTROSPECTION_URI_KEY).contains("client secret");
+    }
+
+    @Test
+    @DisplayName("O2: should stay silent when introspection-uri uses HTTPS")
+    void shouldStaySilentWhenIntrospectionUriIsHttps() {
+        EffectiveConfig config = configOf(Map.of(
+                INTROSPECTION_URI_KEY, "https://auth.example.com/introspect"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should report an HTTP introspection-uri next to a jwk-set-uri, which doesn't decide it")
+    void shouldReportIntrospectionUriNextToJwkSetUri() {
+        EffectiveConfig config = configOf(Map.of(
+                JWK_SET_URI_KEY, "https://auth.example.com/.well-known/jwks.json",
+                INTROSPECTION_URI_KEY, "http://auth.example.com/introspect"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().message()).contains(INTROSPECTION_URI_KEY);
+    }
+
+    @Test
+    @DisplayName("Should report INFO when introspection-uri relies on an unresolved placeholder")
+    void shouldReportInfoForUnresolvedPlaceholderOnIntrospectionUri() {
+        EffectiveConfig config = configOf(Map.of(
+                INTROSPECTION_URI_KEY, "${INTROSPECTION_URI}"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+    }
+
+    @Test
+    @DisplayName("I2: should stay silent when issuer-uri uses HTTPS")
     void shouldStaySilentWhenIssuerUriIsHttps() {
         EffectiveConfig config = configOf(Map.of(
                 ISSUER_URI_KEY, "https://auth.example.com/realm"
@@ -94,7 +327,7 @@ class JwtResourceServerInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("Should stay silent when jwk-set-uri uses HTTPS")
+    @DisplayName("J2: should stay silent when jwk-set-uri uses HTTPS")
     void shouldStaySilentWhenJwkSetUriIsHttps() {
         EffectiveConfig config = configOf(Map.of(
                 JWK_SET_URI_KEY, "https://auth.example.com/.well-known/jwks.json"
@@ -103,11 +336,12 @@ class JwtResourceServerInsecureTransportRuleTest {
         assertThat(rule.check(config)).isEmpty();
     }
 
-    @Test
-    @DisplayName("Should report HIGH regardless of scheme casing")
-    void shouldReportHighForUppercaseHttpScheme() {
+    @ParameterizedTest
+    @ValueSource(strings = {ISSUER_URI_KEY, JWK_SET_URI_KEY})
+    @DisplayName("I3/J3: should report HIGH regardless of scheme casing")
+    void shouldReportHighForUppercaseHttpScheme(String key) {
         EffectiveConfig config = configOf(Map.of(
-                ISSUER_URI_KEY, "HTTP://auth.example.com/realm"
+                key, "HTTP://auth.example.com/realm"
         ));
 
         List<Finding> findings = rule.check(config);
@@ -187,6 +421,43 @@ class JwtResourceServerInsecureTransportRuleTest {
     void shouldSupportRelaxedBindingForJwkSetUri() {
         EffectiveConfig config = configOf(Map.of(
                 "spring.security.oauth2.resourceserver.jwt.jwk_set_uri", "http://auth.example.com/.well-known/jwks.json"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Should respect relaxed binding for jwk-set-uri when it decides the key source")
+    void shouldSupportRelaxedBindingForJwkSetUriPrecedence() {
+        EffectiveConfig config = configOf(Map.of(
+                "spring.security.oauth2.resourceserver.jwt.jwkSetUri", "https://auth.example.com/.well-known/jwks.json",
+                ISSUER_URI_KEY, "http://auth.example.com/realm"
+        ));
+
+        assertThat(rule.check(config)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should respect relaxed binding for public-key-location written in snake_case")
+    void shouldSupportRelaxedBindingForPublicKeyLocation() {
+        EffectiveConfig config = configOf(Map.of(
+                "spring.security.oauth2.resourceserver.jwt.public_key_location", "http://auth.example.com/key.pub"
+        ));
+
+        List<Finding> findings = rule.check(config);
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+    }
+
+    @Test
+    @DisplayName("Should respect relaxed binding for introspection-uri written in camelCase")
+    void shouldSupportRelaxedBindingForIntrospectionUri() {
+        EffectiveConfig config = configOf(Map.of(
+                "spring.security.oauth2.resourceserver.opaquetoken.introspectionUri", "http://auth.example.com/introspect"
         ));
 
         List<Finding> findings = rule.check(config);

@@ -14,30 +14,47 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * SCG017 — detects HTTP used in OAuth2 Resource Server JWT transport ({@code issuer-uri} or
- * {@code jwk-set-uri}), checked independently since either one alone lets a network-positioned
- * attacker serve a forged JWKS (directly, or via OIDC discovery for {@code issuer-uri}) and sign
- * tokens the application accepts — authentication bypass, not just traffic interception. Always
- * {@link Severity#HIGH}.
+ * SCG017 — detects HTTP used where an OAuth2 Resource Server fetches what it validates tokens with:
+ * {@code jwt.jwk-set-uri}, {@code jwt.issuer-uri} (OIDC discovery), {@code jwt.public-key-location},
+ * and {@code opaquetoken.introspection-uri}. Whoever can read or rewrite that traffic can serve
+ * their own keys (or an introspection answer saying any token is active) and get tokens the
+ * application accepts — authentication bypass, not just traffic interception. {@link Severity#HIGH};
+ * a value that is an unresolved placeholder is {@link Severity#INFO}.
+ * <p>
+ * Measured on the wire in a running Spring Boot 4.1.1 resource server, with a listener recording
+ * whether each fetch was plain HTTP or TLS (VALIDATION.md, "SCG017 resource server transport
+ * scenarios"): with an {@code http://} URI, the keys, the discovery document and the public key
+ * were fetched in plain HTTP, and introspection sent the client secret in the clear; the application
+ * started with the key it fetched from an {@code http://} {@code public-key-location}, which it reads
+ * at startup. Forging a token was not attempted. The keys come from the first of
+ * {@code jwk-set-uri}, {@code issuer-uri} and {@code public-key-location} that is set (Spring Boot's
+ * {@code IssuerUriCondition} and {@code KeyValueCondition}): next to a {@code jwk-set-uri}, neither
+ * of the others was fetched, and next to an {@code issuer-uri}, {@code public-key-location} wasn't,
+ * so the keys after the one in use are not reported. When the one before is an unresolved
+ * placeholder, it may resolve empty at runtime, so an HTTP value after it is {@link Severity#INFO}.
+ * The scheme is matched in any case: {@code HTTP://} connected in plain HTTP too.
  * <p>
  * Deliberately a dedicated rule rather than an addition to {@link InsecureDatabaseTransportRule}'s
  * (SCG012) {@code uri-based}/{@code risky-schemes} list: the same {@code http://} signal causes a
  * qualitatively different, more severe outcome here that a generic scheme scanner can't express in
  * its message or severity.
  * <p>
- * Plain {@link Rule}, not {@link ConfigurableRule}: the two target keys are a fixed, closed fact of
- * Spring Security's OAuth2 Resource Server support. Zero-Trust: checked regardless of active
+ * Plain {@link Rule}, not {@link ConfigurableRule}: the four target keys are a fixed, closed fact of
+ * Spring Boot's OAuth2 Resource Server support. Zero-Trust: checked regardless of active
  * profile.
  *
  * @see EnvironmentPlaceholder
  */
 public final class JwtResourceServerInsecureTransportRule implements Rule {
 
-    // A list, not a set: iterated to generate findings, in a fixed order.
-    private static final List<String> TARGET_KEYS = List.of(
-            "spring.security.oauth2.resourceserver.jwt.issuer-uri",
-            "spring.security.oauth2.resourceserver.jwt.jwk-set-uri"
-    );
+    private static final String ISSUER_URI_KEY = "spring.security.oauth2.resourceserver.jwt.issuer-uri";
+    private static final String JWK_SET_URI_KEY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";
+    private static final String PUBLIC_KEY_LOCATION_KEY = "spring.security.oauth2.resourceserver.jwt.public-key-location";
+    private static final String INTROSPECTION_URI_KEY = "spring.security.oauth2.resourceserver.opaquetoken.introspection-uri";
+
+    /** Where the JWT keys come from, in Spring Boot's order of precedence. */
+    private static final List<String> KEY_SOURCES =
+            List.of(JWK_SET_URI_KEY, ISSUER_URI_KEY, PUBLIC_KEY_LOCATION_KEY);
 
     private static final String INSECURE_SCHEME = "http://";
 
@@ -48,26 +65,53 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
     @Override
     public String description() {
-        return "Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints";
+        return "Insecure transport (HTTP) configured for OAuth2 Resource Server token validation endpoints";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
-
-        for (String key : TARGET_KEYS) {
-            String rawValue = RelaxedProperties.get(config.properties(), key);
-            if (rawValue == null || rawValue.isBlank()) {
+        // Spring Boot uses the first of these that is set and ignores the rest. A key set to an
+        // unresolved placeholder may still resolve empty at runtime, so the keys after it are
+        // checked too, with an HTTP value as INFO: it is used only in that case.
+        String placeholderBefore = null;
+        for (String key : KEY_SOURCES) {
+            String rawValue = rawValue(config, key);
+            if (rawValue == null) {
                 continue;
             }
-
-            evaluateKey(key, rawValue.strip(), config, findings);
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
+            if (resolved.isPresent() && resolved.get().isBlank()) {
+                continue;
+            }
+            evaluateKey(key, rawValue, placeholderBefore, config, findings);
+            if (resolved.isPresent()) {
+                break;
+            }
+            if (placeholderBefore == null) {
+                placeholderBefore = key;
+            }
         }
 
+        String introspectionUri = rawValue(config, INTROSPECTION_URI_KEY);
+        if (introspectionUri != null) {
+            evaluateKey(INTROSPECTION_URI_KEY, introspectionUri, null, config, findings);
+        }
         return findings;
     }
 
-    private void evaluateKey(String key, String rawValue, EffectiveConfig config, List<Finding> findings) {
+    /** The value stripped, or {@code null} when the key is absent or blank. */
+    private static String rawValue(EffectiveConfig config, String key) {
+        String raw = RelaxedProperties.get(config.properties(), key);
+        return raw == null || raw.isBlank() ? null : raw.strip();
+    }
+
+    /**
+     * @param placeholderBefore a key that comes before this one in {@link #KEY_SOURCES} and is set to
+     *                          an unresolved placeholder, or {@code null}
+     */
+    private void evaluateKey(String key, String rawValue, String placeholderBefore, EffectiveConfig config,
+                             List<Finding> findings) {
         Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
 
         if (resolved.isEmpty()) {
@@ -88,27 +132,31 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
         String resolvedValue = resolved.get().strip();
         if (resolvedValue.isBlank()) {
-            // Placeholder resolved to empty (e.g. ${VAR:}) -> treats as unconfigured feature
+            // Placeholder resolved to empty (e.g. ${VAR:}): treated as unset
             return;
         }
 
         if (resolvedValue.toLowerCase(Locale.ROOT).startsWith(INSECURE_SCHEME)) {
             boolean isFromStaticDefault = !rawValue.equalsIgnoreCase(resolvedValue);
-            findings.add(new Finding(
-                    id(),
-                    Severity.HIGH,
-                    buildHighSeverityMessage(key, rawValue, isFromStaticDefault),
-                    config.sourceFile().toString(),
-                    config.profileLabel()
-            ));
+            String message = buildHighSeverityMessage(key, rawValue, isFromStaticDefault);
+            if (placeholderBefore == null) {
+                findings.add(new Finding(id(), Severity.HIGH, message,
+                        config.sourceFile().toString(), config.profileLabel()));
+            } else {
+                findings.add(new Finding(id(), Severity.INFO,
+                        message + " Used only if '%s', an unresolved placeholder, resolves empty at runtime."
+                                .formatted(placeholderBefore),
+                        config.sourceFile().toString(), config.profileLabel()));
+            }
         }
     }
 
     private String buildHighSeverityMessage(String key, String rawValue, boolean isFromStaticDefault) {
         String baseMessage = """
-            Insecure transport (HTTP) configured in '%s' (%s). \
-            A network attacker can serve a forged JWKS, enabling them to issue valid tokens \
-            and achieve complete authentication bypass.\
+            Insecure transport (HTTP) configured in '%s' (%s): the application fetches it in plain HTTP. \
+            Whoever can read or rewrite that traffic can serve their own keys (or, for introspection, \
+            read the client secret and answer that any token is active), so the application accepts \
+            tokens they issue: authentication bypass.\
             """.formatted(key, rawValue);
 
         if (isFromStaticDefault) {

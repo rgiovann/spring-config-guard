@@ -74,17 +74,20 @@ Reviewed so far:
   "SCG015 RabbitMQ transport scenarios").
 * SCG016, on the wire against a Spring Cloud Vault 5.0.2 client
   (`VALIDATION.md`, "SCG016 Vault transport scenarios").
+* SCG017, on the wire against a Spring Boot 4.1.1 resource server
+  (`VALIDATION.md`, "SCG017 resource server transport scenarios").
 
-Each of these eight had a second, full review on 2026-10-02. Six found
+The first eight of these, SCG001 to SCG011, had a second, full review on
+2026-10-02. Six found
 something the first had missed (cases the rule got wrong in SCG006, SCG007,
 SCG012 and SCG003; documentation gaps or errors in SCG001 and SCG011);
 SCG014 and SCG008 held. The fixes shipped in v1.10.0.
 `review-security-rule` was changed in response (inventory from the sources
 of truth, an attacker's round, the scope boundary and done criteria in the
-first review). To check that change: once the remaining nine rules have had
-their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002, SCG013,
-SCG015 and SCG016 so far), pick two of them at random and give them a second, full
-review. If it finds nothing that matters, the procedure holds; if it does,
+first review). To check that change: now that the remaining nine rules
+have had their first review with it (SCG004, SCG005, SCG010, SCG009, SCG002,
+SCG013, SCG015, SCG016 and SCG017), pick two of them at random and give them
+a second, full review. If it finds nothing that matters, the procedure holds; if it does,
 adjust the skill.
 
 The severity of a finding based on an absent key is decided for every rule
@@ -93,8 +96,9 @@ rule reviewed.
 
 How the review proceeds: stop after each rule for the maintainer's go-ahead
 before starting the next one, and release every 2 or 3 reviewed rules, so
-each release's detection changes stay few enough to read. Next: the single-key
-rule, SCG017. Where a rule relies on Spring Boot behavior, check it
+each release's detection changes stay few enough to read. All 17 rules have
+had their first review; next, the second review of two of the last nine,
+above. Where a rule relies on Spring Boot behavior, check it
 against a running app, as for SCG001.
 
 ### Rewrite VALIDATION.md once every rule is reviewed
@@ -240,6 +244,28 @@ of `uri`/`host`, and the scheme may come from the discovered instance rather
 than `spring.cloud.vault.scheme`, which is all SCG016 reads. Measure, with a
 registry in the benchmark, which scheme the client uses before deciding
 whether SCG016 should say anything when discovery is on.
+
+### Transport rules and loopback addresses (decide)
+
+Found while reviewing SCG017: Spring Boot's own
+`smoke-test-grpc-server-oauth` sets
+`jwk-set-uri: http://localhost:8080/oauth2/jwks`, which SCG017 reports as
+HIGH. Traffic to a loopback address doesn't leave the host, so nobody on
+the network can read or rewrite it. Only the CORS rules treat loopback as
+safe (`CorsOrigins`); SCG012, SCG015, SCG016 and SCG017 report `localhost`
+and `127.0.0.1` like any other host. Decide once for all of them, rather
+than per rule: silent, `INFO`, or unchanged (in a container or a sidecar
+setup, "localhost" may not be what it seems).
+
+### OAuth2 Client provider URIs over HTTP (measure first)
+
+Found while reviewing SCG017: an OAuth2 Client (login) reads
+`spring.security.oauth2.client.provider.<name>.token-uri`, `jwk-set-uri`,
+`issuer-uri` and `user-info-uri`, where `http://` would expose the client
+secret, the authorization code exchange and the ID token keys. SCG017 reads
+only the resource server keys. Measure on the wire, with a login flow in the
+benchmark, which of these the client fetches and when, before deciding
+whether SCG017 or a rule of its own covers them.
 
 ### SCG006: credentials in the OTLP headers maps
 

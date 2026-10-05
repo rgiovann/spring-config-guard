@@ -126,7 +126,7 @@ should be updated in the same PR that adds or removes a rule.
 | SCG014 | HIGH / MEDIUM / INFO | Kafka cluster communication uses an unencrypted transport protocol (`PLAINTEXT` or `SASL_PLAINTEXT`) |
 | SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS transport encryption enabled |
 | SCG016 | HIGH / INFO | HashiCorp Vault connection using an unencrypted (`http`) transport scheme |
-| SCG017 | HIGH / INFO | Insecure transport (HTTP) configured for OAuth2 Resource Server JWT endpoints |
+| SCG017 | HIGH / INFO | OAuth2 Resource Server fetches its JWT keys (from `jwk-set-uri`, `issuer-uri` or `public-key-location`, whichever Spring Boot uses) or its token introspection (`introspection-uri`) over HTTP |
 
 ## Scope & Limitations
 
