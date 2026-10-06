@@ -102,30 +102,35 @@ supersedes ADR-003's separate base and per-label folds. Choices taken:
 
 Effects to expect: profile labels change for projects using expressions,
 lists or `default` (a **Detection changes** entry); profiles named only in
-expressions add configurations, and so repeated findings. Predicted on
-jhipster, not measured: the `!api-docs` label goes, SCG008 leaves the base
-and the four real profiles, and a new `api-docs` configuration reports it.
+expressions add configurations, and so repeated findings. Predicted from
+the uses counted in `VALIDATION.md` ("Profile expressions in
+`on-profile`"), not measured: `spring-petclinic-microservices-config` loses
+the 5 SCG001 HIGH of its `default` configurations (53 to 48 findings);
+jhipster loses its `!api-docs` configuration, SCG008 leaves its base and
+four real profiles, a new `api-docs` configuration reports it, and the two
+`dev`/`prod` documents of `application-secret-samples.yml`, which only a
+combination activates, move from the SCG006 INFO of `secret-samples` to the
+new warning.
 
-Phases, one commit each:
+Phases, one commit each. The evidence is done: the scenario script and its
+fixtures in `spring-env-benchmark/`, and the results with the uses in the
+reference projects in `VALIDATION.md`. Left:
 
-1. Evidence only: count the uses in the pinned reference repositories; a
-   scenario script in `spring-env-benchmark/` that runs each case against
-   the app and against SCG, compared key by key; a `VALIDATION.md` section
-   with the results.
-2. `ProfileExpression` and its tests, not yet wired in.
-3. The change: `ConfigLoader` keeps every document in file order with its
+1. `ProfileExpression` and its tests, not yet wired in.
+2. The change: `ConfigLoader` keeps every document in file order with its
    parsed expression (and the YAML-list form); `ConfigFileGrouper` orders
    sources instead of folding by label; `ProfileMerger` computes the
    targets and folds; `ConfigServerAssembler`; the warning in `Main`. With
    ADR-012, README, `CLAUDE.md` ("Architecture"), the `ConfigFileGrouper`
-   Javadoc, and the before/after on the reference corpus, the demo
-   fixtures and the three candidates in `VALIDATION.md`.
+   Javadoc, tests pinning the `VALIDATION.md` rows, and the before/after on
+   the reference corpus, the demo fixtures and the three candidates.
 
 Left out, each waiting for a real case: `spring.profiles.default` written
 in configuration (it renames the default profile);
 `spring.config.activate.on-cloud-platform`, another activation condition,
-ignored today, so its documents are folded into the base; several profiles
-active together.
+ignored today, so its documents are folded into the base; the legacy
+`spring.profiles` key (two documents in `spring-cloud-stream-samples`),
+likewise folded into the base; several profiles active together.
 
 #### SCG006: a secret pattern in a map key
 

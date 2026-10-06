@@ -1,0 +1,6 @@
+spring.h2.console.enabled: false
+---
+spring.config.activate.on-profile: a
+spring.h2.console.enabled: true
+---
+spring.h2.console.enabled: false

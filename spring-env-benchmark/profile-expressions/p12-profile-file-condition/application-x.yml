@@ -1,0 +1,2 @@
+spring.config.activate.on-profile: '!b'
+spring.h2.console.enabled: true

@@ -20,8 +20,10 @@ them, so a change in behavior fails the build before it can make this
 document wrong. The rest, mostly in the sections of SCG001, SCG003,
 SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
 each row; every one of them was checked against the v1.16.0 jar, one
-fixture per row. What changed between releases, and why, is in
-`CHANGELOG.md` and the git history, not here.
+fixture per row. The rows of "Profile expressions in `on-profile`" aren't
+pinned yet: they record a divergence still to be fixed. What changed
+between releases, and why, is in `CHANGELOG.md` and the git history, not
+here.
 
 SCG has no notion of "this is just a demo or test profile": a rule
 triggers on the effective properties of base and named profiles alike
@@ -440,6 +442,85 @@ mvn test -Dgroups=benchmark -DexcludedGroups=
 # "benchmark" group; no source edit needed, and it's excluded again next
 # time you run a plain `mvn test`.
 ```
+
+## Profile expressions in `on-profile` (running Spring Boot 4.1.1 app)
+
+Which documents Spring Boot applies for a `spring.config.activate.on-profile`
+value, by active profiles, next to the configurations SCG builds for the
+same files, reproducible with
+`spring-env-benchmark/profile-expression-scenarios.sh` and the fixtures in
+`spring-env-benchmark/profile-expressions/`. Each fixture sets
+`spring.h2.console.enabled` in a base document and in conditioned documents
+or other files; the app runs with that directory as its only config
+location, and the value comes from `/actuator/env`. SCG's side is whether
+the configuration it builds for those active profiles has the console on,
+which is when it reports SCG002.
+
+Each cell is Spring / SCG: `on` or `off`; `—` when SCG builds no
+configuration for that set of active profiles (none matches its labels;
+several profiles active together are never modeled). Unless the row says
+otherwise, the base document has the console off and the conditioned
+document turns it on.
+
+| # | Files | none | `a` | `b` | `a,b` | `c` | SCG's configurations |
+|---|---|---|---|---|---|---|---|
+| P1 | `on-profile: '!a'` | on / off | off / — | on / — | off / — | on / — | `!a` (on) |
+| P2 | `'a,b'` | off / off | on / — | on / — | on / — | off / — | `a,b` (on) |
+| P14 | `' a ,  b '` | off / off | on / — | on / — | | | `a ,  b` (on) |
+| P3 | `[a, b]` (YAML list); base **on**, the list's document off | on / **off** | off / — | off / — | off / — | on / — | base only |
+| P4 | `'a & b'` | off / off | off / — | off / — | on / — | off / — | `a & b` (on) |
+| P5 | `'a \| b'` | off / off | on / — | on / — | on / — | off / — | `a \| b` (on) |
+| P6 | `'(a & !b) \| c'` | off / off | on / — | off / — | off / — | on / — | `(a & !b) \| c` (on) |
+| P7 | `'!a, b'` | on / off | off / — | on / — | on / — | on / — | `!a, b` (on) |
+| P8 | `on-profile: default` | on / off | off / — | | | | `default` (on) |
+| P9 | `application-default.yml` | on / off | off / — | | | | `default` (on) |
+| P10 | base off, `on-profile: a` on, then another base document off | off / off | off / **on** | | | | `a` (on) |
+| P11 | `application.yml`: base off, `on-profile: a` on; `application.properties`: off | off / off | off / **on** | | | | `a` (on) |
+| P12 | `application-x.yml` with `on-profile: '!b'`, on (columns: none, `x`, `x,b`) | off / off | on / on | | off / — | | `x` (on) |
+| P13 | `'a & b \| c'` (columns: none, `c`) | app did not start / off | | | | app did not start / — | `a & b \| c` (on) |
+
+Spring reads the value as a list of profile expressions: a comma, or a
+YAML list (P3), means "any of", and spaces around the items are ignored
+(P14); each item can use `!`, `&`, `|` and parentheses (P1, P4–P7); `&` and
+`|` mixed without parentheses is malformed, and the application doesn't
+start (P13: `Malformed profile expression [a & b | c]`). With no profile
+active, the `default` profile is: `!a` and `on-profile: default` apply, and
+so does `application-default.yml` (P1, P8, P9). Documents apply in source
+order, so a later base document overrides an earlier conditioned one (P10),
+and `application.properties` overrides a conditioned document in
+`application.yml` (P11). `on-profile` inside a profile-specific file is an
+extra condition (P12); Spring Boot 4.1.1 rejects only
+`spring.profiles.active` and `spring.profiles.default` there.
+
+SCG v1.16.0 takes the value as a literal profile name: every expression or
+list becomes a configuration named after the string, which applies the
+document to no real profile (P1, P2, P4–P7, P14), and a malformed one is
+accepted (P13). A YAML list isn't recognized at all, so its document is
+folded into the base: the console Spring turns on with no profile active is
+off in SCG's base, a false negative (P3). `default` is a profile of its own
+instead of part of the base (P8, P9). A conditioned document always wins
+over the base, whatever the order or the file (P10, P11). `BACKLOG.md`
+holds the decided change; these rows aren't pinned by tests yet.
+
+**In the reference projects** (application files at the pinned commits,
+counted on 2026-10-06):
+
+* `spring-petclinic-microservices-config`: five services start with an
+  `on-profile: default` document (P8). SCG builds a `default` configuration
+  for each, which repeats the service's SCG001 HIGH: 5 of the 53 findings.
+* `spring-boot`: one expression, `goodbye | dev`, in a smoke test with no
+  findings.
+* `spring-cloud-stream-samples`: two documents use the legacy
+  `spring.profiles` key, which SCG doesn't read as an activation (they are
+  folded into the base); not measured here.
+* `codecentric/spring-boot-admin` and `spring-petclinic`: plain profile
+  names only.
+* Of the candidate reference projects (`BACKLOG.md`), `jhipster-sample-app`
+  writes `on-profile: '!api-docs'` (P1) and two `on-profile` documents
+  (`dev`, `prod`) inside `application-secret-samples.yml` (P12), which
+  apply only when `secret-samples` and that profile are both active; SCG
+  applies them to `secret-samples` alone, where their blank
+  `spring.datasource.password` is its SCG006 INFO.
 
 ## SCG001 exposure scenarios (`/actuator` comparison)
 

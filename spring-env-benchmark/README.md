@@ -27,6 +27,13 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=prod"
 mvn test -Dgroups=benchmark -DexcludedGroups=
 ```
 
+`profile-expression-scenarios.sh` checks the pipeline too: which
+`on-profile` documents Spring applies, by active profiles, next to the
+configurations SCG builds for the same files (`VALIDATION.md`, "Profile
+expressions in `on-profile`"), with the fixtures in `profile-expressions/`.
+It needs this app's jar and SCG's built first: `mvn -q package -DskipTests`
+here and in the repository root.
+
 ## Rule scenarios
 
 | Script | Rule | `VALIDATION.md` section | App | Also needs |
