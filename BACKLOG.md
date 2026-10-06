@@ -33,22 +33,99 @@ jar on 2026-10-06. Each has a finding to settle before it is added to
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
 
-#### Profile expressions in `on-profile` (core)
+#### `on-profile` evaluated as Spring does (core, planned)
 
 `ConfigLoader` takes the value of `spring.config.activate.on-profile` as a
-literal profile name. Spring reads it as a profile expression: jhipster's
-`application.yml` disables SpringDoc in a document with
-`on-profile: '!api-docs'`, active whenever the `api-docs` profile is not.
-SCG builds a profile named `!api-docs` that doesn't exist, which repeats the
-base's SCG001 HIGH and SCG013 INFO under that label, while SCG008 reports
-SpringDoc as enabled (MEDIUM) in the base and in each of the four named
-profiles (`dev`, `prod`, `secret-samples`, `tls`) without seeing that the
-block turns it off whenever `api-docs` isn't active.
+literal profile name, and each profile's configuration is the base plus the
+documents carrying that exact label. Spring reads the value as a list of
+profile expressions (`!`, `&`, `|`, parentheses; a comma or a YAML list
+means "any of") and applies every document whose expression matches the
+active profiles, in source order: files by precedence (non-profile files,
+`.properties` over YAML, then profile-specific files), documents in file
+order. With no profile active, the `default` profile is active.
 
-Measure in the `/actuator/env` benchmark first: `!x`, a list (`a,b`) and
-the `&`/`|` operators, with and without the profiles active. Then decide,
-probably in an ADR, how SCG evaluates an expression it can't resolve
-without knowing the active profiles.
+Measured on 2026-10-06 against Spring Boot 4.1.1 (`/actuator/env`) and the
+v1.16.0 jar, five divergences, all reproduced:
+
+* **D1, expressions**: `'!api-docs'`, `'a,b'`, `'a | b'`,
+  `'(a & !b) | c'` each become a profile named after the string, and the
+  document applies to no real profile. jhipster's `application.yml` turns
+  SpringDoc off under `'!api-docs'`; SCG reports SpringDoc enabled
+  (SCG008 MEDIUM) in the base and in `dev`, `prod`, `secret-samples` and
+  `tls`, and repeats the base's SCG001 HIGH and SCG013 INFO under a
+  `!api-docs` profile that doesn't exist.
+* **D2, YAML list** (`on-profile: [a, b]`): the keys become
+  `on-profile[0]`/`[1]`, which SCG doesn't recognize, so the document is
+  folded into the base. A false negative: a base with
+  `spring.h2.console.enabled: true` and an `[a, b]` block setting `false`
+  reports nothing.
+* **D3, `default`**: `on-profile: default` and `application-default.yml`
+  apply when no profile is active, i.e. to SCG's base; SCG makes them a
+  profile named `default`.
+* **D4, document order**: a base document after a profile document in the
+  same file wins over it in Spring; in SCG the profile always wins.
+* **D5, file precedence**: an `on-profile: a` block in `application.yml`
+  loses to the base of `application.properties` in Spring; in SCG the
+  block wins.
+
+Also measured: spaces around list items are ignored; `'a & b | c'` makes
+the application fail to start (`Malformed profile expression`); and
+`on-profile` inside `application-x.yml` is accepted as an extra condition.
+Spring Boot 4.1.1 rejects only `spring.profiles.active` and
+`spring.profiles.default` in a profile-specific file, so the
+`ConfigFileGrouper` Javadoc, which says `on-profile` is rejected there, is
+wrong.
+
+**Decided** (the maintainer, 2026-10-06): one rule fixes D1 to D5. For
+each directory SCG evaluates the base, with active profiles `{default}`,
+and one configuration per known profile P, with active profiles `{P}`. The
+known profiles are the names of `application-{P}.*` files and every name an
+expression references, except `default`. A configuration is the ordered
+fold, with `ProfileMerger`'s existing merge, of every document with no
+`on-profile` or whose expression matches, in Spring's source order. This
+supersedes ADR-003's separate base and per-label folds. Choices taken:
+
+* SCG parses expressions itself (a small `ProfileExpression`), without
+  depending on `spring-core`; the benchmark is the oracle.
+* A document only a combination of profiles activates (`a & b`) isn't
+  evaluated, and a coverage warning on stderr says so, as for
+  `spring.config.import`.
+* A malformed expression is an input error (exit code 2), as invalid YAML
+  is, since Spring refuses to start.
+* A profile named only in a negation (`api-docs` from `!api-docs`) is a
+  configuration of its own.
+* `default` belongs to the base; a policy entry naming `default` stops
+  matching (release note).
+* D4 and D5 are fixed in the same change.
+* Config Server Mode applies the same selection: the Global file, then the
+  service's file.
+
+Effects to expect: profile labels change for projects using expressions,
+lists or `default` (a **Detection changes** entry); profiles named only in
+expressions add configurations, and so repeated findings. Predicted on
+jhipster, not measured: the `!api-docs` label goes, SCG008 leaves the base
+and the four real profiles, and a new `api-docs` configuration reports it.
+
+Phases, one commit each:
+
+1. Evidence only: count the uses in the pinned reference repositories; a
+   scenario script in `spring-env-benchmark/` that runs each case against
+   the app and against SCG, compared key by key; a `VALIDATION.md` section
+   with the results.
+2. `ProfileExpression` and its tests, not yet wired in.
+3. The change: `ConfigLoader` keeps every document in file order with its
+   parsed expression (and the YAML-list form); `ConfigFileGrouper` orders
+   sources instead of folding by label; `ProfileMerger` computes the
+   targets and folds; `ConfigServerAssembler`; the warning in `Main`. With
+   ADR-012, README, `CLAUDE.md` ("Architecture"), the `ConfigFileGrouper`
+   Javadoc, and the before/after on the reference corpus, the demo
+   fixtures and the three candidates in `VALIDATION.md`.
+
+Left out, each waiting for a real case: `spring.profiles.default` written
+in configuration (it renames the default profile);
+`spring.config.activate.on-cloud-platform`, another activation condition,
+ignored today, so its documents are folded into the base; several profiles
+active together.
 
 #### SCG006: a secret pattern in a map key
 
