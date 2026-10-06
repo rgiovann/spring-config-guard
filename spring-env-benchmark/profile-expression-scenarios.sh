@@ -12,6 +12,7 @@
 # "off", or "none" when SCG builds no configuration for that set (several profiles active
 # together are never modeled). After each fixture, every configuration SCG builds is listed
 # by its profile label, with the console's state in it.
+# Then the grammar's edge cases (E1-E9), on Spring's side only.
 # Build both jars first:  mvn -q package -DskipTests   (in this directory and in the repository root)
 set -u
 cd "$(dirname "$0")"
@@ -40,7 +41,7 @@ spring_value() {
         sleep 1
     done
     if ! grep -q "Started " "$LOG"; then
-        echo "failed: $(grep -m1 -oE 'Malformed profile expression \[[^]]*\]|Reason: .*' "$LOG")"
+        echo "failed: $(grep -m1 -oE '(Malformed|Invalid) profile expression \[[^]]*\](: must contain text)?|Reason: .*' "$LOG")"
     else
         curl -s --noproxy '*' "localhost:$PORT/actuator/env/spring.h2.console.enabled" \
             | python3 -c 'import json,sys
@@ -96,3 +97,40 @@ fixture p10-document-order         "" a
 fixture p11-file-precedence        "" a
 fixture p12-profile-file-condition "" x x,b
 fixture p13-malformed              "" c
+
+# The grammar's edge cases (E1-E9): one document with the value, written to target/, the console on
+# when it applies. Only Spring's side: SCG's parser for these is ProfileExpression, pinned by
+# ProfileExpressionTest.
+grammar() {
+    local row=$1 value=$2; shift 2
+    local dir=target/profile-expression-grammar
+    mkdir -p "$dir"
+    printf 'spring.h2.console.enabled: false\n---\nspring.config.activate.on-profile: "%s"\nspring.h2.console.enabled: true\n' \
+        "$value" > "$dir/application.yml"
+    local result="" active value_for
+    for active in "$@"; do
+        value_for=$(spring_value "$dir" "$active")
+        result="$result ${active:-none}=$value_for"
+    done
+    printf '%-4s %-16s%s\n' "$row" "'$value'" "$result"
+}
+
+SETS=("" a b c a,b b,c)
+grammar E1 '!default'      "${SETS[@]}"
+grammar E2 'a b'           "${SETS[@]}" "a b"
+grammar E3 'a)'            "${SETS[@]}"
+grammar E3 '(a'            "${SETS[@]}"
+grammar E3 '&a'            "${SETS[@]}"
+grammar E3 'a&'            "${SETS[@]}"
+grammar E4 '!!a'           "${SETS[@]}"
+grammar E4 '(a)'           "${SETS[@]}"
+grammar E5 'a & (b | c)'   "${SETS[@]}"
+grammar E6 '!(a | b)'      "${SETS[@]}"
+grammar E6 '!a & !b'       "${SETS[@]}"
+grammar E7 '!'             ""
+grammar E7 'a | !b & c'    ""
+grammar E8 'a,,b'          ""
+grammar E8 ',a'            ""
+grammar E8 'a,'            ""
+grammar E8 ' '             ""
+grammar E9 'Prod'          "" prod Prod

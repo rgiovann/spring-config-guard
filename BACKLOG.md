@@ -112,18 +112,22 @@ four real profiles, a new `api-docs` configuration reports it, and the two
 combination activates, move from the SCG006 INFO of `secret-samples` to the
 new warning.
 
-Phases, one commit each. The evidence is done: the scenario script and its
-fixtures in `spring-env-benchmark/`, and the results with the uses in the
-reference projects in `VALIDATION.md`. Left:
-
-1. `ProfileExpression` and its tests, not yet wired in.
-2. The change: `ConfigLoader` keeps every document in file order with its
-   parsed expression (and the YAML-list form); `ConfigFileGrouper` orders
-   sources instead of folding by label; `ProfileMerger` computes the
-   targets and folds; `ConfigServerAssembler`; the warning in `Main`. With
-   ADR-012, README, `CLAUDE.md` ("Architecture"), the `ConfigFileGrouper`
-   Javadoc, tests pinning the `VALIDATION.md` rows, and the before/after on
-   the reference corpus, the demo fixtures and the three candidates.
+Phases, one commit each. Done: the evidence (the scenario script and its
+fixtures in `spring-env-benchmark/`, the results with the uses in the
+reference projects in `VALIDATION.md`) and `ProfileExpression`, which
+follows Spring's `ProfilesParser` and is pinned by `ProfileExpressionTest`,
+not yet used by the pipeline. Left, the change itself: `ConfigLoader` keeps
+every document in file order with its parsed expression (and the YAML-list
+form); `ConfigFileGrouper` orders sources instead of folding by label;
+`ProfileMerger` computes the targets and folds; `ConfigServerAssembler`;
+the warning in `Main`. With ADR-012, README, `CLAUDE.md` ("Architecture"),
+the `ConfigFileGrouper` and `ConfigLoader` Javadoc, tests pinning the
+`VALIDATION.md` rows, and the before/after on the reference corpus, the
+demo fixtures and the three candidates. Two points for it, found with the
+grammar: a blank `on-profile` stops a Spring Boot application (E8), while
+`ConfigLoader` reads it as no condition, so it becomes a malformed value
+(exit code 2) like the others; and `on-profile:` with no value at all (a
+YAML null) wasn't measured, so measure it first.
 
 Left out, each waiting for a real case: `spring.profiles.default` written
 in configuration (it renames the default profile);

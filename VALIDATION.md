@@ -20,10 +20,10 @@ them, so a change in behavior fails the build before it can make this
 document wrong. The rest, mostly in the sections of SCG001, SCG003,
 SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
 each row; every one of them was checked against the v1.16.0 jar, one
-fixture per row. The rows of "Profile expressions in `on-profile`" aren't
-pinned yet: they record a divergence still to be fixed. What changed
-between releases, and why, is in `CHANGELOG.md` and the git history, not
-here.
+fixture per row. In "Profile expressions in `on-profile`", only the
+grammar is pinned so far: the rest records a divergence still to be
+fixed. What changed between releases, and why, is in `CHANGELOG.md` and
+the git history, not here.
 
 SCG has no notion of "this is just a demo or test profile": a rule
 triggers on the effective properties of base and named profiles alike
@@ -501,6 +501,37 @@ off in SCG's base, a false negative (P3). `default` is a profile of its own
 instead of part of the base (P8, P9). A conditioned document always wins
 over the base, whatever the order or the file (P10, P11). `BACKLOG.md`
 holds the decided change; these rows aren't pinned by tests yet.
+
+The grammar's edge cases, measured with one document per value (the last
+part of the script). Each cell says whether Spring applied the document;
+the columns are the active profiles.
+
+| # | `on-profile` | none | `a` | `b` | `c` | `a,b` | `b,c` |
+|---|---|---|---|---|---|---|---|
+| E1 | `'!default'` | no | yes | yes | yes | yes | yes |
+| E2 | `'a b'` | no | no | no | no | no | no |
+| E3 | `'a)'`, `'(a'`, `'&a'`, `'a&'` | no | yes | no | no | yes | no |
+| E4 | `'!!a'`, `'(a)'` | no | yes | no | no | yes | no |
+| E5 | `'a & (b \| c)'` | no | no | no | no | yes | no |
+| E6 | `'!(a \| b)'`, `'!a & !b'` | yes | no | no | yes | no | no |
+| E9 | `'Prod'` (columns: none, `prod`, `Prod`) | no | no | yes | | | |
+
+With `a b` active, the application didn't start: Spring Boot rejects the
+profile name (`Profile 'a b' must contain a letter, digit or allowed
+char`), so E2's document never applies. The application didn't start for E7 (`'!'`,
+`'a | !b & c'`: `Malformed profile expression`) and E8 (`'a,,b'`, `',a'`,
+`'a,'`, `' '`: `Invalid profile expression []: must contain text`).
+
+This is Spring Framework's `ProfilesParser`: a space doesn't separate
+names, so `'a b'` is one profile named `a b`, which can't be activated
+(E2); a stray parenthesis or
+a dangling operator is tolerated (E3); an operator with nothing to apply
+to, `&` and `|` mixed without parentheses, or an empty list item stops the
+application (E7, E8), including a blank value, which SCG reads today as no
+condition at all; and names are case-sensitive (E9). SCG's
+`ProfileExpression` follows the same steps; `ProfileExpressionTest` pins
+P1, P2, P4–P8, P13, P14 and E1–E9 at the level of the expression, before
+it is used to build configurations.
 
 **In the reference projects** (application files at the pinned commits,
 counted on 2026-10-06):
