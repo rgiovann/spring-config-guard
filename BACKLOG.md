@@ -19,9 +19,56 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the GitHub Action, then the one item of new coverage
-with a real case. Everything else waits in Deferred for a real case or a
-need.
+Done in this order: the findings from the candidate reference projects,
+then the GitHub Action, then the one item of new coverage with a real case.
+Everything else waits in Deferred for a real case or a need.
+
+### Findings from the candidate reference projects
+
+Three projects proposed as new reference projects, run against the v1.16.0
+jar on 2026-10-06. Each has a finding to settle before it is added to
+`VALIDATION.md`, pinned at the commit below, with its precision check.
+
+* `jhipster/jhipster-sample-app` (`6b000b5`, Spring Boot 4.1.1)
+* `spring-projects/spring-authorization-server` (`4283973`, its samples)
+* `spring-projects/spring-ai-examples` (`7416412`)
+
+#### Profile expressions in `on-profile` (core)
+
+`ConfigLoader` takes the value of `spring.config.activate.on-profile` as a
+literal profile name. Spring reads it as a profile expression: jhipster's
+`application.yml` disables SpringDoc in a document with
+`on-profile: '!api-docs'`, active whenever the `api-docs` profile is not.
+SCG builds a profile named `!api-docs` that doesn't exist, which repeats the
+base's SCG001 HIGH and SCG013 INFO under that label, while SCG008 reports
+SpringDoc as enabled (MEDIUM) in the base and in each of the four named
+profiles (`dev`, `prod`, `secret-samples`, `tls`) without seeing that the
+block turns it off whenever `api-docs` isn't active.
+
+Measure in the `/actuator/env` benchmark first: `!x`, a list (`a,b`) and
+the `&`/`|` operators, with and without the profiles active. Then decide,
+probably in an ADR, how SCG evaluates an expression it can't resolve
+without knowing the active profiles.
+
+#### SCG006: a secret pattern in a map key
+
+`spring-authorization-server`'s samples name OAuth2 client registrations
+after their grant (`messaging-client-client-credentials`,
+`messaging-client-token-exchange-with-delegation`). The registration id is
+a map key, so every property under it (`client-id`, `scope`, `provider`,
+`authorization-grant-type`, ...) "contains a secret pattern" and is
+reported as INFO: 32 INFO findings, all under
+`spring.security.oauth2.client.registration.<id>.*`. Its 25 HIGH findings
+look correct. Decide whether a pattern that matches only inside a map key
+the user named should stay silent.
+
+#### SCG006: a placeholder written as sample text
+
+`spring-ai-examples` writes `spring.ai.openai.api-key=<YOUR-OPENAI-API-KEY>`
+(`kotlin/rag-with-kotlin`), reported as HIGH. The value is an instruction
+to the reader, not a secret, but a false positive here is arguable: the
+file invites the user to paste a real key in its place. Decide whether a
+value shaped like `<...>` is a hardcoded secret.
 
 ### GitHub Action for the Marketplace
 
