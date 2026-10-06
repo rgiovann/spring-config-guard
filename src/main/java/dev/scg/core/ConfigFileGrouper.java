@@ -140,20 +140,21 @@ public final class ConfigFileGrouper {
 
     /**
      * Precedence rank used to fold multiple physical base files (no profile
-     * at all) resolving to the same label into one document. {@code .properties}
-     * outranks {@code .yml}/{@code .yaml} on a key conflict; {@code .yml} vs.
-     * {@code .yaml} between themselves is an arbitrary but deterministic
-     * tie-break.
+     * at all) resolving to the same label into one document, as Spring Boot
+     * orders them: {@code .properties} outranks {@code .yml}, which outranks
+     * {@code .yaml}, on a key conflict. Measured against Spring Boot 4.1.1
+     * through {@code /actuator/env} (VALIDATION.md, "ProfileMerger correctness
+     * benchmark", case 35, for {@code .yml} vs. {@code .yaml}).
      */
     private static int precedenceRank(Path path) {
         String name = path.getFileName().toString();
         if (name.endsWith(".properties")) {
             return 2;
         }
-        if (name.endsWith(".yaml")) {
+        if (name.endsWith(".yml")) {
             return 1;
         }
-        return 0; // .yml
+        return 0; // .yaml
     }
 
     /**

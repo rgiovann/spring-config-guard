@@ -320,15 +320,17 @@ property) for the same reason — it needs that app actually running.
 
 **Fixture:** `spring-env-benchmark`'s `application.yml` (base + an
 `on-profile: prod` document) + `application-prod.yml` (profile) +
-`application.properties` exercise 6 `ProfileMerger`/`ConfigFileGrouper`
-behaviors: scalar override, list replacement, relaxed binding across
-base/profile (kebab-case base key, camelCase profile key), explicit-null
-override (and a null in the base file no profile redefines, `debug:` and
-`~`: Spring loads both as an empty string, and so does SCG),
-placeholder-with-default resolution, and — the same profile (`prod`)
-sourced from both a named file and an on-profile block inside the
-base file — the two merging together, with the named file winning a key
-conflict.
+`application.properties` + `application.yaml` exercise 7
+`ProfileMerger`/`ConfigFileGrouper` behaviors: scalar override, list
+replacement, relaxed binding across base/profile (kebab-case base key,
+camelCase profile key), explicit-null override (and a null in the base file
+no profile redefines, `debug:` and `~`: Spring loads both as an empty
+string, and so does SCG), placeholder-with-default resolution, the same
+profile (`prod`) sourced from both a named file and an on-profile block
+inside the base file — the two merging together, with the named file
+winning a key conflict — and, with the same key in `application.yml` and
+`application.yaml`, `.yml` winning (case 35; before 2026-10-06 SCG let
+`.yaml` win).
 
 A second set, under `app.bracket-map`, checks bracketed map keys
 ([ADR-007](ARCHITECTURE.md#adr-007-bracketed-map-keys-rewritten-into-dotted-form-at-load-time)):

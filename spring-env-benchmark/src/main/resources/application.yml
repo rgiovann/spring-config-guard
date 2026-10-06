@@ -23,6 +23,7 @@ app:
   base-null: # 4b. A null in the base file, overridden by no profile
   base-tilde: ~ # 4b. The same, written as ~
   placeholder-with-default: "${UNSET_ENV_VAR:default-from-base}"
+  yml-vs-yaml: "from-yml" # 35. application.yaml defines the same key: .yml wins
   # --- Bracketed map keys (ADR-007), read via /actuator/configprops ---
   bracket-map:
     "[com.acme-core]": "base-debug" # 8. merged key by key: survives the profile

@@ -282,6 +282,13 @@ A benchmark run on a newer Spring Boot version disagrees with any of the
 precedences above, or the Spring Boot reference documentation starts
 specifying the `.yml`/`.yaml` order.
 
+Revisited on 2026-10-06 for the `.yml`/`.yaml` order, which the benchmark
+now measures (`VALIDATION.md`, "ProfileMerger correctness benchmark", case
+35): Spring Boot 4.1.1 gives `.yml` precedence over `.yaml`, the reverse of
+the tie-break above, which let SCG report a value Spring overrides. The
+order is now `.yaml` < `.yml` < `.properties`, for base and named profile
+files alike; the rest of this decision is unchanged.
+
 ---
 
 ## ADR-004: `spring.config.import` Surfaced as a Coverage Warning, Not Followed

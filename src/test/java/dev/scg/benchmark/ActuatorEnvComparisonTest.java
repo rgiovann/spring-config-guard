@@ -152,6 +152,13 @@ class ActuatorEnvComparisonTest {
         assertEquals("from-named-file", scg.get("app.file-vs-on-profile-conflict"),
                 "The named profile file must win a key conflict over an on-profile block in the base file");
 
+        // 35. application.yml and application.yaml in the same directory, with the same key:
+        // .yml wins.
+        assertEquals("from-yml", spring.get(RelaxedProperties.canonicalize("app.yml-vs-yaml")),
+                "Real Spring must give application.yml precedence over application.yaml");
+        assertEquals("from-yml", scg.get("app.yml-vs-yaml"),
+                "SCG must give application.yml precedence over application.yaml");
+
         System.out.println("All ProfileMerger benchmark criteria matched real Spring Boot.");
     }
 

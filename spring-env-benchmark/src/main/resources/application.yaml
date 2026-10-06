@@ -1,0 +1,4 @@
+# 35. The same key as application.yml: in the same directory, Spring Boot gives .yml precedence
+# over .yaml (case 35 of ActuatorEnvComparisonTest; VALIDATION.md, benchmark)
+app:
+  yml-vs-yaml: "from-yaml"

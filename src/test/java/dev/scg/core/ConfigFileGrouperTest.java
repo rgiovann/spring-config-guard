@@ -155,6 +155,33 @@ class ConfigFileGrouperTest {
     }
 
     @Test
+    @DisplayName("Should let .yml win a key conflict over .yaml when folding two base files")
+    void shouldLetYmlWinKeyConflictOverYamlWhenFoldingBaseFiles(@TempDir Path dir) throws IOException {
+        // Spring Boot 4.1.1 gives application.yml precedence over application.yaml
+        // (VALIDATION.md, "ProfileMerger correctness benchmark", case 35).
+        Files.writeString(dir.resolve("application.yml"), "shared.key: from-yml");
+        Files.writeString(dir.resolve("application.yaml"), "shared.key: from-yaml");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument base = onlyBaseDocument(groups.getFirst());
+
+        assertThat(base.properties()).containsEntry("shared.key", "from-yml");
+    }
+
+    @Test
+    @DisplayName("Should let .yml win a key conflict over .yaml when folding two same-profile files")
+    void shouldLetYmlWinKeyConflictOverYamlWhenFoldingSameProfileFiles(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), "base.key: valor");
+        Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-yml");
+        Files.writeString(dir.resolve("application-prod.yaml"), "shared.key: from-yaml");
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
+
+        assertThat(prod.properties()).containsEntry("shared.key", "from-yml");
+    }
+
+    @Test
     @DisplayName("Should fold an on-profile block from a base file with a same-named profile file, keeping disjoint keys from both")
     void shouldFoldOnProfileBlockWithNamedProfileFileKeepingBothDisjointKeys(@TempDir Path dir) throws IOException {
         // This and the next test encode a precedence rule the official Spring
@@ -232,8 +259,8 @@ class ConfigFileGrouperTest {
         // local fixture had combined a multi-source fold with a null override
         // before that run.
         Files.writeString(dir.resolve("application.yml"), "base.key: valor");
-        Files.writeString(dir.resolve("application-prod.yml"), "app.other: value-a");
-        Files.writeString(dir.resolve("application-prod.yaml"), "app.nullable: null");
+        Files.writeString(dir.resolve("application-prod.yaml"), "app.other: value-a");
+        Files.writeString(dir.resolve("application-prod.yml"), "app.nullable: null");
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
         ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
