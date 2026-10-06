@@ -311,6 +311,45 @@ like the items above. If it comes, one step after `RuleEngine` that
 replaces each quoted key with the spelling written in the configuration
 would cover every rule at once.
 
+### Follow-ups from the README review
+
+Found while auditing the README against the code and the v1.16.0 jar
+(2026-10-06). The README was corrected where it was wrong; these are what
+the review left open.
+
+Not confirmed:
+
+* The rule table's descriptions were checked only for each rule's set of
+  severities, not re-audited rule by rule against the code.
+* Troubleshooting's `UnsupportedClassVersionError` on a JVM older than 21
+  follows from the jar's class version (65) and was not reproduced.
+* The CI example installs Java 21 with `actions/setup-java`, so it doesn't
+  depend on the runner's default JDK, which wasn't checked.
+* Checkov 3.3.24 lists `yaml` and `json` frameworks, which the old README
+  said it lacked. Whether they can express a check across files wasn't
+  tested; the README no longer compares SCG with Checkov. Check it before
+  any such comparison comes back.
+
+Suggested improvements, each outside a README change:
+
+* **SCG003's message overstates the impact**: "exposes the application to
+  severe Cross-Site Request Forgery (CSRF) and session data leakage" claims
+  an outcome static analysis can't confirm. Audit every rule's message for
+  the same kind of wording.
+* **`--fail-on=INFO` is accepted** and behaves as `LOW`, since INFO never
+  counts toward the exit code; `--help` lists only `HIGH`, `MEDIUM`, `LOW`
+  and `NONE`. Reject it as a usage error (a CLI contract change) or
+  document it.
+* **The console summary calls INFO findings violations**
+  (`Summary: 2 violation(s) - ... INFO: 2` on a clean fixture). The console
+  format is a public contract.
+* **Pin the README's "See it in action" example** as a fixture with a test,
+  like `DemoProjectShowcaseTest`, so its literal output can't drift from the
+  rules' messages.
+* **Check the jar's sha256 in the CI example.** GitHub publishes each
+  release asset's digest; the example would need it updated with the
+  version pin, as a step of the release checklist.
+
 ### Waiting for a need
 
 Features nothing asks for yet; each names the need that would bring it
