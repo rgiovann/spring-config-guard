@@ -260,6 +260,9 @@ class ActuatorEnvComparisonTest {
         expected.put("profile-comma-over-indexed", List.of("x", "y"));
         // 22. control: the profile doesn't mention the key, so the base list survives
         expected.put("profile-omits-key", List.of("a", "b"));
+        // 38. a YAML null in the profile over a non-empty base list: stored as an empty string, like
+        // case 19, it replaces the list
+        expected.put("profile-yaml-null", List.of());
 
         expected.forEach((name, list) -> {
             assertEquals(list, boundList(spring, kebabToCamel(name)), "Spring's list for case '" + name + "'");
@@ -336,6 +339,19 @@ class ActuatorEnvComparisonTest {
             assertEquals("plain", scg.get("app.shapes." + name), "SCG's scalar for case '" + name + "'");
             assertNotNull(scg.get("app.shapes." + name + ".key"), "SCG keeps the sub-key too for case '" + name + "'");
         }
+
+        // 36/37: a YAML null in the profile over a base map or object. Spring keeps the base's
+        // sub-keys next to the empty string and binds them; SCG keeps both too.
+        Map<String, String> springNullOverMap = new TreeMap<>();
+        shapes.path("nullOverMap").fields()
+                .forEachRemaining(field -> springNullOverMap.put(field.getKey(), field.getValue().asText()));
+        assertEquals(Map.of("key", "from-base"), springNullOverMap, "Spring's map for case 'null-over-map'");
+        assertEquals("from-base", scg.get("app.shapes.null-over-map.key"), "SCG keeps the sub-key for case 'null-over-map'");
+        assertEquals("", scg.get("app.shapes.null-over-map"), "SCG keeps the null as an empty string for case 'null-over-map'");
+        assertEquals("https://a.internal", shapes.path("nullOverObject").path("url").asText(),
+                "Spring's url for case 'null-over-object'");
+        assertEquals("https://a.internal", scg.get("app.shapes.null-over-object.url"),
+                "SCG keeps the sub-key for case 'null-over-object'");
 
         System.out.println("All scalar vs. map criteria matched real Spring Boot.");
     }

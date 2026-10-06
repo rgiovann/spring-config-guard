@@ -352,8 +352,9 @@ commas (Spring strips each element); an empty `.properties` value, which
 Spring binds as an empty list, clearing the `.yml` list and, from a
 profile, the base's list; `[]` in a profile's `.yml`, which Spring's YAML
 loader stores as an empty string; a comma-separated profile value over an
-indexed base list; and, as a control, a profile that doesn't mention the key
-keeping the base's list.
+indexed base list; a YAML null in a profile over a base list (case 38),
+which replaces it as `[]` does; and, as a control, a profile that doesn't
+mention the key keeping the base's list.
 
 A fourth set, under `app.object-lists`, checks lists of objects partially
 overridden: a profile `.yml` or `.properties` setting only `[0].port` of a
@@ -369,7 +370,9 @@ one in the base and the other in the profile, in both directions, bound as
 a `Map`, a `String` and an object. Spring removes neither shape: both stay
 in the property sources, and the target type decides which one binds (the
 sub-keys for a `Map` or an object, the scalar for a `String`), even when the
-ignored shape comes from the profile.
+ignored shape comes from the profile. A YAML null in the profile over a
+base map or object (cases 36 and 37) is the same: the base's sub-keys stay
+and bind. Before 2026-10-06 SCG removed them; it keeps them now.
 
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
@@ -591,11 +594,11 @@ counted on 2026-10-06):
   `api-docs` only. The `dev` document of `application-secret-samples.yml`
   applies to `dev`, where its blank `spring.datasource.password` is an
   SCG006 INFO; the `prod` one, which only `prod` and `secret-samples`
-  together activate, is counted in the stderr warning. 25 findings with
-  v1.16.0, 22 now; `dev` doesn't report SCG002 (the H2 console of
-  `application-dev.yml`), because the null `spring:` at the top of
-  `application-secret-samples.yml` removes its `spring.*` keys in SCG's
-  merge, though Spring keeps them (`BACKLOG.md`).
+  together activate, is counted in the stderr warning. `dev` also reports
+  the H2 console of `application-dev.yml` (SCG002), which the null
+  `spring:` at the top of `application-secret-samples.yml` leaves on, in
+  Spring as in SCG ("ProfileMerger correctness benchmark", case 36). 25
+  findings with v1.16.0, 23 now.
 
 ## Profile groups (running Spring Boot 4.1.1 app)
 

@@ -12,6 +12,7 @@ app:
     "[props.bracketed]": "from-prod-yml" # 13. overrides the bracketed entry from application.properties
   lists:
     profile-yaml-empty: [] # 19. explicit empty list over the base's non-empty one
+    profile-yaml-null: # 38. a YAML null over the base's non-empty list
     profile-comma-over-indexed: "x,y" # 21. comma-separated over the base's indexed list
   object-lists:
     partial-override:
@@ -29,3 +30,5 @@ app:
     scalar-then-object:
       url: "https://prod.internal" # 33.
     object-then-scalar: "plain" # 34.
+    null-over-map: # 36.
+    null-over-object: # 37.

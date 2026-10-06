@@ -19,36 +19,22 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the YAML null, then the rest of the findings from the
-candidate reference projects, then the GitHub Action, then the one item of
-new coverage with a real case.
+Done in this order: the rest of the findings from the candidate reference
+projects, then the GitHub Action, then the one item of new coverage with a
+real case.
 Everything else waits in Deferred for a real case or a need.
 
 ### Findings from the candidate reference projects
 
 Three projects proposed as new reference projects, run against the v1.16.0
-jar on 2026-10-06. Each has a finding to settle before it is added to
-`VALIDATION.md`, pinned at the commit below, with its precision check.
+jar on 2026-10-06, to be added to `VALIDATION.md`, pinned at the commit
+below, with their precision check. jhipster's finding, `on-profile` read as
+a literal name, is settled (ADR-012, ADR-013); the other two each have one
+below.
 
 * `jhipster/jhipster-sample-app` (`6b000b5`, Spring Boot 4.1.1)
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
-
-#### A YAML null removes sub-keys Spring keeps (core, next)
-
-`ProfileMerger` reads a key written as a YAML null in a later document
-(`app.x: ~`, or `spring:` with nothing under it) as an override that removes
-every `app.x.*` key of earlier documents; Spring keeps both sources, and
-each one's binding picks a shape by type (CLAUDE.md, "Architecture").
-Measured on 2026-10-06 against Spring Boot 4.1.1: with the H2 console on in
-the base and a `spring:` null in an `on-profile: a` block, the console is on
-with `a` active; SCG drops it. The real case came with profile groups
-(ADR-013): jhipster's `application-secret-samples.yml` starts with
-`spring:`, its group puts it after `application-dev.yml` under `dev`, and
-SCG002 HIGH for `dev`'s H2 console is no longer reported. The change: a
-null overrides its own key only, as for a scalar; add a null over a map to
-the `/actuator/env` benchmark with it. Done right after ADR-013, before a
-release.
 
 #### SCG006: a secret pattern in a map key
 

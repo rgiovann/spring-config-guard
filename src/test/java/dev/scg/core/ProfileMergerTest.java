@@ -573,8 +573,11 @@ class ProfileMergerTest {
     }
 
     @Test
-    @DisplayName("Profile with scalar null at a node that was an object in the base should purge sub-keys and result in an empty string")
-    void profileWithNullAtObjectNodeShouldPurgeSubKeys() {
+    @DisplayName("Profile with scalar null at a node that was an object in the base keeps the sub-keys next to an empty string, as Spring does")
+    void profileWithNullAtObjectNodeShouldKeepSubKeys() {
+        // Spring keeps both sources: db.connection.* of the base and db.connection="" of the profile
+        // (VALIDATION.md, "ProfileMerger correctness benchmark", cases 36 and 37). This used to purge
+        // the sub-keys, which hid, e.g., an H2 console a later "spring:" null left on.
         Map<String, String> baseProps = new LinkedHashMap<>();
         baseProps.put("db.connection.timeout", "30");
         baseProps.put("db.connection.host", "localhost");
@@ -590,10 +593,19 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        assertFalse(dev.properties().containsKey("db.connection.timeout"));
-        assertFalse(dev.properties().containsKey("db.connection.host"));
-        assertTrue(dev.properties().containsKey("db.connection"));
-        assertEquals("", dev.properties().get("db.connection"));
+        assertEquals(Map.of("db.connection.timeout", "30", "db.connection.host", "localhost", "db.connection", ""),
+                dev.properties());
+    }
+
+    @Test
+    @DisplayName("A null still replaces a list under the same name")
+    void profileWithNullOverAListShouldReplaceIt() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("app.items[0]", "a", "app.items[1]", "b")),
+                new ConfigDocument(activation("dev"), Map.of("app.items.__null_scalar__", "true"))
+        ));
+
+        assertEquals(Map.of("app.items", ""), findByLabel(merge(file), "dev").properties());
     }
 
     @Test

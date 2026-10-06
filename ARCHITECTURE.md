@@ -1081,7 +1081,10 @@ taken up (`BACKLOG.md`).
 ## ADR-013: Profile Groups Evaluated with the Profile That Activates Them
 
 ### Status
-Accepted.
+Accepted. Since 2026-10-06, a YAML null no longer removes the sub-keys of
+earlier documents (`VALIDATION.md`, "ProfileMerger correctness benchmark",
+cases 36–38), so the trade-off below about a null in a group member's file
+no longer holds.
 
 ### Context
 ADR-012 evaluates one configuration per single active profile.

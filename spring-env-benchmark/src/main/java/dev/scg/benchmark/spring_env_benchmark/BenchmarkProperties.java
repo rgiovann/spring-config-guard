@@ -25,7 +25,8 @@ public record BenchmarkProperties(Map<String, String> bracketMap, ListCases list
             List<String> profileYamlEmpty,
             List<String> profilePropsEmpty,
             List<String> profileCommaOverIndexed,
-            List<String> profileOmitsKey) {
+            List<String> profileOmitsKey,
+            List<String> profileYamlNull) {
     }
 
     /** One list of objects per scenario of a profile overriding part of a base list. */
@@ -47,6 +48,8 @@ public record BenchmarkProperties(Map<String, String> bracketMap, ListCases list
             String scalarThenMapAsString,
             String mapThenScalarAsString,
             Server scalarThenObject,
-            Server objectThenScalar) {
+            Server objectThenScalar,
+            Map<String, String> nullOverMap,
+            Server nullOverObject) {
     }
 }

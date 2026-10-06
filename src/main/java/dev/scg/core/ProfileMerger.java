@@ -214,7 +214,8 @@ public final class ProfileMerger {
      * List keys (format "root[n]" or "root[n].subkey") in the overlay cause the entire list for
      * that root to be REMOVED from the base before the overlay is applied — no orphaned base index
      * is left mixed with the new overlay index. An explicit-null override resolves to
-     * {@link #NULL_VALUE} immediately.
+     * {@link #NULL_VALUE} immediately, and leaves the base's sub-keys of that key in place, as
+     * Spring keeps both shapes (CLAUDE.md, "Architecture").
      * <p>
      * The internal sentinel keys are kept, and stripped only once the fold is complete: an
      * empty-list sentinel stripped mid-fold would never purge a conflicting list of an earlier
@@ -224,7 +225,6 @@ public final class ProfileMerger {
         Map<String, String> merged = new LinkedHashMap<>(base);
 
         Set<String> canonicalListRootsInOverlay = new LinkedHashSet<>();
-        Set<String> canonicalDotPrefixesInOverlay = new LinkedHashSet<>();
         Map<String, String> nullOverrides = new LinkedHashMap<>();
 
         for (String key : overlay.keySet()) {
@@ -232,9 +232,10 @@ public final class ProfileMerger {
                 String targetKey = key.substring(0, key.length() - ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX.length());
                 nullOverrides.put(targetKey, NULL_VALUE);
 
-                String canonicalTarget = RelaxedProperties.canonicalize(targetKey);
-                canonicalListRootsInOverlay.add(canonicalTarget);
-                canonicalDotPrefixesInOverlay.add(canonicalTarget + ".");
+                // The null replaces the key itself and a list under that name, never its sub-keys:
+                // Spring keeps x.* of an earlier source next to x="" (VALIDATION.md, "ProfileMerger
+                // correctness benchmark", cases 36 and 37).
+                canonicalListRootsInOverlay.add(RelaxedProperties.canonicalize(targetKey));
             } else {
                 int bracketIdx = key.indexOf('[');
                 if (bracketIdx >= 0) {
@@ -249,17 +250,9 @@ public final class ProfileMerger {
             }
         }
 
-        // Canonical purge: removes inherited indexed list keys or dot-separated sub-properties
-        // from the base that were redefined in the overlay
-        merged.keySet().removeIf(baseKey -> {
-            String canonicalBaseKey = RelaxedProperties.canonicalize(baseKey);
-            String canonicalBaseRoot = extractCanonicalRoot(baseKey);
-
-            boolean isListMatch = canonicalListRootsInOverlay.contains(canonicalBaseRoot);
-            boolean isDotMatch = canonicalDotPrefixesInOverlay.stream().anyMatch(canonicalBaseKey::startsWith);
-
-            return isListMatch || isDotMatch;
-        });
+        // Canonical purge: removes inherited keys, and indexed list keys, of a root the overlay
+        // redefines
+        merged.keySet().removeIf(baseKey -> canonicalListRootsInOverlay.contains(extractCanonicalRoot(baseKey)));
 
         merged.putAll(overlay);
         merged.putAll(nullOverrides);
