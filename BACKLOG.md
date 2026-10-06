@@ -19,7 +19,7 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: profile groups, then the rest of the findings from the
+Done in this order: the YAML null, then the rest of the findings from the
 candidate reference projects, then the GitHub Action, then the one item of
 new coverage with a real case.
 Everything else waits in Deferred for a real case or a need.
@@ -34,40 +34,21 @@ jar on 2026-10-06. Each has a finding to settle before it is added to
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
 
-#### Profile groups (core, next)
+#### A YAML null removes sub-keys Spring keeps (core, next)
 
-`on-profile` is now evaluated as Spring does (ADR-012), with one
-configuration per single active profile. `spring.profiles.group` makes one
-profile activate others, and SCG doesn't read it. jhipster declares
-`group.dev: [secret-samples, api-docs]`: with `dev` active, Spring also
-activates `api-docs`, so its `'!api-docs'` block doesn't apply and SpringDoc
-is on, but SCG evaluates `dev` alone, with the block applied, and no longer
-reports SCG008 MEDIUM there (v1.16.0 did, by accident: it read
-`'!api-docs'` as a profile of its own). The two `dev`/`prod` documents of
-`application-secret-samples.yml` apply under `dev` the same way, and are
-only counted in the combinations warning. Measured on 2026-10-06 with a
-minimal fixture against Spring Boot 4.1.1: `group.dev: [api-docs]`, the H2
-console on in the base and off under `'!api-docs'`; with `dev` active,
-Spring has it on and SCG off.
-
-The change: the configuration of a profile P is evaluated with P and the
-profiles its group activates. Measure first: the order of the group's
-profile-specific files, nested groups, a group declared in a
-profile-specific file or an `on-profile` document, and
-`spring.profiles.include`. Done right after ADR-012, before a release, so
-none ships with the jhipster regression. Of the reference projects, only
-jhipster (a candidate) declares a group.
-
-Left out, each waiting for a real case: `spring.profiles.default` written
-in configuration (it renames the default profile);
-`spring.profiles.active` written in configuration (10 files in 4 of the
-projects, e.g. `active: [secure]` in seven `spring-boot-admin` samples): it
-is overridden at runtime, and SCG still evaluates every profile, so its
-effect is mostly a base configuration that doesn't run unless overridden;
-`spring.config.activate.on-cloud-platform`, another activation condition,
-ignored today, so its documents are folded into the base; the legacy
-`spring.profiles` key (two documents in `spring-cloud-stream-samples`),
-likewise folded into the base.
+`ProfileMerger` reads a key written as a YAML null in a later document
+(`app.x: ~`, or `spring:` with nothing under it) as an override that removes
+every `app.x.*` key of earlier documents; Spring keeps both sources, and
+each one's binding picks a shape by type (CLAUDE.md, "Architecture").
+Measured on 2026-10-06 against Spring Boot 4.1.1: with the H2 console on in
+the base and a `spring:` null in an `on-profile: a` block, the console is on
+with `a` active; SCG drops it. The real case came with profile groups
+(ADR-013): jhipster's `application-secret-samples.yml` starts with
+`spring:`, its group puts it after `application-dev.yml` under `dev`, and
+SCG002 HIGH for `dev`'s H2 console is no longer reported. The change: a
+null overrides its own key only, as for a scalar; add a null over a map to
+the `/actuator/env` benchmark with it. Done right after ADR-013, before a
+release.
 
 #### SCG006: a secret pattern in a map key
 
@@ -169,18 +150,25 @@ value, and no user has reported (as of 2026-10-05). Each is noted with
 what it would take; it moves back to Pending when a real case appears, so
 the reviews' leftovers don't grow into a queue that never empties.
 
-#### A null in a profile purges the base's sub-keys (measure first)
+#### Profile activation left out (waiting for a real case)
 
-Found while fixing the YAML null in a base file: `app.x: ~` in a profile
-makes `ProfileMerger` remove the base's `app.x.*` keys, while Spring keeps
-both sources, and each one's binding picks a shape by type (CLAUDE.md,
-"Architecture"). The `/actuator/env` benchmark checks a null override of a
-scalar only. Add a null over a map to it before deciding whether the purge
-goes.
+ADR-012 and ADR-013 evaluate `on-profile`, file profiles and
+`spring.profiles.group`. Left out, each waiting for a real case:
 
-No profile in the reference projects or demo fixtures writes a null
-(checked with SCG's loader on 2026-10-05), so the divergence has no case
-yet.
+* `spring.profiles.include`: it adds its profiles always, and `default` is
+  then no longer active (`VALIDATION.md`, "Profile groups", G5). No
+  reference project uses it.
+* `spring.profiles.default` written in configuration: it renames the
+  default profile.
+* `spring.profiles.active` written in configuration (10 files in 4 of the
+  projects, e.g. `active: [secure]` in seven `spring-boot-admin` samples):
+  it is overridden at runtime, and SCG still evaluates every profile, so
+  its effect is mostly a base configuration that doesn't run unless
+  overridden.
+* `spring.config.activate.on-cloud-platform`, another activation
+  condition, ignored today, so its documents are folded into the base.
+* The legacy `spring.profiles` key (two documents in
+  `spring-cloud-stream-samples`), likewise folded into the base.
 
 #### SCG012 cases left open (decide with measurements)
 

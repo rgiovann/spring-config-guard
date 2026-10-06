@@ -25,8 +25,8 @@ import java.util.stream.Collectors;
  *       overrides an earlier one, conditioned or not (P10).</li>
  * </ul>
  * Profile-specific files of different profiles are ordered by profile name, for
- * a deterministic result; each set of active profiles ProfileMerger evaluates
- * holds one profile, so their relative order never decides a value.
+ * a deterministic result; when a profile group makes several of them apply,
+ * ProfileMerger puts them in activation order instead (ARCHITECTURE.md, ADR-013).
  * <p>
  * A profile-specific file's documents may carry their own {@code on-profile}:
  * Spring Boot applies them only when both the file's profile and the expression

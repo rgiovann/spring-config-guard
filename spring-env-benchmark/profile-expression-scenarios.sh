@@ -12,8 +12,8 @@
 # "off", or "none" when SCG builds no configuration for that set (several profiles active
 # together are never modeled). After each fixture, every configuration SCG builds is listed
 # by its profile label, with the console's state in it.
-# Then the grammar's edge cases (E1-E10), and the order of a Config Server's files (P15), on
-# Spring's side only.
+# Then the grammar's edge cases (E1-E11), the order of a Config Server's files (P15) and profile
+# groups (G1-G7), on Spring's side only.
 # Build both jars first:  mvn -q package -DskipTests   (in this directory and in the repository root)
 set -u
 cd "$(dirname "$0")"
@@ -148,7 +148,7 @@ grammar E8 'a,'            ""
 grammar E8 ' '             ""
 grammar E9 'Prod'          "" prod Prod
 
-# E10 and E8's list form: the value as YAML writes it, unquoted (a null, an empty list), or in a
+# E10, E11 and E8's list form: the value as YAML writes it, unquoted (a null, an empty list), or in a
 # .properties document.
 grammar_raw() {
     local row=$1 label=$2 file=$3 content=$4; shift 4
@@ -171,6 +171,14 @@ grammar_raw E10 '""'           application.yml "$(yaml_value ' ""')" "" a
 grammar_raw E10 '[]'           application.yml "$(yaml_value ' []')" "" a
 grammar_raw E10 '= (.props)'   application.properties \
     "$(printf 'spring.h2.console.enabled=false\n#---\nspring.config.activate.on-profile=\nspring.h2.console.enabled=true\n')" "" a
+
+# E11: on-profile written as a map, which Spring Boot doesn't read as a condition, or with a
+# bracket that isn't a list index (columns: none, prod, x).
+grammar_raw E11 '{x: prod}'    application.yml "$(printf 'spring.h2.console.enabled: false\n---\nspring.config.activate.on-profile:\n  x: prod\nspring.h2.console.enabled: true\n')" "" prod x
+grammar_raw E11 '.x=prod'      application.properties \
+    "$(printf 'spring.h2.console.enabled=false\n#---\nspring.config.activate.on-profile.x=prod\nspring.h2.console.enabled=true\n')" "" prod x
+grammar_raw E11 '[prod]=x'     application.properties \
+    "$(printf 'spring.h2.console.enabled=false\n#---\nspring.config.activate.on-profile[prod]=x\nspring.h2.console.enabled=true\n')" "" prod x
 
 # P15: a Config Server repository's order, measured as the Spring Cloud Config reference says the
 # server resolves it: a Spring Boot application with spring.config.name=application,svc. Each of
@@ -211,3 +219,89 @@ printf 'k1: svc-base\nk3: svc-base\nk4: svc-base\n---\nspring.config.activate.on
 printf 'k3: app-dev-file\nk4: app-dev-file\n' > "$P15/application-dev.yml"
 printf 'P15  active=none %s\n' "$(p15_value "$P15" "")"
 printf 'P15  active=dev  %s\n' "$(p15_value "$P15" dev)"
+
+# G1-G7: profile groups (spring.profiles.group). Each case prints the active profiles /actuator/env
+# reports and, for k1-k4, the value of the highest-precedence source that sets it.
+group_value() {
+    local dir=$1 active=$2 waited=0
+    while (echo > /dev/tcp/localhost/$PORT) 2>/dev/null; do
+        sleep 1
+        waited=$((waited + 1))
+        [ $waited -lt 60 ] || { echo "port $PORT still in use after 60s" >&2; exit 1; }
+    done
+    local args=(--spring.config.location="file:$PWD/$dir/" --server.port=$PORT
+                --management.endpoints.web.exposure.include=env --management.endpoint.env.show-values=ALWAYS)
+    [ -n "$active" ] && args+=(--spring.profiles.active="$active")
+    java -jar "$JAR" "${args[@]}" > "$LOG" 2>&1 &
+    local pid=$!
+    for _ in $(seq 1 90); do
+        grep -q "Started \|APPLICATION FAILED\|Application run failed" "$LOG" && break
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    if ! grep -q "Started " "$LOG"; then
+        echo "failed: $(grep -m1 -oE 'Reason: .*' "$LOG")"
+    else
+        curl -s --noproxy '*' "localhost:$PORT/actuator/env" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+out = ["active=" + ",".join(d["activeProfiles"])]
+for key in ["k1", "k2", "k3", "k4"]:
+    value = "-"
+    for source in d["propertySources"]:
+        if key in source.get("properties", {}):
+            value = source["properties"][key]["value"]
+            break
+    out.append(key + "=" + str(value))
+print(" ".join(out))'
+    fi
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+}
+G=target/profile-groups
+group_fixture() { rm -rf "$G"; mkdir -p "$G"; }
+group_row() { printf '%-3s active=%-5s %s\n' "$1" "${2:-none}" "$(group_value "$G" "$2")"; }
+
+# G1: the order of a group's profile files (activation order) and of on-profile blocks (file order).
+group_fixture
+printf 'spring.profiles.group.dev: [a, b]\nk1: base\nk2: base\nk3: base\nk4: base\n---\nspring.config.activate.on-profile: b\nk4: b-block\n---\nspring.config.activate.on-profile: a\nk4: a-block\n' \
+    > "$G/application.yml"
+printf 'k1: dev\nk2: dev\nk3: dev\n' > "$G/application-dev.yml"
+printf 'k1: a\nk2: a\n' > "$G/application-a.yml"
+printf 'k1: b\n' > "$G/application-b.yml"
+group_row G1 dev
+group_row G1 ""
+group_row G1 a
+# G2: nested groups.
+group_fixture
+printf 'spring.profiles.group.dev: [a]\nspring.profiles.group.a: [b]\nk1: base\n' > "$G/application.yml"
+printf 'k1: b\n' > "$G/application-b.yml"
+group_row G2 dev
+# G3: a group declared in a profile-specific file.
+group_fixture
+printf 'k1: base\n' > "$G/application.yml"
+printf 'spring.profiles.group.dev: [a]\nk1: dev\n' > "$G/application-dev.yml"
+printf 'k2: a\n' > "$G/application-a.yml"
+group_row G3 dev
+# G4: a group declared in an on-profile document.
+group_fixture
+printf 'k1: base\n---\nspring.config.activate.on-profile: dev\nspring.profiles.group.dev: [a]\nk1: dev\n' > "$G/application.yml"
+printf 'k2: a\n' > "$G/application-a.yml"
+group_row G4 dev
+# G5: spring.profiles.include in the base (not evaluated by SCG).
+group_fixture
+printf 'spring.profiles.include: [x]\nk1: base\n' > "$G/application.yml"
+printf 'k1: x\n' > "$G/application-x.yml"
+printf 'k2: dev\n' > "$G/application-dev.yml"
+printf 'k3: default\n' > "$G/application-default.yml"
+group_row G5 ""
+group_row G5 dev
+# G6: a group written comma-separated in .properties.
+group_fixture
+printf 'spring.profiles.group.dev=a,b\nk1=base\n' > "$G/application.properties"
+printf 'k1: a\n' > "$G/application-a.yml"
+printf 'k2: b\n' > "$G/application-b.yml"
+group_row G6 dev
+# G7: a group for the default profile, with no profile active.
+group_fixture
+printf 'spring.profiles.group.default: [a]\nk1: base\n' > "$G/application.yml"
+printf 'k1: a\n' > "$G/application-a.yml"
+group_row G7 ""

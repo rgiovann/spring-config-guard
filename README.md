@@ -201,8 +201,9 @@ secure.
   `application-{profile}.yml` files, and every document's
   `spring.config.activate.on-profile` as Spring does: a list of profile
   expressions (`!api-docs`, `a | b`, `a,b`). It evaluates the base, where
-  Spring's `default` profile is active, and each profile any file name or
-  expression names. Each configuration applies, in Spring's order, every
+  Spring's `default` profile is active, and each profile any file name,
+  expression or `spring.profiles.group` names, with the profiles its group
+  activates. Each configuration applies, in Spring's order, every
   document whose conditions match: `.properties` over `.yml` over
   `.yaml`, profile-specific files over the rest, a later document in a
   file over an earlier one. Rules run on every resulting configuration and
@@ -422,9 +423,12 @@ They aren't false negatives of a rule.
   as a possible risk (see
   [How SCG evaluates configuration](#how-scg-evaluates-configuration)).
 * **Several profiles active together** (e.g. `dev,cloud`). Each profile is
-  evaluated on its own. The combination of two profiles that set the same
-  key isn't computed, and neither are profile groups
-  (`spring.profiles.group`). A document only a combination activates
+  evaluated on its own, with the profiles its `spring.profiles.group`
+  activates
+  ([ADR-013](ARCHITECTURE.md#adr-013-profile-groups-evaluated-with-the-profile-that-activates-them)).
+  Any other combination of two profiles that set the same key isn't
+  computed, and `spring.profiles.include` isn't read. A document only a
+  combination activates
   (`on-profile: 'a & b'`, or an `on-profile` inside `application-x.yml`
   naming another profile) is applied to no configuration, and SCG prints:
   `spring-config-guard: N document(s) apply only when several profiles are active together, which is not evaluated.`

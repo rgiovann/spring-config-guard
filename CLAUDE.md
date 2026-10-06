@@ -204,8 +204,9 @@ documents in Spring Boot's source order (ADR-012).
 
 `ProfileMerger` evaluates the base (Spring's `default` profile active) and
 one configuration per profile the files or expressions name, each the fold,
-in source order, of the documents that apply (ADR-012). Several profiles
-active together are not evaluated; a document only such a combination
+in source order, of the documents that apply (ADR-012), with the profiles
+its `spring.profiles.group` activates (ADR-013). Other combinations of
+active profiles are not evaluated; a document only such a combination
 activates is counted in a stderr warning. `ConfigServerAssembler` builds the
 same ordered documents per service in Config Server Mode.
 SCG doesn't know the Java type a property binds to. A key written as a

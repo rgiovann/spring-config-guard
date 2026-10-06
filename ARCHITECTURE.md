@@ -975,7 +975,9 @@ configurations.
 ## ADR-012: `on-profile` Evaluated as Spring Boot Does: One Ordered Fold per Set of Active Profiles
 
 ### Status
-Accepted. Supersedes ADR-003, and ADR-002's four-layer cascade.
+Accepted. Supersedes ADR-003, and ADR-002's four-layer cascade. Since
+ADR-013, a profile's configuration also has its profile group active, and
+profile-specific files apply in activation order.
 
 ### Context
 `ConfigLoader` took the value of `spring.config.activate.on-profile` as a
@@ -1073,3 +1075,68 @@ A benchmark run on a newer Spring Boot version disagrees with a row of
 `VALIDATION.md`, "Profile expressions in `on-profile`", or profile groups
 (`spring.profiles.group`), which activate several profiles from one, are
 taken up (`BACKLOG.md`).
+
+---
+
+## ADR-013: Profile Groups Evaluated with the Profile That Activates Them
+
+### Status
+Accepted.
+
+### Context
+ADR-012 evaluates one configuration per single active profile.
+`spring.profiles.group` makes one profile activate others: jhipster
+declares `group.dev: [secret-samples, api-docs]`, so with `dev` active
+Spring also activates `api-docs`, its `'!api-docs'` block doesn't apply
+and SpringDoc is on. SCG evaluated `dev` alone, with the block applied, and
+stopped reporting SCG008 there. Measured against Spring Boot 4.1.1
+(`VALIDATION.md`, "Profile groups", G1–G7):
+
+* a group's profiles become active after the profile, depth first, nested
+  groups included; profile-specific files apply in that activation order,
+  while `on-profile` documents keep their place in the file (G1, G2, G6);
+* a group declared in `application-x.yml` is ignored, one in an
+  `on-profile` document applies (G3, G4);
+* a group of `default` applies when no profile is active (G7);
+* `spring.profiles.include` adds its profiles always, and then `default`
+  is no longer active (G5).
+
+### Decision
+`ProfileMerger` evaluates the configuration of a profile P, and the base's
+from `default`, with P and the profiles its group activates, expanded as
+Spring Boot's `Profiles` does (depth first, each profile once). A group is
+read from the documents of the files without a profile in their name that
+apply when P alone is active; a later declaration of the same group
+replaces an earlier one. Documents without a file profile apply first, in
+the group's order, then each active profile's `application-{profile}`
+documents in activation order. A declared group is a known profile, so a
+group with no file of its own is evaluated too. The configuration keeps
+P's label; its source file is P's own `application-P` file when it has
+one.
+
+`spring.profiles.include` is not evaluated: no reference project uses it,
+and it changes the base's active profiles, not only a profile's.
+
+### Consequences
+
+**Positive**
+* jhipster's `dev` reports what Spring runs with `dev` active:
+  SpringDoc on, and the `on-profile: dev` documents of
+  `application-secret-samples.yml`, which the combinations warning no
+  longer counts.
+* No new concept: a configuration was already a set of active profiles
+  matched by `SourceDocument.appliesTo`.
+
+**Negative / Trade-offs**
+* A group read from a document conditioned on the profile it expands
+  covers G4, but a declaration whose condition depends on a group member
+  is not followed.
+* With groups, documents of more files reach one configuration, which
+  exposes merge behavior the single-profile model rarely hit: a YAML
+  null (`spring:`) in a group member's file removes sub-keys the profile's
+  own file set, which Spring keeps (`BACKLOG.md`).
+* `spring.profiles.include` stays out (G5 pins the divergence).
+
+### Revisit if
+A real project uses `spring.profiles.include`, or a group declared under a
+condition SCG doesn't follow.

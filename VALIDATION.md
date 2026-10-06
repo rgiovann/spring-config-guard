@@ -462,7 +462,8 @@ which is when it reports SCG002.
 
 Each cell is Spring / SCG: `on` or `off`; `—` when SCG builds no
 configuration for that set of active profiles: several profiles active
-together are never evaluated, and a profile no file or expression names
+together are evaluated only when a profile group activates them ("Profile
+groups"), and a profile no file or expression names
 (`c` in P1) gets the base's configuration in Spring. Unless the row says
 otherwise, the base document has the console off and the conditioned
 document turns it on. `ProfileExpressionScenariosTest` pins every SCG cell.
@@ -538,6 +539,7 @@ the columns are the active profiles.
 | E6 | `'!(a \| b)'`, `'!a & !b'` | yes | no | no | yes | no | no |
 | E9 | `'Prod'` (columns: none, `prod`, `Prod`) | no | no | yes | | | |
 | E10 | `on-profile:` with no value, `~`, `""`, `[]`, or `on-profile=` in `.properties` (columns: none, `a`) | yes | yes | | | | |
+| E11 | a map: `on-profile: {x: prod}`, or `on-profile.x=prod` in `.properties` (columns: none, `prod`, `x`) | yes | yes | yes | | | |
 
 With `a b` active, the application didn't start: Spring Boot rejects the
 profile name (`Profile 'a b' must contain a letter, digit or allowed
@@ -545,7 +547,10 @@ char`), so E2's document never applies. The application didn't start for E7 (`'!
 `'a | !b & c'`: `Malformed profile expression`) and E8 (`'a,,b'`, `',a'`,
 `'a,'`, `' '`, and the YAML list `[a, ""]`: `Invalid profile expression
 []: must contain text`). E10: a null, empty or empty-list value is no
-condition at all, so the document always applies.
+condition at all, so the document always applies. E11: a map under
+`on-profile` isn't a condition either; the bracketed form
+`on-profile[prod]=x` in `.properties` stops the application (`The elements
+[spring.config.activate.on-profile[prod]] were left unbound`).
 
 This is Spring Framework's `ProfilesParser`: a space doesn't separate
 names, so `'a b'` is one profile named `a b`, which can't be activated
@@ -557,7 +562,9 @@ case-sensitive (E9). SCG's `ProfileExpression` follows the same steps,
 pinned by `ProfileExpressionTest`; `ConfigLoader` reads E7 and E8 as an
 input error (exit code 2) and E10 as no condition, pinned by
 `ConfigLoaderTest`. SCG still builds a configuration for `a b` (E2), which
-Spring can't run.
+Spring can't run, and reads both E11 forms as no condition: the map form as
+Spring does, the bracketed one where Spring refuses to start, which has no
+effect on findings since the document then applies to every configuration.
 
 **In the reference projects** (application files at the pinned commits,
 counted on 2026-10-06):
@@ -576,13 +583,57 @@ counted on 2026-10-06):
 * Of the candidate reference projects (`BACKLOG.md`), `jhipster-sample-app`
   writes `on-profile: '!api-docs'` (P1) and two `on-profile` documents
   (`dev`, `prod`) inside `application-secret-samples.yml` (P12), which
-  apply only when `secret-samples` and that profile are both active. Since
-  2026-10-06, the `'!api-docs'` block, which turns SpringDoc off, reaches
-  the base and the `dev`, `prod`, `secret-samples` and `tls` profiles, so
-  SCG008 is reported only for the `api-docs` configuration (25 to 20
-  findings); the two `secret-samples` documents, whose blank
-  `spring.datasource.password` was an SCG006 INFO of `secret-samples`, are
-  counted in the stderr warning instead.
+  apply only when `secret-samples` and that profile are both active, and
+  declares `group.dev: [secret-samples, api-docs]` ("Profile groups"). Since
+  2026-10-06 the `'!api-docs'` block, which turns SpringDoc off, reaches the
+  base and the `prod`, `secret-samples` and `tls` profiles but not `dev`,
+  whose group activates `api-docs`: SCG008 is reported for `dev` and
+  `api-docs` only. The `dev` document of `application-secret-samples.yml`
+  applies to `dev`, where its blank `spring.datasource.password` is an
+  SCG006 INFO; the `prod` one, which only `prod` and `secret-samples`
+  together activate, is counted in the stderr warning. 25 findings with
+  v1.16.0, 22 now; `dev` doesn't report SCG002 (the H2 console of
+  `application-dev.yml`), because the null `spring:` at the top of
+  `application-secret-samples.yml` removes its `spring.*` keys in SCG's
+  merge, though Spring keeps them (`BACKLOG.md`).
+
+## Profile groups (running Spring Boot 4.1.1 app)
+
+Which profiles `spring.profiles.group` activates, and in which order their
+files apply, measured with the last part of
+`spring-env-benchmark/profile-expression-scenarios.sh`. Each row prints the
+active profiles `/actuator/env` reports and, for `k1`–`k4`, the value of the
+highest-precedence source; `—` when no source sets it.
+`ProfileGroupScenariosTest` pins each row on SCG's side, as the
+configuration of the activated profile (the base for "none").
+
+| # | Files | Active | Spring's active profiles | `k1` | `k2` | `k3` | `k4` |
+|---|---|---|---|---|---|---|---|
+| G1 | `group.dev: [a, b]`; `application-dev` sets k1–k3, `-a` k1–k2, `-b` k1; blocks `on-profile: b`, then `a`, set k4 | `dev` | `dev,a,b` | `b` | `a` | `dev` | `a-block` |
+| G1 | the same | none | none | `base` | `base` | `base` | `base` |
+| G1 | the same | `a` | `a` | `a` | `a` | `base` | `a-block` |
+| G2 | `group.dev: [a]`, `group.a: [b]`; `application-b` sets k1 | `dev` | `dev,a,b` | `b` | — | — | — |
+| G3 | `group.dev: [a]` inside `application-dev.yml`; `application-a` sets k2 | `dev` | `dev` | `dev` | — | — | — |
+| G4 | `group.dev: [a]` inside an `on-profile: dev` document; `application-a` sets k2 | `dev` | `dev,a` | `dev` | `a` | — | — |
+| G5 | `spring.profiles.include: [x]`; `application-x` sets k1, `-dev` k2, `-default` k3 | none | `x` | `x` | — | — | — |
+| G5 | the same | `dev` | `x,dev` | `x` | `dev` | — | — |
+| G6 | `group.dev=a,b` in `.properties`; `application-a` sets k1, `-b` k2 | `dev` | `dev,a,b` | `a` | `b` | — | — |
+| G7 | `group.default: [a]`; `application-a` sets k1 | none | none listed | `a` | — | — | — |
+
+A group's profiles are activated after the profile that names them, depth
+first (G2), and profile-specific files apply in that activation order, the
+last one winning (G1: `b` over `a` over `dev`), while `on-profile` blocks
+keep their order in the file (G1: the `a` block, written last, wins). A
+group declared in a profile-specific file is ignored (G3); one inside an
+`on-profile` document applies (G4). The `default` profile's group applies
+when no profile is active, though `/actuator/env` lists none (G7).
+`spring.profiles.include` adds its profiles always, and `default` is then no
+longer active: `application-default.yml` doesn't apply (G5).
+
+SCG matches every row but G5
+([ADR-013](ARCHITECTURE.md#adr-013-profile-groups-evaluated-with-the-profile-that-activates-them)):
+`spring.profiles.include` is not evaluated, so its base keeps `k1=base` and
+applies `application-default.yml`. No reference project uses it.
 
 ## SCG001 exposure scenarios (`/actuator` comparison)
 

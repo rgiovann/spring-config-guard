@@ -15,9 +15,11 @@ import java.util.*;
  * The known profiles are every name the group's conditions refer to (file names
  * like application-prod.yml and {@code on-profile} expressions, including names
  * only negated, as {@code api-docs} in {@code !api-docs}), except {@code default},
- * which belongs to the base. Several profiles active together are not evaluated;
- * {@link #documentsNotEvaluated} lists the documents only such a combination
- * activates.
+ * which belongs to the base. A profile's configuration
+ * also has the profiles its {@code spring.profiles.group} activates active
+ * (ARCHITECTURE.md, ADR-013); several profiles active together otherwise are not
+ * evaluated, and {@link #documentsNotEvaluated} lists the documents only such a
+ * combination activates. Profile groups are also known profiles.
  * <p>
  * Merge rule (between two documents of the fold): a scalar key from the later
  * document overrides the earlier one; an entire list (identified by the prefix
@@ -56,14 +58,15 @@ public final class ProfileMerger {
      * The base configuration first, then one per known profile.
      * <p>
      * Each one's source file is where its configuration is most likely fixed: for a profile P,
-     * the file of the last applied document whose condition names P; otherwise, and for the
-     * base, the file of the last applied document.
+     * its own application-P file, the last applied one; else the file of the last applied document
+     * whose condition names P (an {@code on-profile}, in any file); otherwise, and for the base,
+     * the file of the last applied document.
      */
     public List<EffectiveConfig> merge(GroupedConfigFile group) {
         List<EffectiveConfig> result = new ArrayList<>();
-        result.add(evaluate(group, Set.of(DEFAULT_PROFILE), BASE_PROFILE_LABEL, Optional.empty()));
+        result.add(evaluate(group, activeProfiles(group, DEFAULT_PROFILE), BASE_PROFILE_LABEL, Optional.empty()));
         for (String profile : knownProfiles(group)) {
-            result.add(evaluate(group, Set.of(profile), profile, Optional.of(profile)));
+            result.add(evaluate(group, activeProfiles(group, profile), profile, Optional.of(profile)));
         }
         return result;
     }
@@ -71,32 +74,121 @@ public final class ProfileMerger {
     /**
      * The conditioned documents that apply to none of the configurations {@link #merge} builds:
      * those only several profiles active together activate ({@code a & b}, or an
-     * {@code on-profile} inside application-x.yml naming another profile).
+     * {@code on-profile} inside application-x.yml naming another profile), unless a profile
+     * group activates them together.
      */
     public List<SourceDocument> documentsNotEvaluated(GroupedConfigFile group) {
         List<Set<String>> evaluated = new ArrayList<>();
-        evaluated.add(Set.of(DEFAULT_PROFILE));
-        knownProfiles(group).forEach(profile -> evaluated.add(Set.of(profile)));
+        evaluated.add(new LinkedHashSet<>(activeProfiles(group, DEFAULT_PROFILE)));
+        knownProfiles(group).forEach(profile -> evaluated.add(new LinkedHashSet<>(activeProfiles(group, profile))));
         return group.documents().stream()
                 .filter(SourceDocument::isConditional)
                 .filter(document -> evaluated.stream().noneMatch(document::appliesTo))
                 .toList();
     }
 
+    /** Every name the group's conditions refer to and every profile group declared, but default. */
     private static Set<String> knownProfiles(GroupedConfigFile group) {
         Set<String> profiles = new LinkedHashSet<>();
         group.documents().forEach(document -> profiles.addAll(document.profileNames()));
+        group.documents().stream()
+                .filter(document -> document.fileProfile().isEmpty())
+                .forEach(document -> profiles.addAll(groupDeclarations(document).keySet()));
         profiles.remove(DEFAULT_PROFILE);
         return profiles;
     }
 
-    private EffectiveConfig evaluate(GroupedConfigFile group, Set<String> activeProfiles,
+    /**
+     * The profiles active when {@code profile} is activated, in activation order: the profile,
+     * then the members of its {@code spring.profiles.group}, depth first, as Spring Boot's
+     * {@code Profiles} expands them (VALIDATION.md, "Profile groups", G1, G2, G6, G7). A group is
+     * read from the documents of the files without a profile in their name that apply when
+     * {@code profile} alone is active: Spring Boot ignores one declared in application-x.yml
+     * (G3) and reads one in an {@code on-profile} document (G4); a later document's declaration
+     * of the same group replaces an earlier one.
+     */
+    private static List<String> activeProfiles(GroupedConfigFile group, String profile) {
+        Set<String> seed = Set.of(profile);
+        Map<String, List<String>> groups = new LinkedHashMap<>();
+        for (SourceDocument document : group.documents()) {
+            if (document.fileProfile().isEmpty() && document.appliesTo(seed)) {
+                groups.putAll(groupDeclarations(document));
+            }
+        }
+        Set<String> active = new LinkedHashSet<>();
+        Deque<String> stack = new ArrayDeque<>();
+        stack.push(profile);
+        while (!stack.isEmpty()) {
+            String current = stack.pop();
+            if (active.add(current)) {
+                groups.getOrDefault(current, List.of()).reversed().forEach(stack::push);
+            }
+        }
+        return List.copyOf(active);
+    }
+
+    private static final String GROUP_PREFIX = RelaxedProperties.canonicalize("spring.profiles.group") + ".";
+
+    /**
+     * The {@code spring.profiles.group.<name>} entries of one document, name to members: a YAML
+     * list ({@code <name>[0]}, {@code [1]}) or a comma-separated value. The group name is kept as
+     * written, as a profile name is.
+     */
+    private static Map<String, List<String>> groupDeclarations(SourceDocument document) {
+        Map<String, List<String>> declarations = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : document.document().properties().entrySet()) {
+            String key = entry.getKey();
+            String[] segments = key.split("\\.", 4);
+            if (segments.length < 4
+                    || !RelaxedProperties.canonicalize(String.join(".", segments[0], segments[1], segments[2]) + ".")
+                    .equals(GROUP_PREFIX)
+                    || key.endsWith(ConfigLoader.EMPTY_MAP_SENTINEL_SUFFIX)) {
+                continue;
+            }
+            String name = segments[3];
+            boolean noMembers = name.endsWith(ConfigLoader.EMPTY_LIST_SENTINEL_SUFFIX)
+                    || name.endsWith(ConfigLoader.NULL_SCALAR_SENTINEL_SUFFIX);
+            if (noMembers) {
+                name = name.substring(0, name.lastIndexOf(".__"));
+            }
+            int bracket = name.indexOf('[');
+            if (bracket >= 0) {
+                name = name.substring(0, bracket);
+            }
+            List<String> members = declarations.computeIfAbsent(name, n -> new ArrayList<>());
+            if (!noMembers) {
+                for (String member : entry.getValue().split(",")) {
+                    if (!member.isBlank()) {
+                        members.add(member.strip());
+                    }
+                }
+            }
+        }
+        return declarations;
+    }
+
+    /**
+     * Folds the documents that apply when these profiles are active: the documents of files without
+     * a profile in their name first, in the group's order, then each active profile's
+     * application-{profile} documents, in activation order (VALIDATION.md, "Profile groups", G1).
+     */
+    private EffectiveConfig evaluate(GroupedConfigFile group, List<String> activeProfiles,
                                      String label, Optional<String> profile) {
+        Set<String> active = new LinkedHashSet<>(activeProfiles);
+        List<SourceDocument> ordered = new ArrayList<>();
+        group.documents().stream().filter(document -> document.fileProfile().isEmpty()).forEach(ordered::add);
+        for (String activeProfile : activeProfiles) {
+            group.documents().stream()
+                    .filter(document -> document.fileProfile().equals(Optional.of(activeProfile)))
+                    .forEach(ordered::add);
+        }
+
         Map<String, String> folded = null;
         Path lastApplied = group.path();
         Path lastNamingProfile = null;
-        for (SourceDocument document : group.documents()) {
-            if (!document.appliesTo(activeProfiles)) {
+        Path lastOfProfileFile = null;
+        for (SourceDocument document : ordered) {
+            if (!document.appliesTo(active)) {
                 continue;
             }
             Map<String, String> properties = document.document().properties();
@@ -106,8 +198,12 @@ public final class ProfileMerger {
             if (profile.isPresent() && document.profileNames().contains(profile.get())) {
                 lastNamingProfile = document.file();
             }
+            if (profile.isPresent() && document.fileProfile().equals(profile)) {
+                lastOfProfileFile = document.file();
+            }
         }
-        Path sourceFile = lastNamingProfile != null ? lastNamingProfile : lastApplied;
+        Path sourceFile = lastOfProfileFile != null ? lastOfProfileFile
+                : lastNamingProfile != null ? lastNamingProfile : lastApplied;
         Map<String, String> properties = folded == null ? Map.of() : stripInternalSentinels(folded);
         return new EffectiveConfig(sourceFile, label, Collections.unmodifiableMap(properties));
     }
