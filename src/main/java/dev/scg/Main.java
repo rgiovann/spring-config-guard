@@ -14,8 +14,10 @@ import dev.scg.report.Reporter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class Main {
@@ -48,14 +50,27 @@ public final class Main {
             return ExitCodeResolver.USAGE_ERROR;
         }
 
+        List<GroupedConfigFile> groups;
         List<EffectiveConfig> effectiveConfigs;
         try {
-            effectiveConfigs = options.configServerMode()
-                    ? new ConfigServerAssembler().assemble(options.directory())
-                    : loadEffectiveConfigs(options.directory());
+            if (options.configServerMode()) {
+                ConfigServerAssembler assembler = new ConfigServerAssembler();
+                groups = assembler.group(options.directory());
+                effectiveConfigs = assembler.assemble(groups);
+            } else {
+                groups = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(options.directory()));
+                effectiveConfigs = groups.stream().flatMap(group -> new ProfileMerger().merge(group).stream()).toList();
+            }
         } catch (IOException e) {
             System.err.println("Error reading configuration: " + e.getMessage());
             return ExitCodeResolver.USAGE_ERROR;
+        }
+
+        int notEvaluatedCount = documentsNotEvaluated(groups);
+        if (notEvaluatedCount > 0) {
+            System.err.printf(
+                    "spring-config-guard: %d document(s) apply only when several profiles are active together, which is not evaluated.%n",
+                    notEvaluatedCount);
         }
 
         int unfollowedImportCount = ConfigImportCoverage.filesWithUnfollowedImport(effectiveConfigs).size();
@@ -134,28 +149,16 @@ public final class Main {
         return false;
     }
 
-    private static List<EffectiveConfig> loadEffectiveConfigs(Path directory) throws IOException {
-        ConfigLoader loader = new ConfigLoader();
-        ConfigFileGrouper grouper = new ConfigFileGrouper();
+    /**
+     * Distinct documents no evaluated configuration applies. In Config Server Mode a Global
+     * document belongs to every service's group, so documents are counted by identity, once.
+     */
+    private static int documentsNotEvaluated(List<GroupedConfigFile> groups) {
         ProfileMerger merger = new ProfileMerger();
-
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(directory));
-
-        List<EffectiveConfig> result = new ArrayList<>();
+        Set<ConfigDocument> documents = Collections.newSetFromMap(new IdentityHashMap<>());
         for (GroupedConfigFile group : groups) {
-            for (EffectiveConfig effectiveConfig : merger.merge(group.mergedFile())) {
-                Path correctedSource = group.sourceByProfileLabel()
-                        .getOrDefault(effectiveConfig.profileLabel(), group.mergedFile().path());
-
-                result.add(new EffectiveConfig(
-                        correctedSource,
-                        effectiveConfig.profileLabel(),
-                        effectiveConfig.properties()
-                ));
-            }
+            merger.documentsNotEvaluated(group).forEach(document -> documents.add(document.document()));
         }
-        return result;
+        return documents.size();
     }
-
-
 }

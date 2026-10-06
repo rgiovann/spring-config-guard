@@ -379,7 +379,7 @@ class ActuatorEnvComparisonTest {
                 .group(new ConfigLoader().loadDirectory(BENCHMARK_RESOURCES_PATH));
 
         for (GroupedConfigFile group : groups) {
-            for (EffectiveConfig ec : new ProfileMerger().merge(group.mergedFile())) {
+            for (EffectiveConfig ec : new ProfileMerger().merge(group)) {
                 if (profile.equalsIgnoreCase(ec.profileLabel())) {
                     return ec;
                 }

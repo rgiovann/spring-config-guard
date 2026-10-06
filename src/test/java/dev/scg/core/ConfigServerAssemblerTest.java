@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -179,6 +180,78 @@ class ConfigServerAssemblerTest {
                 .containsExactlyInAnyOrder(ProfileMerger.BASE_PROFILE_LABEL, "docker", "mysql");
         assertThat(vetsConfigs).extracting(EffectiveConfig::profileLabel)
                 .containsExactlyInAnyOrder(ProfileMerger.BASE_PROFILE_LABEL, "docker"); // no "mysql" here
+    }
+
+    @Test
+    @DisplayName("P15: a Global application-dev.yml applies to dev only, over every document of the service file, and keeps application.yml")
+    void globalProfileFileShouldApplyToItsProfileOverTheServiceFile(@TempDir Path dir) throws IOException {
+        // Before ADR-012, every application* file was "the" Global file and the last one listed won:
+        // application.yml was lost and application-dev.yml became every service's base.
+        Files.writeString(dir.resolve("application.yml"), """
+                k1: app-base
+                k2: app-base
+                k3: app-base
+                ---
+                spring.config.activate.on-profile: dev
+                k1: app-block
+                k2: app-block
+                """);
+        Files.writeString(dir.resolve("svc.yml"), """
+                k1: svc-base
+                k3: svc-base
+                k4: svc-base
+                ---
+                spring.config.activate.on-profile: dev
+                k4: svc-block
+                """);
+        Files.writeString(dir.resolve("application-dev.yml"), """
+                k3: app-dev-file
+                k4: app-dev-file
+                """);
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        // The values Spring Boot 4.1.1 resolved with spring.config.name=application,svc (VALIDATION.md, P15).
+        assertThat(findByProfile(result, ProfileMerger.BASE_PROFILE_LABEL).properties()).isEqualTo(Map.of(
+                "k1", "svc-base", "k2", "app-base", "k3", "svc-base", "k4", "svc-base"));
+        assertThat(findByProfile(result, "dev").properties()).isEqualTo(Map.of(
+                "k1", "svc-base", "k2", "app-block", "k3", "app-dev-file", "k4", "app-dev-file"));
+        assertThat(result).extracting(EffectiveConfig::sourceFile).containsOnly(dir.resolve("svc.yml"));
+    }
+
+    @Test
+    @DisplayName("A service written in two formats keeps both files, .properties winning a key conflict")
+    void serviceInTwoFormatsShouldKeepBothFiles(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("svc.yml"), "from.yml: y1\nshared: from-yml\n");
+        Files.writeString(dir.resolve("svc.properties"), "from.properties=p1\nshared=from-properties\n");
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().properties()).isEqualTo(Map.of(
+                "from.yml", "y1", "from.properties", "p1", "shared", "from-properties"));
+        assertThat(result.getFirst().sourceFile()).isEqualTo(dir.resolve("svc.properties"));
+    }
+
+    @Test
+    @DisplayName("P8 in Config Server Mode: a service's on-profile default document belongs to its base")
+    void defaultDocumentInServiceShouldBelongToItsBase(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("svc.yml"), """
+                k: base
+                ---
+                spring.config.activate.on-profile: default
+                k: default-block
+                ---
+                spring.config.activate.on-profile: docker
+                k: docker-block
+                """);
+
+        List<EffectiveConfig> result = assembler.assemble(dir);
+
+        assertThat(result).extracting(EffectiveConfig::profileLabel)
+                .containsExactly(ProfileMerger.BASE_PROFILE_LABEL, "docker");
+        assertThat(findByProfile(result, ProfileMerger.BASE_PROFILE_LABEL).properties()).containsEntry("k", "default-block");
+        assertThat(findByProfile(result, "docker").properties()).containsEntry("k", "docker-block");
     }
 
     private static EffectiveConfig findByProfile(List<EffectiveConfig> configs, String profileLabel) {

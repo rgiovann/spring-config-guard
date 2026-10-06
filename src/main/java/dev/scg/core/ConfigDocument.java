@@ -7,28 +7,26 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A single YAML document within a file (delimited by "---").
- * For .properties files, or .yml files without "---", there is always
- * exactly one ConfigDocument per file, with an empty profile.
+ * A single document within a file: a YAML document (delimited by "---") or a
+ * {@code .properties} document (delimited by "#---" or "!---"). A file without
+ * separators has exactly one.
  * <p>
- * This is the "raw" document — not yet merged with anything. ProfileMerger
- * consumes a list of ConfigDocument objects (all from the same file) and
- * produces an EffectiveConfig (the already-merged result, ready for the rules).
+ * {@code activation} is the document's {@code spring.config.activate.on-profile}
+ * condition, parsed; empty when the document has none (or a null or empty one),
+ * so it applies whatever profiles are active. The key itself is removed from
+ * {@code properties}.
  * <p>
- * ConfigFileGrouper can fold multiple physical sources of the same precedence
- * tier together before ProfileMerger ever sees them, and an explicit-null
- * override resolves immediately as part of that fold (not deferrable — see
- * {@code ProfileMerger.mergeWithoutStrippingSentinels}), to an empty string,
- * as Spring Boot loads a YAML null. A plain unmodifiable copy is used rather
- * than {@code Map.copyOf}, which would reject a {@code null} value from any
- * caller.
+ * This is the "raw" document, not yet merged with anything: ProfileMerger folds
+ * the documents that apply to a set of active profiles, in Spring Boot's source
+ * order, into an EffectiveConfig. A plain unmodifiable copy is used rather than
+ * {@code Map.copyOf}, which would reject a {@code null} value from any caller.
  */
 public record ConfigDocument(
-        Optional<String> profile,
+        Optional<ProfileExpression> activation,
         Map<String, String> properties
 ) {
     public ConfigDocument {
-        Objects.requireNonNull(profile, "profile cannot be null (use Optional.empty())");
+        Objects.requireNonNull(activation, "activation cannot be null (use Optional.empty())");
         Objects.requireNonNull(properties, "properties cannot be null");
         properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
     }

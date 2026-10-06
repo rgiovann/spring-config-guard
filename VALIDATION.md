@@ -20,9 +20,7 @@ them, so a change in behavior fails the build before it can make this
 document wrong. The rest, mostly in the sections of SCG001, SCG003,
 SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
 each row; every one of them was checked against the v1.16.0 jar, one
-fixture per row. In "Profile expressions in `on-profile`", only the
-grammar is pinned so far: the rest records a divergence still to be
-fixed. What changed between releases, and why, is in `CHANGELOG.md` and
+fixture per row. What changed between releases, and why, is in `CHANGELOG.md` and
 the git history, not here.
 
 SCG has no notion of "this is just a demo or test profile": a rule
@@ -33,7 +31,7 @@ sets and Maven/Gradle build output, which never ship with the application
 
 **Read finding counts as occurrences, not independent problems.** One
 property in a shared or inherited file multiplies into one finding per
-profile and per service that inherits it: 53 findings in
+profile and per service that inherits it: 48 findings in
 `spring-petclinic-microservices-config` trace back to three properties in
 its Global file. The sample suites, by contrast, come close to one finding
 per independently written file.
@@ -42,7 +40,7 @@ per independently written file.
 
 | Repository | Commit | Mode | Files with findings | HIGH | MEDIUM | INFO | Total |
 |---|---|---|---|---|---|---|---|
-| `spring-petclinic/spring-petclinic-microservices-config` | `323993c` | `--config-server` | 8 services | 45 | — | 8 | 53 |
+| `spring-petclinic/spring-petclinic-microservices-config` | `323993c` | `--config-server` | 8 services | 40 | — | 8 | 48 |
 | `spring-projects/spring-boot` | `adbbf04` | regular | 42 | 49 | 7 | 20 | 76 |
 | `codecentric/spring-boot-admin` | `8699ebd` | regular | 29 | 55 | 31 | 1 | 87 |
 | `spring-projects/spring-petclinic` | `818c413` | regular | 3 | 5 | — | — | 5 |
@@ -63,19 +61,23 @@ services):
 
 | Rule | HIGH | MEDIUM | INFO | Total |
 |---|---|---|---|---|
-| SCG001 | 37 | — | — | 37 |
+| SCG001 | 32 | — | — | 32 |
 | SCG006 | 8 | — | — | 8 |
 | SCG012 | — | — | 8 | 8 |
-| **Total** | **45** | **—** | **8** | **53** |
+| **Total** | **40** | **—** | **8** | **48** |
 
 Every finding traces back to the Global `application.yml`, inherited by
 all 8 services, none of which override it: `exposure.include: "*"` in its
 base section (SCG001), and its `mysql` profile's `password: petclinic`
 (SCG006) and `jdbc:mysql://localhost:3306/petclinic?...useSSL=false`
 (SCG012, INFO since the host is a loopback address; HIGH on a remote host,
-"Loopback addresses in the transport rules"). SCG001 counts 37, not 32: 5
-services (`customers-service`, `genai-service`, `tracing-server`,
-`vets-service`, `visits-service`) declare their own `default` profile. The
+"Loopback addresses in the transport rules"). SCG001 counts 32: four
+configurations per service (the base, `chaos-monkey`, `docker` and
+`mysql`), each inheriting the Global base. 5 services
+(`customers-service`, `genai-service`, `tracing-server`, `vets-service`,
+`visits-service`) also write an `on-profile: default` document, which
+Spring applies when no profile is active: part of their base, not a
+profile of its own ("Profile expressions in `on-profile`", P8). The
 8 services match the repository's file listing one to one, and
 `application.yml` never appears as a `sourceFile`: it is folded into every
 service as the Global layer. `eureka.client.serviceUrl.defaultZone:
@@ -222,14 +224,14 @@ checked without SCG's own code.
 | Repository | Findings | How it was checked | False negative found |
 |---|---|---|---|
 | `spring-petclinic` | 5 | Every file read; expected count derived by hand | No |
-| `spring-petclinic-microservices-config` | 53 | Every file read; expected count derived by hand | No |
+| `spring-petclinic-microservices-config` | 48 | Every file read; expected count derived by hand | No |
 | `spring-boot` | 76 | Independent greps, file by file, for the 8 rules that fired | No |
 | `spring-boot-admin` | 87 | Independent greps, file by file, for the 4 rules that fired | No |
 | `spring-cloud-stream-samples` | 47 | Every file with a password, secret or `security.protocol` read by hand | No |
 
 **The small repositories** were read in full, with the expected findings
 derived against every rule before comparing with SCG's output: 3 SCG001 +
-2 SCG006 = 5 in `spring-petclinic`; 37 SCG001 + 8 SCG006 + 8 SCG012 = 53
+2 SCG006 = 5 in `spring-petclinic`; 32 SCG001 + 8 SCG006 + 8 SCG012 = 48
 in `spring-petclinic-microservices-config`, as explained in their
 sections.
 
@@ -459,27 +461,28 @@ the configuration it builds for those active profiles has the console on,
 which is when it reports SCG002.
 
 Each cell is Spring / SCG: `on` or `off`; `—` when SCG builds no
-configuration for that set of active profiles (none matches its labels;
-several profiles active together are never modeled). Unless the row says
+configuration for that set of active profiles: several profiles active
+together are never evaluated, and a profile no file or expression names
+(`c` in P1) gets the base's configuration in Spring. Unless the row says
 otherwise, the base document has the console off and the conditioned
-document turns it on.
+document turns it on. `ProfileExpressionScenariosTest` pins every SCG cell.
 
 | # | Files | none | `a` | `b` | `a,b` | `c` | SCG's configurations |
 |---|---|---|---|---|---|---|---|
-| P1 | `on-profile: '!a'` | on / off | off / — | on / — | off / — | on / — | `!a` (on) |
-| P2 | `'a,b'` | off / off | on / — | on / — | on / — | off / — | `a,b` (on) |
-| P14 | `' a ,  b '` | off / off | on / — | on / — | | | `a ,  b` (on) |
-| P3 | `[a, b]` (YAML list); base **on**, the list's document off | on / **off** | off / — | off / — | off / — | on / — | base only |
-| P4 | `'a & b'` | off / off | off / — | off / — | on / — | off / — | `a & b` (on) |
-| P5 | `'a \| b'` | off / off | on / — | on / — | on / — | off / — | `a \| b` (on) |
-| P6 | `'(a & !b) \| c'` | off / off | on / — | off / — | off / — | on / — | `(a & !b) \| c` (on) |
-| P7 | `'!a, b'` | on / off | off / — | on / — | on / — | on / — | `!a, b` (on) |
-| P8 | `on-profile: default` | on / off | off / — | | | | `default` (on) |
-| P9 | `application-default.yml` | on / off | off / — | | | | `default` (on) |
-| P10 | base off, `on-profile: a` on, then another base document off | off / off | off / **on** | | | | `a` (on) |
-| P11 | `application.yml`: base off, `on-profile: a` on; `application.properties`: off | off / off | off / **on** | | | | `a` (on) |
-| P12 | `application-x.yml` with `on-profile: '!b'`, on (columns: none, `x`, `x,b`) | off / off | on / on | | off / — | | `x` (on) |
-| P13 | `'a & b \| c'` (columns: none, `c`) | app did not start / off | | | | app did not start / — | `a & b \| c` (on) |
+| P1 | `on-profile: '!a'` | on / on | off / off | on / — | off / — | on / — | base (on), `a` (off) |
+| P2 | `'a,b'` | off / off | on / on | on / on | on / — | off / — | base (off), `a`, `b` (on) |
+| P14 | `' a ,  b '` | off / off | on / on | on / on | | | base (off), `a`, `b` (on) |
+| P3 | `[a, b]` (YAML list); base **on**, the list's document off | on / on | off / off | off / off | off / — | on / — | base (on), `a`, `b` (off) |
+| P4 | `'a & b'` | off / off | off / off | off / off | on / — | off / — | base, `a`, `b` (off); the document is counted as not evaluated |
+| P5 | `'a \| b'` | off / off | on / on | on / on | on / — | off / — | base (off), `a`, `b` (on) |
+| P6 | `'(a & !b) \| c'` | off / off | on / on | off / off | off / — | on / on | base (off), `a` (on), `b` (off), `c` (on) |
+| P7 | `'!a, b'` | on / on | off / off | on / on | on / — | on / — | base (on), `a` (off), `b` (on) |
+| P8 | `on-profile: default` | on / on | off / — | | | | base (on) |
+| P9 | `application-default.yml` | on / on | off / — | | | | base (on) |
+| P10 | base off, `on-profile: a` on, then another base document off | off / off | off / off | | | | base, `a` (off) |
+| P11 | `application.yml`: base off, `on-profile: a` on; `application.properties`: off | off / off | off / off | | | | base, `a` (off) |
+| P12 | `application-x.yml` with `on-profile: '!b'`, on (columns: none, `x`, `x,b`) | off / off | on / on | | off / — | | base (off), `x` (on), `b` (off) |
+| P13 | `'a & b \| c'` (columns: none, `c`) | app did not start / input error | | | | app did not start / input error | none: exit code 2 |
 
 Spring reads the value as a list of profile expressions: a comma, or a
 YAML list (P3), means "any of", and spaces around the items are ignored
@@ -494,15 +497,32 @@ and `application.properties` overrides a conditioned document in
 extra condition (P12); Spring Boot 4.1.1 rejects only
 `spring.profiles.active` and `spring.profiles.default` there.
 
-SCG v1.16.0 takes the value as a literal profile name: every expression or
-list becomes a configuration named after the string, which applies the
-document to no real profile (P1, P2, P4–P7, P14), and a malformed one is
-accepted (P13). A YAML list isn't recognized at all, so its document is
-folded into the base: the console Spring turns on with no profile active is
-off in SCG's base, a false negative (P3). `default` is a profile of its own
-instead of part of the base (P8, P9). A conditioned document always wins
-over the base, whatever the order or the file (P10, P11). `BACKLOG.md`
-holds the decided change; these rows aren't pinned by tests yet.
+SCG evaluates the base with `default` active and one configuration per
+profile any file name or expression refers to, `default` excepted
+([ADR-012](ARCHITECTURE.md#adr-012-on-profile-evaluated-as-spring-boot-does-one-ordered-fold-per-set-of-active-profiles)),
+so every cell where it builds a configuration matches Spring's. Before
+2026-10-06 (v1.16.0 and earlier) it took the value as a literal profile
+name: an expression or a list became a configuration named after the
+string (P1, P2, P4–P7, P14), a YAML list was folded into the base, a false
+negative (P3), `default` was a profile of its own (P8, P9), a conditioned
+document always won (P10, P11), and a malformed value was accepted (P13).
+
+A Config Server repository's order (P15), measured as the Spring Cloud
+Config reference says the server resolves it, with
+`spring.config.name=application,svc`. Each key is set in several of
+`application.yml` (base, then a `dev` block), `svc.yml` (base, then a `dev`
+block) and `application-dev.yml`:
+
+| # | Active | `k1` | `k2` | `k3` | `k4` |
+|---|---|---|---|---|---|
+| P15 | none | `svc-base` | `app-base` | `svc-base` | `svc-base` |
+| P15 | `dev` | `svc-base` | `app-block` | `app-dev-file` | `app-dev-file` |
+
+Every document of `svc.yml`, its base included, overrides `application.yml`'s
+`dev` block (`k1`), and `application-dev.yml` overrides `svc.yml`'s `dev`
+block (`k4`). `ConfigServerAssembler` uses that order, pinned by
+`ConfigServerAssemblerTest` with the same files. Before 2026-10-06 it
+read only one `application*` file, whichever the file system listed last.
 
 The grammar's edge cases, measured with one document per value (the last
 part of the script). Each cell says whether Spring applied the document;
@@ -517,30 +537,35 @@ the columns are the active profiles.
 | E5 | `'a & (b \| c)'` | no | no | no | no | yes | no |
 | E6 | `'!(a \| b)'`, `'!a & !b'` | yes | no | no | yes | no | no |
 | E9 | `'Prod'` (columns: none, `prod`, `Prod`) | no | no | yes | | | |
+| E10 | `on-profile:` with no value, `~`, `""`, `[]`, or `on-profile=` in `.properties` (columns: none, `a`) | yes | yes | | | | |
 
 With `a b` active, the application didn't start: Spring Boot rejects the
 profile name (`Profile 'a b' must contain a letter, digit or allowed
 char`), so E2's document never applies. The application didn't start for E7 (`'!'`,
 `'a | !b & c'`: `Malformed profile expression`) and E8 (`'a,,b'`, `',a'`,
-`'a,'`, `' '`: `Invalid profile expression []: must contain text`).
+`'a,'`, `' '`, and the YAML list `[a, ""]`: `Invalid profile expression
+[]: must contain text`). E10: a null, empty or empty-list value is no
+condition at all, so the document always applies.
 
 This is Spring Framework's `ProfilesParser`: a space doesn't separate
 names, so `'a b'` is one profile named `a b`, which can't be activated
 (E2); a stray parenthesis or
 a dangling operator is tolerated (E3); an operator with nothing to apply
 to, `&` and `|` mixed without parentheses, or an empty list item stops the
-application (E7, E8), including a blank value, which SCG reads today as no
-condition at all; and names are case-sensitive (E9). SCG's
-`ProfileExpression` follows the same steps; `ProfileExpressionTest` pins
-P1, P2, P4–P8, P13, P14 and E1–E9 at the level of the expression, before
-it is used to build configurations.
+application (E7, E8), including a blank value; and names are
+case-sensitive (E9). SCG's `ProfileExpression` follows the same steps,
+pinned by `ProfileExpressionTest`; `ConfigLoader` reads E7 and E8 as an
+input error (exit code 2) and E10 as no condition, pinned by
+`ConfigLoaderTest`. SCG still builds a configuration for `a b` (E2), which
+Spring can't run.
 
 **In the reference projects** (application files at the pinned commits,
 counted on 2026-10-06):
 
 * `spring-petclinic-microservices-config`: five services start with an
-  `on-profile: default` document (P8). SCG builds a `default` configuration
-  for each, which repeats the service's SCG001 HIGH: 5 of the 53 findings.
+  `on-profile: default` document (P8), part of each service's base. Until
+  2026-10-06 SCG built a `default` configuration for each, which repeated
+  the service's SCG001 HIGH: 5 findings, now gone (53 to 48).
 * `spring-boot`: one expression, `goodbye | dev`, in a smoke test with no
   findings.
 * `spring-cloud-stream-samples`: two documents use the legacy
@@ -551,9 +576,13 @@ counted on 2026-10-06):
 * Of the candidate reference projects (`BACKLOG.md`), `jhipster-sample-app`
   writes `on-profile: '!api-docs'` (P1) and two `on-profile` documents
   (`dev`, `prod`) inside `application-secret-samples.yml` (P12), which
-  apply only when `secret-samples` and that profile are both active; SCG
-  applies them to `secret-samples` alone, where their blank
-  `spring.datasource.password` is its SCG006 INFO.
+  apply only when `secret-samples` and that profile are both active. Since
+  2026-10-06, the `'!api-docs'` block, which turns SpringDoc off, reaches
+  the base and the `dev`, `prod`, `secret-samples` and `tls` profiles, so
+  SCG008 is reported only for the `api-docs` configuration (25 to 20
+  findings); the two `secret-samples` documents, whose blank
+  `spring.datasource.password` was an SCG006 INFO of `secret-samples`, are
+  counted in the stderr warning instead.
 
 ## SCG001 exposure scenarios (`/actuator` comparison)
 

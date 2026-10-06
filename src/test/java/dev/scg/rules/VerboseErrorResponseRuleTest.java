@@ -3,6 +3,7 @@ package dev.scg.rules;
 import dev.scg.core.ConfigLoader;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
+import dev.scg.core.ConfigFileGrouper;
 import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.BeforeEach;
@@ -381,8 +382,8 @@ class VerboseErrorResponseRuleTest {
 
         private List<Finding> checkYaml(Path dir, String yaml) throws IOException {
             Files.writeString(dir.resolve("application.yml"), yaml);
-            return new ConfigLoader().loadDirectory(dir).stream()
-                    .flatMap(file -> new ProfileMerger().merge(file).stream())
+            return new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir)).stream()
+                    .flatMap(group -> new ProfileMerger().merge(group).stream())
                     .flatMap(config -> rule.check(config).stream())
                     .toList();
         }

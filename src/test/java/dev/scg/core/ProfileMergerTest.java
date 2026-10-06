@@ -32,7 +32,7 @@ class ProfileMergerTest {
                 new ConfigDocument(Optional.empty(), Map.of("server.port", "8080"))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         assertEquals(1, result.size());
         assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.getFirst().profileLabel());
@@ -47,12 +47,12 @@ class ProfileMergerTest {
                         "server.port", "8080",
                         "management.endpoint.env.enabled", "false"
                 ))),
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of(
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of(
                         "management.endpoints.web.exposure.include", "*"
                 )))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         assertEquals(2, result.size());
 
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
@@ -73,10 +73,10 @@ class ProfileMergerTest {
     void profileShouldOverrideScalarKeyThatAlsoExistsInBase() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("logging.level.root", "INFO"))),
-                new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
+                new ConfigDocument(activation("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         assertEquals("WARN", findByLabel(result, "prod").properties().get("logging.level.root"));
         assertEquals("INFO", findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().get("logging.level.root"));
@@ -95,10 +95,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("x.com", dev.properties().get("cors.allowed-origins[0]"));
@@ -126,10 +126,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("local", dev.properties().get("cors.origins[0].name"));
@@ -141,11 +141,11 @@ class ProfileMergerTest {
     @DisplayName("File where EVERY block declares a profile (no explicit base) should generate a base with an empty map")
     void fileWithoutExplicitBaseShouldGenerateBaseWithEmptyMap() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("server.port", "9090"))),
-                new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of("server.port", "9090"))),
+                new ConfigDocument(activation("prod"), new LinkedHashMap<>(Map.of("logging.level.root", "WARN")))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         assertEquals(3, result.size()); // empty base + dev + prod
         assertTrue(findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties().isEmpty());
@@ -161,11 +161,11 @@ class ProfileMergerTest {
         Map<String, String> baseProps = new LinkedHashMap<>(Map.of("a", "1"));
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("b", "2"))),
-                new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of("c", "3")))
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of("b", "2"))),
+                new ConfigDocument(activation("prod"), new LinkedHashMap<>(Map.of("c", "3")))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig prod = findByLabel(result, "prod");
@@ -183,15 +183,15 @@ class ProfileMergerTest {
                         "server.port", "8080",
                         "logging.level.root", "INFO"
                 ))),
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of(
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of(
                         "management.endpoints.web.exposure.include", "*"
                 ))),
-                new ConfigDocument(Optional.of("prod"), new LinkedHashMap<>(Map.of(
+                new ConfigDocument(activation("prod"), new LinkedHashMap<>(Map.of(
                         "logging.level.root", "WARN"
                 )))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         assertEquals(3, result.size()); // base + dev + prod
 
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
@@ -219,12 +219,12 @@ class ProfileMergerTest {
     void profileAddsNewListThatDoesNotExistInBase() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("server.port", "8080")),
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of(
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of(
                         "cors.origins[0]", "http://localhost"
                 )))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("8080", dev.properties().get("server.port"));
@@ -244,10 +244,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
@@ -276,10 +276,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals(2, dev.properties().size());
@@ -301,10 +301,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("explicit-value", dev.properties().get("cors.allowed-origins"));
@@ -327,10 +327,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("escalar-novo", dev.properties().get("cors.origins"));
@@ -341,48 +341,40 @@ class ProfileMergerTest {
 
 
     @Test
-    @DisplayName("KNOWN LIMITATION: if there are 2 base documents (violating the ConfigLoader invariant)," +
-            "only the first is used and the second is silently lost")
-    void twoBaseDocumentsOnlyFirstIsUsedSecondIsLost() {
+    @DisplayName("Two base documents both apply, the later one winning a key conflict, in the base and in a profile")
+    void twoBaseDocumentsShouldBothApplyInOrder() {
+        // Before ADR-012, ProfileMerger read only the first base document (ConfigLoader had
+        // already merged same-label documents, with putAll); now the fold applies both, in order.
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
-                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("a", "1"))),
-                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("b", "2"))), // ignored
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("c", "3")))
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("a", "1", "shared", "first"))),
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("b", "2", "shared", "second"))),
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of("c", "3")))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        // WONT FIX: this violates the invariant that ConfigLoader
-        // guarantees in practice (it never provides 2 documents with an empty
-        // profile in the same ConfigFile). This test documents the CURRENT
-        // behavior of ProfileMerger under this violation — it is not the desired behavior.
-        // See backlog item "findBaseProperties silently loses data
-        // if the single-base-document invariant is violated".
-        assertEquals("1", base.properties().get("a"));
-        assertNull(base.properties().get("b"), "'b' from the second base document is lost — known, unfixed behavior");
-
-        assertEquals("1", dev.properties().get("a"));
-        assertNull(dev.properties().get("b"), "'b' never reaches the dev profile because it never reached the base");
-        assertEquals("3", dev.properties().get("c"));
+        assertEquals(Map.of("a", "1", "b", "2", "shared", "second"), base.properties());
+        assertEquals(Map.of("a", "1", "b", "2", "shared", "second", "c", "3"), dev.properties());
     }
 
     @Test
-    @DisplayName("Base document positioned after named profiles should still be found and used as the base, regardless of order")
-    void baseAfterProfilesShouldBeFoundRegardlessOfOrder() {
+    @DisplayName("P10: a base document after a profile document overrides it, as documents apply in file order")
+    void baseDocumentAfterProfileDocumentShouldOverrideIt() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
-                new ConfigDocument(Optional.of("dev"), new LinkedHashMap<>(Map.of("x", "1"))),
-                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("base-only", "true")))
+                new ConfigDocument(activation("dev"), new LinkedHashMap<>(Map.of("x", "1", "shared", "from-dev"))),
+                new ConfigDocument(Optional.empty(), new LinkedHashMap<>(Map.of("base-only", "true", "shared", "from-base")))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
-        assertEquals("true", base.properties().get("base-only"));
-        assertEquals("true", dev.properties().get("base-only"), "dev should inherit base-only even though the base comes later in the list");
+        assertEquals(Map.of("base-only", "true", "shared", "from-base"), base.properties());
         assertEquals("1", dev.properties().get("x"));
+        assertEquals("true", dev.properties().get("base-only"));
+        assertEquals("from-base", dev.properties().get("shared"), "The later base document wins over the earlier dev one");
     }
 
     @Test
@@ -391,10 +383,10 @@ class ProfileMergerTest {
         Map<String, String> profileProps = new LinkedHashMap<>(Map.of("x", "1"));
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
-                new ConfigDocument(Optional.of("dev"), profileProps)
+                new ConfigDocument(activation("dev"), profileProps)
         ));
 
-        merger.merge(file);
+        merge(file);
 
         assertEquals(1, profileProps.size());
         assertEquals("1", profileProps.get("x"));
@@ -404,10 +396,10 @@ class ProfileMergerTest {
     void effectiveConfigShouldBeProtectedAgainstExternalMutation() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
-                new ConfigDocument(Optional.of("dev"), Map.of("x", "1"))
+                new ConfigDocument(activation("dev"), Map.of("x", "1"))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
         EffectiveConfig dev = findByLabel(result, "dev");
 
@@ -431,10 +423,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("prod"), prodProps)
+                new ConfigDocument(activation("prod"), prodProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
@@ -456,10 +448,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("novo.com", dev.properties().get("cors.allowed-origins[0]"));
@@ -476,10 +468,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
@@ -503,10 +495,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("prod"), prodProps)
+                new ConfigDocument(activation("prod"), prodProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
         EffectiveConfig base = findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL);
 
@@ -519,10 +511,10 @@ class ProfileMergerTest {
     void profileExplicitlyNamedBaseNoLongerCollidesWithSyntheticLabel() {
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), Map.of("a", "1")),
-                new ConfigDocument(Optional.of("base"), Map.of("b", "2"))
+                new ConfigDocument(activation("base"), Map.of("b", "2"))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         assertEquals(2, result.size());
 
@@ -546,10 +538,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("prod"), prodProps)
+                new ConfigDocument(activation("prod"), prodProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
 
         assertEquals("minha-app", prod.properties().get("headers.x-app-name"),
@@ -570,10 +562,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertTrue(dev.properties().containsKey("app.feature-x.enabled"), "The key should exist in the map");
@@ -592,10 +584,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertFalse(dev.properties().containsKey("db.connection.timeout"));
@@ -613,10 +605,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), Map.of("server.port", "9090"))
+                new ConfigDocument(activation("dev"), Map.of("server.port", "9090"))
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
 
         for (String label : List.of(ProfileMerger.BASE_PROFILE_LABEL, "dev")) {
             Map<String, String> properties = findByLabel(result, label).properties();
@@ -641,10 +633,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        Map<String, String> dev = findByLabel(merger.merge(file), "dev").properties();
+        Map<String, String> dev = findByLabel(merge(file), "dev").properties();
 
         assertEquals("false", dev.get("debug"));
         assertEquals("", dev.get("app.x"));
@@ -664,10 +656,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("*", dev.properties().get("management.endpoints.web.exposure.include[0]"));
@@ -687,10 +679,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("dev"), devProps)
+                new ConfigDocument(activation("dev"), devProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig dev = findByLabel(result, "dev");
 
         assertEquals("overrideItem", dev.properties().get("myCustomList[0]"));
@@ -709,10 +701,10 @@ class ProfileMergerTest {
 
         ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
                 new ConfigDocument(Optional.empty(), baseProps),
-                new ConfigDocument(Optional.of("prod"), prodProps)
+                new ConfigDocument(activation("prod"), prodProps)
         ));
 
-        List<EffectiveConfig> result = merger.merge(file);
+        List<EffectiveConfig> result = merge(file);
         EffectiveConfig prod = findByLabel(result, "prod");
 
         // The two keys should not coexist — only the resolution via
@@ -723,6 +715,68 @@ class ProfileMergerTest {
                 "Base and overlay represent the SAME Spring property — only one key should survive");
         assertEquals("false", RelaxedProperties.get(prod.properties(), "spring.h2.console.enabled"),
                 "the profile value should take precedence over the inherited base value");
+    }
+
+    @Test
+    @DisplayName("Every profile name an expression refers to is a configuration, a negated one included; default is not")
+    void expressionNamesShouldBeConfigurationsExceptDefault() {
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("k", "base")),
+                new ConfigDocument(activation("!api-docs"), Map.of("springdoc.api-docs.enabled", "false")),
+                new ConfigDocument(activation("default | (a & !b)"), Map.of("k", "expression"))
+        ));
+
+        List<EffectiveConfig> result = merge(file);
+
+        assertEquals(List.of(ProfileMerger.BASE_PROFILE_LABEL, "api-docs", "a", "b"),
+                result.stream().map(EffectiveConfig::profileLabel).toList());
+        assertEquals(Map.of("k", "expression", "springdoc.api-docs.enabled", "false"),
+                findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).properties(), "default is active in the base");
+        assertEquals(Map.of("k", "base"), findByLabel(result, "api-docs").properties());
+        assertEquals("expression", findByLabel(result, "a").properties().get("k"));
+        assertEquals("base", findByLabel(result, "b").properties().get("k"));
+    }
+
+    @Test
+    @DisplayName("A document only a combination of profiles activates is listed as not evaluated, and applied to no configuration")
+    void documentForACombinationShouldBeListedAsNotEvaluated() {
+        ConfigDocument combination = new ConfigDocument(activation("a & b"), Map.of("k", "both"));
+        ConfigFile file = new ConfigFile(FAKE_PATH, List.of(
+                new ConfigDocument(Optional.empty(), Map.of("k", "base")),
+                new ConfigDocument(activation("a"), Map.of("k", "a")),
+                combination
+        ));
+        GroupedConfigFile group = new GroupedConfigFile(FAKE_PATH, ConfigFileGrouper.sourceDocuments(file, Optional.empty()));
+
+        assertEquals(List.of(combination), merger.documentsNotEvaluated(group).stream().map(SourceDocument::document).toList());
+        assertTrue(merger.merge(group).stream().noneMatch(config -> "both".equals(config.properties().get("k"))));
+    }
+
+    @Test
+    @DisplayName("Source file: a profile's is the last applied file naming it; otherwise, and for the base, the last applied file")
+    void sourceFileShouldBeTheLastAppliedFileNamingTheProfile() {
+        Path yml = Path.of("application.yml");
+        Path properties = Path.of("application.properties");
+        List<SourceDocument> documents = List.of(
+                new SourceDocument(yml, Optional.empty(), new ConfigDocument(Optional.empty(), Map.of("k", "1"))),
+                new SourceDocument(yml, Optional.empty(), new ConfigDocument(activation("prod"), Map.of("k", "2"))),
+                new SourceDocument(yml, Optional.empty(), new ConfigDocument(activation("!api-docs"), Map.of("k", "3"))),
+                new SourceDocument(properties, Optional.empty(), new ConfigDocument(Optional.empty(), Map.of("j", "4"))));
+
+        List<EffectiveConfig> result = merger.merge(new GroupedConfigFile(yml, documents));
+
+        assertEquals(properties, findByLabel(result, ProfileMerger.BASE_PROFILE_LABEL).sourceFile());
+        assertEquals(yml, findByLabel(result, "prod").sourceFile(), "the prod block is in application.yml");
+        assertEquals(properties, findByLabel(result, "api-docs").sourceFile(), "no applied document names api-docs");
+    }
+
+    private static Optional<ProfileExpression> activation(String onProfile) {
+        return Optional.of(ProfileExpression.parse(onProfile));
+    }
+
+    /** The configurations of a group made of this one file, with no profile in its name. */
+    private List<EffectiveConfig> merge(ConfigFile file) {
+        return merger.merge(new GroupedConfigFile(file.path(), ConfigFileGrouper.sourceDocuments(file, Optional.empty())));
     }
 
     private EffectiveConfig findByLabel(List<EffectiveConfig> configs, String label) {

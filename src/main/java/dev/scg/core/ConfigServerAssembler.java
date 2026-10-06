@@ -4,12 +4,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -18,13 +17,25 @@ import java.util.stream.Stream;
  * client, and every other {@code .yml}/{@code .yaml}/{@code .properties} file is one service's own
  * config, keyed by its filename (without extension) as the service name.
  * <p>
+ * Each service is one {@link GroupedConfigFile}, evaluated by {@link ProfileMerger} like a
+ * directory in the regular mode (ARCHITECTURE.md, ADR-012). Its documents, lowest precedence
+ * first: the Global files without a profile in their name, then the service's files, then the
+ * Global profile-specific files ({@code application-{profile}.ext}); within each, {@code .yaml}
+ * &lt; {@code .yml} &lt; {@code .properties}, and a file's documents in the order written. The
+ * Spring Cloud Config reference says the server resolves {@code application.yml} and
+ * {@code foo.yml} as a standalone Spring Boot application with
+ * {@code spring.config.name=application,foo} would; that order was measured that way, against
+ * Spring Boot 4.1.1 (VALIDATION.md, "Profile expressions in {@code on-profile}", P15): every
+ * document of the service's file overrides the Global file's, {@code on-profile} blocks included,
+ * and {@code application-dev.yml} overrides both.
+ * <p>
  * Deliberately does NOT split a filename into {@code {service}-{profile}} parts the way
  * {@link ConfigFileGrouper} splits {@code application-{profile}}: unlike the fixed
  * {@code "application"} prefix, a service name is arbitrary and routinely contains hyphens itself
  * (e.g. {@code customers-service}), so {@code customers-service-mysql.yml} can't be split into
  * service + profile without already knowing the set of valid service names. Profiles for a service
  * are only read from {@code spring.config.activate.on-profile} documents inside that service's own
- * file — the same mechanism {@link ConfigLoader} already handles.
+ * file, and from the Global files.
  * <p>
  * Deliberately not recursive, unlike {@link ConfigLoader#loadDirectory}: a Config Server repository
  * is conventionally a single flat directory, and walking subdirectories risks picking up unrelated
@@ -36,72 +47,60 @@ public final class ConfigServerAssembler {
     private final ProfileMerger profileMerger = new ProfileMerger();
 
     public List<EffectiveConfig> assemble(Path repoDir) throws IOException {
-        List<ConfigFile> topLevelFiles = loadTopLevelFiles(repoDir);
+        return assemble(group(repoDir));
+    }
 
-        ConfigFile global = null;
-        Map<String, ConfigFile> byService = new LinkedHashMap<>();
-        for (ConfigFile file : topLevelFiles) {
-            if (isGlobalFile(file.path())) {
-                global = file; // a second application*.ext present would silently win-last; not handled, same as elsewhere in this codebase (e.g. ProfileMerger.findBaseProperties).
-            } else {
-                byService.put(serviceName(file.path()), file);
-            }
-        }
-
-        Map<String, String> globalBase = global == null ? Map.of() : profileMerger.findBaseProperties(global);
-
+    /**
+     * Every configuration of each service. Its source file is always the service's own file, the
+     * one that names the service in the report, even for a value set in a Global file.
+     */
+    public List<EffectiveConfig> assemble(List<GroupedConfigFile> services) {
         List<EffectiveConfig> result = new ArrayList<>();
-        for (ConfigFile serviceFile : byService.values()) {
-            Map<String, String> serviceBase = profileMerger.findBaseProperties(serviceFile);
-            result.add(new EffectiveConfig(
-                    serviceFile.path(),
-                    ProfileMerger.BASE_PROFILE_LABEL,
-                    profileMerger.mergeProperties(globalBase, serviceBase)
-            ));
-
-            Set<String> profiles = new LinkedHashSet<>(namedProfiles(global));
-            profiles.addAll(namedProfiles(serviceFile));
-
-            for (String profile : profiles) {
-                // Cascade precedence, lowest to highest (confirmed against the Spring Cloud Config
-                // reference doc: "the server creates an Environment from application.yml (shared)
-                // and foo.yml (with foo.yml taking precedence)... these same rules apply in a
-                // standalone Spring Boot application" -- i.e. spring.config.name=application,{app}):
-                // Global-base < Global-profile < Service-base < Service-profile.
-                Map<String, String> effective = Stream.of(
-                        globalBase,
-                        profileProperties(global, profile),
-                        serviceBase,
-                        profileProperties(serviceFile, profile)
-                ).reduce(Map.of(), profileMerger::mergeProperties);
-
-                result.add(new EffectiveConfig(serviceFile.path(), profile, effective));
+        for (GroupedConfigFile service : services) {
+            for (EffectiveConfig config : profileMerger.merge(service)) {
+                result.add(new EffectiveConfig(service.path(), config.profileLabel(), config.properties()));
             }
         }
         return result;
     }
 
-    private static Set<String> namedProfiles(ConfigFile file) {
-        if (file == null) {
-            return Set.of();
+    /** One group per service, its path the service's highest-precedence file. */
+    public List<GroupedConfigFile> group(Path repoDir) throws IOException {
+        List<ConfigFile> globalFiles = new ArrayList<>();
+        Map<String, List<ConfigFile>> byService = new LinkedHashMap<>();
+        for (ConfigFile file : loadTopLevelFiles(repoDir)) {
+            if (isGlobalFile(file.path())) {
+                globalFiles.add(file);
+            } else {
+                byService.computeIfAbsent(serviceName(file.path()), name -> new ArrayList<>()).add(file);
+            }
         }
-        Set<String> profiles = new LinkedHashSet<>();
-        for (ConfigDocument document : file.documents()) {
-            document.profile().ifPresent(profiles::add);
-        }
-        return profiles;
-    }
+        globalFiles.sort(Comparator
+                .comparing((ConfigFile file) -> ConfigFileGrouper.profileFromFilename(file.path()).orElse(""))
+                .thenComparingInt(file -> ConfigFileGrouper.extensionRank(file.path()))
+                .thenComparing(file -> file.path().getFileName().toString()));
 
-    /** ConfigLoader already merges same-labeled documents within one file, so at most one matches. */
-    private static Map<String, String> profileProperties(ConfigFile file, String profile) {
-        if (file == null) {
-            return Map.of();
+        List<GroupedConfigFile> result = new ArrayList<>();
+        for (List<ConfigFile> serviceFiles : byService.values()) {
+            serviceFiles.sort(Comparator.comparingInt(file -> ConfigFileGrouper.extensionRank(file.path())));
+            List<SourceDocument> documents = new ArrayList<>();
+            for (ConfigFile global : globalFiles) {
+                if (ConfigFileGrouper.profileFromFilename(global.path()).isEmpty()) {
+                    documents.addAll(ConfigFileGrouper.sourceDocuments(global, Optional.empty()));
+                }
+            }
+            for (ConfigFile serviceFile : serviceFiles) {
+                documents.addAll(ConfigFileGrouper.sourceDocuments(serviceFile, Optional.empty()));
+            }
+            for (ConfigFile global : globalFiles) {
+                Optional<String> profile = ConfigFileGrouper.profileFromFilename(global.path());
+                if (profile.isPresent()) {
+                    documents.addAll(ConfigFileGrouper.sourceDocuments(global, profile));
+                }
+            }
+            result.add(new GroupedConfigFile(serviceFiles.getLast().path(), documents));
         }
-        return file.documents().stream()
-                .filter(document -> document.profile().equals(Optional.of(profile)))
-                .findFirst()
-                .map(ConfigDocument::properties)
-                .orElse(Map.of());
+        return result;
     }
 
     private List<ConfigFile> loadTopLevelFiles(Path repoDir) throws IOException {
@@ -113,6 +112,7 @@ public final class ConfigServerAssembler {
             List<Path> candidates = paths
                     .filter(Files::isRegularFile)
                     .filter(ConfigServerAssembler::isConfigFile)
+                    .sorted()
                     .toList();
             for (Path p : candidates) {
                 result.add(configLoader.loadFile(p));

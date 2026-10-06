@@ -1,16 +1,21 @@
 package dev.scg.core;
 
 import java.nio.file.Path;
-import java.util.Map;
+import java.util.List;
 
 /**
- * Result of ConfigFileGrouper grouping: a synthetic ConfigFile
- * (documents combined from all physical files in the same group,
- * ready for ProfileMerger.merge()) plus a traceability map
- * that keeps track, for each profileLabel, which physical file
- * originated that profile — used to correct EffectiveConfig.sourceFile()
- * after the merge, since ConfigFile only has a single Path and the group
- * may have originated from multiple files.
+ * One Spring Boot configuration unit, the result of ConfigFileGrouper (one
+ * directory) or ConfigServerAssembler (one service): every document of its
+ * files, in Spring Boot's source order, lowest precedence first. ProfileMerger
+ * folds, in this order, the documents that apply to each set of active
+ * profiles it evaluates.
+ *
+ * @param path      the representative path, used as the source file when no document applies
+ * @param documents the documents in ascending precedence
  */
-public record GroupedConfigFile(ConfigFile mergedFile, Map<String, Path> sourceByProfileLabel) {
+public record GroupedConfigFile(Path path, List<SourceDocument> documents) {
+
+    public GroupedConfigFile {
+        documents = List.copyOf(documents);
+    }
 }

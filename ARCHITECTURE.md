@@ -84,7 +84,10 @@ at that point, extracting a shared source stops being speculative.
 ## ADR-002: Config Server Mode as a Separate Assembler, Not a Branch in the Existing Pipeline
 
 ### Status
-Accepted
+Accepted. Since ADR-012, the assembler groups each service's documents in
+source order (Global files without a profile, the service's files, Global
+`application-{profile}` files) and `ProfileMerger` folds them, instead of
+the four-layer cascade below; the rest of this decision holds.
 
 ### Context
 A Spring Cloud Config Server backing repository (confirmed against a real
@@ -186,7 +189,9 @@ without guessing) is the likely next step, not filename heuristics.
 ## ADR-003: Folding Multiple Physical Sources of the Same Profile Label Before Merging
 
 ### Status
-Accepted
+Superseded by ADR-012, which folds every document that applies to a set of
+active profiles in source order, instead of a fold per profile label. The
+precedences below still hold, as part of that order.
 
 ### Context
 A `/actuator/env` benchmark against a real Spring Boot app (see
@@ -965,3 +970,106 @@ A client is found that reads a credential from a form `EmbeddedCredentials`
 doesn't know, or a value shape turns out to match non-credentials in real
 configurations.
 
+---
+
+## ADR-012: `on-profile` Evaluated as Spring Boot Does: One Ordered Fold per Set of Active Profiles
+
+### Status
+Accepted. Supersedes ADR-003, and ADR-002's four-layer cascade.
+
+### Context
+`ConfigLoader` took the value of `spring.config.activate.on-profile` as a
+literal profile name, and each profile's configuration was the base plus
+the documents carrying that exact label (ADR-003). Spring Boot reads the
+value as a list of profile expressions and applies every document whose
+expression matches the active profiles, in source order. Measured against
+Spring Boot 4.1.1 through `/actuator/env` (`VALIDATION.md`, "Profile
+expressions in `on-profile`", P1–P15, E1–E10), that left five divergences:
+
+* **Expressions** (`'!api-docs'`, `'a,b'`, `'a | b'`) became a profile
+  named after the string, which applied the document to no real profile.
+  jhipster's `'!api-docs'` block, which turns SpringDoc off, reached none
+  of its real profiles.
+* **A YAML list** (`on-profile: [a, b]`) wasn't recognized, so its
+  document was folded into the base: a false negative.
+* **`default`** (`on-profile: default`, `application-default.yml`) became
+  a profile of its own, while Spring applies it when no profile is active.
+* **Document order** was ignored: a base document after a profile document
+  wins in Spring, while in SCG the profile always won.
+* **File precedence** was ignored for `on-profile` blocks: an
+  `on-profile: a` block in `application.yml` loses to
+  `application.properties` in Spring.
+
+Config Server Mode had its own variant of the problem: every
+`application*` file was "the" Global file, so with `application.yml` and
+`application-dev.yml` side by side, whichever the file system listed last
+was used for every service, and the other was lost.
+
+### Decision
+One rule replaces the per-label folds, in both modes:
+
+* `ConfigLoader` keeps every document in file order, with its
+  `on-profile` parsed into a `ProfileExpression` (a YAML list is the
+  comma-separated list it binds to). A null, empty or empty-list value is
+  no condition; a blank value, an empty list item or a malformed
+  expression is an input error (exit code 2), since Spring refuses to
+  start.
+* `ConfigFileGrouper` puts a directory's documents in Spring Boot's source
+  order: files without a profile in their name, then
+  `application-{profile}` files; `.yaml` < `.yml` < `.properties` within
+  each; a file's documents as written. A document of
+  `application-{profile}` applies only when that profile is active, and
+  its own `on-profile`, if any, must match too. `ConfigServerAssembler`
+  builds the same list per service: Global files without a profile, the
+  service's files, then Global `application-{profile}` files, the order
+  Spring Boot gives `spring.config.name=application,svc` (P15).
+* `ProfileMerger` evaluates the base, with `{default}` active, and one
+  configuration per known profile P, with `{P}` active. The known profiles
+  are every name the conditions refer to, file names and expressions,
+  names only negated included (`api-docs` in `!api-docs`), except
+  `default`. Each configuration is the fold, in source order, of every
+  document that applies, with the same pairwise merge as before
+  (`mergeWithoutStrippingSentinels`, sentinels stripped at the end).
+* A document only a combination of profiles activates (`a & b`, or an
+  `on-profile` inside `application-x.yml` naming another profile) applies
+  to no evaluated configuration; `Main` counts such documents in a stderr
+  warning, as it does for `spring.config.import`.
+* A configuration's source file is where it is most likely fixed: for a
+  profile, the file of the last applied document whose condition names
+  it; otherwise, and for the base, the file of the last applied document.
+  In Config Server Mode it stays the service's file.
+
+SCG parses expressions itself, following Spring Framework's
+`ProfilesParser` step by step, instead of depending on `spring-core`; the
+benchmark is the oracle.
+
+### Consequences
+
+**Positive**
+* For every set of active profiles SCG evaluates, the console value in all
+  fourteen fixtures matches Spring Boot's (`ProfileExpressionScenariosTest`
+  pins each row).
+* One merge path: there is no per-label fold left to get out of step with
+  the final merge, and documents of one file now merge with it too: a list
+  a later document redefines replaces the earlier one, where `ConfigLoader`
+  used to combine same-label documents key by key (`putAll`), leaving
+  indices of the earlier list behind.
+* Config Server Mode reads `application-{profile}` Global files, and a
+  service written in two formats keeps both files.
+
+**Negative / Trade-offs**
+* Profile labels change for projects that use expressions, lists or
+  `default`: a policy entry naming `default` or an expression string stops
+  matching. A profile named only in an expression is a configuration of
+  its own and repeats the base's findings, as every profile does.
+* Several profiles active together are still not evaluated; their
+  documents are only counted in the warning, so a risk only such a
+  combination sets is not reported.
+* A name Spring Boot refuses to activate (`a b`, E2) still becomes a
+  configuration, which can't run in Spring.
+
+### Revisit if
+A benchmark run on a newer Spring Boot version disagrees with a row of
+`VALIDATION.md`, "Profile expressions in `on-profile`", or profile groups
+(`spring.profiles.group`), which activate several profiles from one, are
+taken up (`BACKLOG.md`).

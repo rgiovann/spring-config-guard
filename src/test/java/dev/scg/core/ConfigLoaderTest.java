@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -403,7 +404,7 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docsA.size(), "the final '---' alone should not generate a ghost document");
-        assertTrue(docsA.getFirst().profile().isEmpty());
+        assertTrue(activation(docsA.getFirst()).isEmpty());
         assertEquals("8080", docsA.getFirst().properties().get("server.port"));
 
         // Sub-case B: two consecutive "---" (empty document in the middle of the file)
@@ -424,9 +425,9 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(2, docsB.size(), "the empty block between the two '---' should be ignored, not become a document");
-        assertTrue(docsB.get(0).profile().isEmpty());
+        assertTrue(activation(docsB.get(0)).isEmpty());
         assertEquals("8080", docsB.get(0).properties().get("server.port"));
-        assertEquals(Optional.of("dev"), docsB.get(1).profile());
+        assertEquals(Optional.of("dev"), activation(docsB.get(1)));
         assertEquals("*", docsB.get(1).properties().get("management.endpoints.web.exposure.include"));
     }
 
@@ -444,10 +445,10 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(2, docs.size());
-        assertTrue(docs.get(0).profile().isEmpty());
+        assertTrue(activation(docs.get(0)).isEmpty());
         assertEquals("8080", docs.get(0).properties().get("server.port"));
 
-        assertEquals(Optional.of("dev"), docs.get(1).profile());
+        assertEquals(Optional.of("dev"), activation(docs.get(1)));
         assertEquals("*", docs.get(1).properties().get("management.endpoints.web.exposure.include"));
     }
 
@@ -468,8 +469,8 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(2, docs.size());
-        assertTrue(docs.get(0).profile().isEmpty());
-        assertEquals(Optional.of("dev"), docs.get(1).profile());
+        assertTrue(activation(docs.get(0)).isEmpty());
+        assertEquals(Optional.of("dev"), activation(docs.get(1)));
         assertEquals("*", docs.get(1).properties().get("management.endpoints.web.exposure.include"));
 
         // Critical point of the original bug: without the "dev" profile, exposure.include=*
@@ -478,8 +479,10 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("Should merge two .properties blocks that share the same named profile")
-    void twoPropertiesBlocksWithSameProfileShouldBeMerged(@TempDir Path tempDir) throws IOException {
+    @DisplayName("Should keep two .properties blocks that share the same named profile as two documents, in file order")
+    void twoPropertiesBlocksWithSameProfileShouldStaySeparateInFileOrder(@TempDir Path tempDir) throws IOException {
+        // Documents are never merged by label at load time: which ones apply, and in which order,
+        // is decided per set of active profiles by ProfileMerger (ADR-012).
         List<ConfigDocument> docs = parseProperties(tempDir, """
             #---
             spring.config.activate.on-profile=dev
@@ -489,10 +492,11 @@ class ConfigLoaderTest {
             management.endpoints.web.exposure.include=*
             """);
 
-        assertEquals(1, docs.size());
-        assertEquals(Optional.of("dev"), docs.getFirst().profile());
-        assertEquals("9090", docs.getFirst().properties().get("server.port"));
-        assertEquals("*", docs.getFirst().properties().get("management.endpoints.web.exposure.include"));
+        assertEquals(2, docs.size());
+        assertEquals(Optional.of("dev"), activation(docs.get(0)));
+        assertEquals(Map.of("server.port", "9090"), docs.get(0).properties());
+        assertEquals(Optional.of("dev"), activation(docs.get(1)));
+        assertEquals(Map.of("management.endpoints.web.exposure.include", "*"), docs.get(1).properties());
     }
 
     @Test
@@ -504,7 +508,7 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().profile().isEmpty());
+        assertTrue(activation(docs.getFirst()).isEmpty());
         assertTrue(docs.getFirst().properties().isEmpty());
     }
 
@@ -517,7 +521,7 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().profile().isEmpty());
+        assertTrue(activation(docs.getFirst()).isEmpty());
         assertEquals("8080", docs.getFirst().properties().get("server.port"));
         assertEquals("MeuApp", docs.getFirst().properties().get("app.name"));
     }
@@ -589,7 +593,7 @@ class ConfigLoaderTest {
             """);
 
         ConfigDocument prodDocument = documents.stream()
-                .filter(doc -> doc.profile().equals(Optional.of("prod")))
+                .filter(doc -> activation(doc).equals(Optional.of("prod")))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Document with profile 'prod' was not recognized"));
 
@@ -631,6 +635,98 @@ class ConfigLoaderTest {
     }
 
 
+
+    @Test
+    @DisplayName("Should read a YAML-list on-profile as the comma-separated list it binds to (P3)")
+    void yamlListOnProfileShouldBeReadAsCommaSeparatedList(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseYaml(tempDir, "list", """
+            key: base
+            ---
+            spring.config.activate.on-profile: [a, b]
+            key: listed
+            """);
+
+        assertEquals(2, docs.size());
+        ProfileExpression expression = docs.get(1).activation().orElseThrow();
+        assertEquals("a,b", expression.text());
+        assertTrue(expression.matches(Set.of("a")));
+        assertTrue(expression.matches(Set.of("b")));
+        assertFalse(expression.matches(Set.of("default")));
+        assertEquals(Map.of("key", "listed"), docs.get(1).properties(),
+                "No on-profile[0]/[1] key should be left among the properties");
+    }
+
+    @Test
+    @DisplayName("Should keep two YAML documents with the same on-profile apart, and a later base document after them (P10)")
+    void yamlDocumentsShouldStayInFileOrder(@TempDir Path tempDir) throws IOException {
+        List<ConfigDocument> docs = parseYaml(tempDir, "order", """
+            key: first
+            ---
+            spring.config.activate.on-profile: a
+            key: a-1
+            ---
+            spring.config.activate.on-profile: a
+            other: a-2
+            ---
+            key: last
+            """);
+
+        assertEquals(List.of(Optional.empty(), Optional.of("a"), Optional.of("a"), Optional.empty()),
+                docs.stream().map(ConfigLoaderTest::activation).toList());
+        assertEquals("last", docs.get(3).properties().get("key"));
+    }
+
+    @Test
+    @DisplayName("E10: a null, empty or empty-list on-profile is no condition, as in Spring Boot")
+    void nullOrEmptyOnProfileShouldBeNoCondition(@TempDir Path tempDir) throws IOException {
+        for (String value : List.of("", " ~", " null", " \"\"", " []")) {
+            List<ConfigDocument> docs = parseYaml(tempDir, "e10-" + value.hashCode(),
+                    "spring.config.activate.on-profile:" + value + "\nkey: value\n");
+
+            assertEquals(Optional.empty(), activation(docs.getFirst()), "on-profile:" + value);
+            assertEquals(Map.of("key", "value"), docs.getFirst().properties(), "on-profile:" + value);
+        }
+
+        Path propertiesDir = tempDir.resolve("e10-properties");
+        Files.createDirectories(propertiesDir);
+        List<ConfigDocument> properties = parseProperties(propertiesDir, "spring.config.activate.on-profile=\nkey=value\n");
+        assertEquals(Optional.empty(), activation(properties.getFirst()));
+        assertEquals(Map.of("key", "value"), properties.getFirst().properties());
+    }
+
+    @Test
+    @DisplayName("E7, E8, P13: a blank, malformed or empty-item on-profile is an input error naming the file, as Spring refuses to start")
+    void invalidOnProfileShouldBeAnInputError(@TempDir Path tempDir) throws IOException {
+        for (String value : List.of(" \" \"", " 'a & b | c'", " '!'", " 'a,,b'", " [a, \"\"]")) {
+            Path dir = tempDir.resolve("invalid-" + Math.abs(value.hashCode()));
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve("application.yml"),
+                    "key: base\n---\nspring.config.activate.on-profile:" + value + "\nkey: value\n");
+
+            IOException error = assertThrows(IOException.class, () -> new ConfigLoader().loadDirectory(dir),
+                    "on-profile:" + value);
+            assertTrue(error.getMessage().contains("spring.config.activate.on-profile"), error.getMessage());
+            assertTrue(error.getMessage().contains("application.yml"), error.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("An on-profile key with a bracket that isn't a list index is left among the properties, without failing")
+    void onProfileWithAnOddBracketShouldNotFail(@TempDir Path tempDir) throws IOException {
+        for (String key : List.of("[]", "[0", "[99999999999]")) {
+            Path dir = tempDir.resolve("odd-" + Math.abs(key.hashCode()));
+            Files.createDirectories(dir);
+            List<ConfigDocument> docs = parseProperties(dir,
+                    "spring.config.activate.on-profile" + key + "=prod\nserver.port=1\n");
+
+            assertEquals(Optional.empty(), activation(docs.getFirst()), key);
+            assertEquals("prod", docs.getFirst().properties().get("spring.config.activate.on-profile" + key), key);
+        }
+    }
+
+    private static Optional<String> activation(ConfigDocument document) {
+        return document.activation().map(ProfileExpression::text);
+    }
 
     private Map<String, String> parse(Path tempDir, String yamlContent) throws IOException {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);

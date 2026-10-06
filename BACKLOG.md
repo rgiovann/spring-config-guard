@@ -19,8 +19,9 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the findings from the candidate reference projects,
-then the GitHub Action, then the one item of new coverage with a real case.
+Done in this order: profile groups, then the rest of the findings from the
+candidate reference projects, then the GitHub Action, then the one item of
+new coverage with a real case.
 Everything else waits in Deferred for a real case or a need.
 
 ### Findings from the candidate reference projects
@@ -33,108 +34,40 @@ jar on 2026-10-06. Each has a finding to settle before it is added to
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
 
-#### `on-profile` evaluated as Spring does (core, planned)
+#### Profile groups (core, next)
 
-`ConfigLoader` takes the value of `spring.config.activate.on-profile` as a
-literal profile name, and each profile's configuration is the base plus the
-documents carrying that exact label. Spring reads the value as a list of
-profile expressions (`!`, `&`, `|`, parentheses; a comma or a YAML list
-means "any of") and applies every document whose expression matches the
-active profiles, in source order: files by precedence (non-profile files,
-`.properties` over YAML, then profile-specific files), documents in file
-order. With no profile active, the `default` profile is active.
+`on-profile` is now evaluated as Spring does (ADR-012), with one
+configuration per single active profile. `spring.profiles.group` makes one
+profile activate others, and SCG doesn't read it. jhipster declares
+`group.dev: [secret-samples, api-docs]`: with `dev` active, Spring also
+activates `api-docs`, so its `'!api-docs'` block doesn't apply and SpringDoc
+is on, but SCG evaluates `dev` alone, with the block applied, and no longer
+reports SCG008 MEDIUM there (v1.16.0 did, by accident: it read
+`'!api-docs'` as a profile of its own). The two `dev`/`prod` documents of
+`application-secret-samples.yml` apply under `dev` the same way, and are
+only counted in the combinations warning. Measured on 2026-10-06 with a
+minimal fixture against Spring Boot 4.1.1: `group.dev: [api-docs]`, the H2
+console on in the base and off under `'!api-docs'`; with `dev` active,
+Spring has it on and SCG off.
 
-Measured on 2026-10-06 against Spring Boot 4.1.1 (`/actuator/env`) and the
-v1.16.0 jar, five divergences, all reproduced:
-
-* **D1, expressions**: `'!api-docs'`, `'a,b'`, `'a | b'`,
-  `'(a & !b) | c'` each become a profile named after the string, and the
-  document applies to no real profile. jhipster's `application.yml` turns
-  SpringDoc off under `'!api-docs'`; SCG reports SpringDoc enabled
-  (SCG008 MEDIUM) in the base and in `dev`, `prod`, `secret-samples` and
-  `tls`, and repeats the base's SCG001 HIGH and SCG013 INFO under a
-  `!api-docs` profile that doesn't exist.
-* **D2, YAML list** (`on-profile: [a, b]`): the keys become
-  `on-profile[0]`/`[1]`, which SCG doesn't recognize, so the document is
-  folded into the base. A false negative: a base with
-  `spring.h2.console.enabled: true` and an `[a, b]` block setting `false`
-  reports nothing.
-* **D3, `default`**: `on-profile: default` and `application-default.yml`
-  apply when no profile is active, i.e. to SCG's base; SCG makes them a
-  profile named `default`.
-* **D4, document order**: a base document after a profile document in the
-  same file wins over it in Spring; in SCG the profile always wins.
-* **D5, file precedence**: an `on-profile: a` block in `application.yml`
-  loses to the base of `application.properties` in Spring; in SCG the
-  block wins.
-
-Also measured: spaces around list items are ignored; `'a & b | c'` makes
-the application fail to start (`Malformed profile expression`); and
-`on-profile` inside `application-x.yml` is accepted as an extra condition.
-Spring Boot 4.1.1 rejects only `spring.profiles.active` and
-`spring.profiles.default` in a profile-specific file, so the
-`ConfigFileGrouper` Javadoc, which says `on-profile` is rejected there, is
-wrong.
-
-**Decided** (the maintainer, 2026-10-06): one rule fixes D1 to D5. For
-each directory SCG evaluates the base, with active profiles `{default}`,
-and one configuration per known profile P, with active profiles `{P}`. The
-known profiles are the names of `application-{P}.*` files and every name an
-expression references, except `default`. A configuration is the ordered
-fold, with `ProfileMerger`'s existing merge, of every document with no
-`on-profile` or whose expression matches, in Spring's source order. This
-supersedes ADR-003's separate base and per-label folds. Choices taken:
-
-* SCG parses expressions itself (a small `ProfileExpression`), without
-  depending on `spring-core`; the benchmark is the oracle.
-* A document only a combination of profiles activates (`a & b`) isn't
-  evaluated, and a coverage warning on stderr says so, as for
-  `spring.config.import`.
-* A malformed expression is an input error (exit code 2), as invalid YAML
-  is, since Spring refuses to start.
-* A profile named only in a negation (`api-docs` from `!api-docs`) is a
-  configuration of its own.
-* `default` belongs to the base; a policy entry naming `default` stops
-  matching (release note).
-* D4 and D5 are fixed in the same change.
-* Config Server Mode applies the same selection: the Global file, then the
-  service's file.
-
-Effects to expect: profile labels change for projects using expressions,
-lists or `default` (a **Detection changes** entry); profiles named only in
-expressions add configurations, and so repeated findings. Predicted from
-the uses counted in `VALIDATION.md` ("Profile expressions in
-`on-profile`"), not measured: `spring-petclinic-microservices-config` loses
-the 5 SCG001 HIGH of its `default` configurations (53 to 48 findings);
-jhipster loses its `!api-docs` configuration, SCG008 leaves its base and
-four real profiles, a new `api-docs` configuration reports it, and the two
-`dev`/`prod` documents of `application-secret-samples.yml`, which only a
-combination activates, move from the SCG006 INFO of `secret-samples` to the
-new warning.
-
-Phases, one commit each. Done: the evidence (the scenario script and its
-fixtures in `spring-env-benchmark/`, the results with the uses in the
-reference projects in `VALIDATION.md`) and `ProfileExpression`, which
-follows Spring's `ProfilesParser` and is pinned by `ProfileExpressionTest`,
-not yet used by the pipeline. Left, the change itself: `ConfigLoader` keeps
-every document in file order with its parsed expression (and the YAML-list
-form); `ConfigFileGrouper` orders sources instead of folding by label;
-`ProfileMerger` computes the targets and folds; `ConfigServerAssembler`;
-the warning in `Main`. With ADR-012, README, `CLAUDE.md` ("Architecture"),
-the `ConfigFileGrouper` and `ConfigLoader` Javadoc, tests pinning the
-`VALIDATION.md` rows, and the before/after on the reference corpus, the
-demo fixtures and the three candidates. Two points for it, found with the
-grammar: a blank `on-profile` stops a Spring Boot application (E8), while
-`ConfigLoader` reads it as no condition, so it becomes a malformed value
-(exit code 2) like the others; and `on-profile:` with no value at all (a
-YAML null) wasn't measured, so measure it first.
+The change: the configuration of a profile P is evaluated with P and the
+profiles its group activates. Measure first: the order of the group's
+profile-specific files, nested groups, a group declared in a
+profile-specific file or an `on-profile` document, and
+`spring.profiles.include`. Done right after ADR-012, before a release, so
+none ships with the jhipster regression. Of the reference projects, only
+jhipster (a candidate) declares a group.
 
 Left out, each waiting for a real case: `spring.profiles.default` written
 in configuration (it renames the default profile);
+`spring.profiles.active` written in configuration (10 files in 4 of the
+projects, e.g. `active: [secure]` in seven `spring-boot-admin` samples): it
+is overridden at runtime, and SCG still evaluates every profile, so its
+effect is mostly a base configuration that doesn't run unless overridden;
 `spring.config.activate.on-cloud-platform`, another activation condition,
 ignored today, so its documents are folded into the base; the legacy
 `spring.profiles` key (two documents in `spring-cloud-stream-samples`),
-likewise folded into the base; several profiles active together.
+likewise folded into the base.
 
 #### SCG006: a secret pattern in a map key
 

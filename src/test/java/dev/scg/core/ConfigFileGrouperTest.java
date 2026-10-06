@@ -8,8 +8,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 
 class ConfigFileGrouperTest {
@@ -37,15 +41,18 @@ class ConfigFileGrouperTest {
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
         assertThat(groups).hasSize(1);
-        assertThat(groups.getFirst().mergedFile().documents()).hasSize(2);
+        assertThat(groups.getFirst().documents())
+                .extracting(SourceDocument::file, SourceDocument::fileProfile)
+                .containsExactly(
+                        tuple(dir.resolve("application.yml"), Optional.empty()),
+                        tuple(dir.resolve("application-prod.yml"), Optional.of("prod")));
     }
 
     @Test
-    @DisplayName("Should derive the profile from the file name, ignoring the internal on-profile")
-    void shouldDeriveProfileFromFileNameIgnoringInternalOnProfile(@TempDir Path dir) throws IOException {
-        // Simulates the confirmed scenario: on-profile inside a specific file
-        // is invalid in real Spring, but our parser can still read the YAML.
-        // The file name should take precedence, not the content.
+    @DisplayName("P12: an on-profile inside a profile-specific file is an extra condition, on top of the file's profile")
+    void onProfileInsideProfileSpecificFileShouldBeAnExtraCondition(@TempDir Path dir) throws IOException {
+        // Spring Boot 4.1.1 accepts on-profile in application-x.yml and applies the document only
+        // when both the file's profile and the expression match (VALIDATION.md, P12).
         Files.writeString(dir.resolve("application.yml"), "server.port: 8080");
         Files.writeString(dir.resolve("application-staging.yml"), """
                 spring:
@@ -55,16 +62,12 @@ class ConfigFileGrouperTest {
                 custom.key: value
                 """);
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigFile merged = groups.getFirst().mergedFile();
+        SourceDocument staging = grouper.group(loader.loadDirectory(dir)).getFirst().documents().getLast();
 
-        boolean hasStagingLabel = merged.documents().stream()
-                .anyMatch(doc -> doc.profile().equals(java.util.Optional.of("staging")));
-        boolean hasOnProfileValueAsLabel = merged.documents().stream()
-                .anyMatch(doc -> doc.profile().equals(java.util.Optional.of("outro-nome-qualquer")));
-
-        assertThat(hasStagingLabel).isTrue();
-        assertThat(hasOnProfileValueAsLabel).isFalse();
+        assertThat(staging.fileProfile()).contains("staging");
+        assertThat(staging.appliesTo(Set.of("staging"))).isFalse();
+        assertThat(staging.appliesTo(Set.of("another-name"))).isFalse();
+        assertThat(staging.appliesTo(Set.of("staging", "another-name"))).isTrue();
     }
 
     @Test
@@ -87,11 +90,11 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application.yml"), "base.key: valor");
         Files.writeString(dir.resolve("application-dev.yml"), "dev.key: valor");
 
-        GroupedConfigFile group = grouper.group(loader.loadDirectory(dir)).getFirst();
+        List<EffectiveConfig> configs = merge(dir);
 
-        assertThat(group.sourceByProfileLabel().get(ProfileMerger.BASE_PROFILE_LABEL))
+        assertThat(configFor(configs, ProfileMerger.BASE_PROFILE_LABEL).sourceFile())
                 .isEqualTo(dir.resolve("application.yml"));
-        assertThat(group.sourceByProfileLabel().get("dev"))
+        assertThat(configFor(configs, "dev").sourceFile())
                 .isEqualTo(dir.resolve("application-dev.yml"));
     }
 
@@ -106,10 +109,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application.yml"), "from.yaml: valor-yaml");
         Files.writeString(dir.resolve("application.properties"), "from.properties=valor-properties");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument base = onlyBaseDocument(groups.get(0));
-
-        assertThat(base.properties())
+        assertThat(properties(dir, ProfileMerger.BASE_PROFILE_LABEL))
                 .containsEntry("from.yaml", "valor-yaml")
                 .containsEntry("from.properties", "valor-properties");
     }
@@ -120,10 +120,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application.yml"), "shared.key: from-yaml");
         Files.writeString(dir.resolve("application.properties"), "shared.key=from-properties");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument base = onlyBaseDocument(groups.getFirst());
-
-        assertThat(base.properties()).containsEntry("shared.key", "from-properties");
+        assertThat(properties(dir, ProfileMerger.BASE_PROFILE_LABEL)).containsEntry("shared.key", "from-properties");
     }
 
     @Test
@@ -133,10 +130,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application-prod.yml"), "from.yaml: valor-yaml");
         Files.writeString(dir.resolve("application-prod.properties"), "from.properties=valor-properties");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties())
+        assertThat(properties(dir, "prod"))
                 .containsEntry("from.yaml", "valor-yaml")
                 .containsEntry("from.properties", "valor-properties");
     }
@@ -148,10 +142,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-yaml");
         Files.writeString(dir.resolve("application-prod.properties"), "shared.key=from-properties");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties()).containsEntry("shared.key", "from-properties");
+        assertThat(properties(dir, "prod")).containsEntry("shared.key", "from-properties");
     }
 
     @Test
@@ -162,10 +153,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application.yml"), "shared.key: from-yml");
         Files.writeString(dir.resolve("application.yaml"), "shared.key: from-yaml");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument base = onlyBaseDocument(groups.getFirst());
-
-        assertThat(base.properties()).containsEntry("shared.key", "from-yml");
+        assertThat(properties(dir, ProfileMerger.BASE_PROFILE_LABEL)).containsEntry("shared.key", "from-yml");
     }
 
     @Test
@@ -175,10 +163,7 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-yml");
         Files.writeString(dir.resolve("application-prod.yaml"), "shared.key: from-yaml");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties()).containsEntry("shared.key", "from-yml");
+        assertThat(properties(dir, "prod")).containsEntry("shared.key", "from-yml");
     }
 
     @Test
@@ -187,7 +172,7 @@ class ConfigFileGrouperTest {
         // This and the next test encode a precedence rule the official Spring
         // Boot docs don't cover -- confirmed empirically against a real
         // Spring Boot 4.1.1 app via /actuator/env (spring-env-benchmark; see
-        // ARCHITECTURE.md, ADR-003), not assumed.
+        // ARCHITECTURE.md, ADR-012), not assumed.
         Files.writeString(dir.resolve("application.yml"), """
                 base.key: valor
                 ---
@@ -200,10 +185,7 @@ class ConfigFileGrouperTest {
                 """);
         Files.writeString(dir.resolve("application-prod.yml"), "from.named-file: valor-named-file");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties())
+        assertThat(properties(dir, "prod"))
                 .containsEntry("from.on-profile-block", "valor-on-profile")
                 .containsEntry("from.named-file", "valor-named-file");
     }
@@ -222,10 +204,7 @@ class ConfigFileGrouperTest {
                 """);
         Files.writeString(dir.resolve("application-prod.yml"), "shared.key: from-named-file");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties()).containsEntry("shared.key", "from-named-file");
+        assertThat(properties(dir, "prod")).containsEntry("shared.key", "from-named-file");
     }
 
     @Test
@@ -241,10 +220,7 @@ class ConfigFileGrouperTest {
                 from.on-profile-block: valor-on-profile
                 """);
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties()).containsEntry("from.on-profile-block", "valor-on-profile");
+        assertThat(properties(dir, "prod")).containsEntry("from.on-profile-block", "valor-on-profile");
     }
 
     @Test
@@ -262,26 +238,25 @@ class ConfigFileGrouperTest {
         Files.writeString(dir.resolve("application-prod.yaml"), "app.other: value-a");
         Files.writeString(dir.resolve("application-prod.yml"), "app.nullable: null");
 
-        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
-        ConfigDocument prod = onlyDocumentForProfile(groups.getFirst(), "prod");
-
-        assertThat(prod.properties())
+        assertThat(properties(dir, "prod"))
                 .containsEntry("app.other", "value-a")
                 .containsEntry("app.nullable", "");
     }
 
-    private ConfigDocument onlyBaseDocument(GroupedConfigFile group) {
-        return onlyDocumentMatching(group, doc -> doc.profile().isEmpty());
+    private List<EffectiveConfig> merge(Path dir) throws IOException {
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+        assertThat(groups).hasSize(1);
+        return new ProfileMerger().merge(groups.getFirst());
     }
 
-    private ConfigDocument onlyDocumentForProfile(GroupedConfigFile group, String profile) {
-        return onlyDocumentMatching(group, doc -> doc.profile().equals(java.util.Optional.of(profile)));
+    private Map<String, String> properties(Path dir, String label) throws IOException {
+        return configFor(merge(dir), label).properties();
     }
 
-    private ConfigDocument onlyDocumentMatching(GroupedConfigFile group, java.util.function.Predicate<ConfigDocument> predicate) {
-        List<ConfigDocument> matches = group.mergedFile().documents().stream().filter(predicate).toList();
+    private static EffectiveConfig configFor(List<EffectiveConfig> configs, String label) {
+        List<EffectiveConfig> matches = configs.stream().filter(config -> config.profileLabel().equals(label)).toList();
         assertThat(matches).hasSize(1);
-        return matches.get(0);
+        return matches.getFirst();
     }
 
     @Test
@@ -296,5 +271,34 @@ class ConfigFileGrouperTest {
 
         assertThat(groups).hasSize(1); // should not throw an exception
     }
-}
 
+    @Test
+    @DisplayName("Should order files as Spring Boot does: no profile in the name first, then .yaml < .yml < .properties, then profile files")
+    void shouldOrderFilesAsSpringBootDoes(@TempDir Path dir) throws IOException {
+        for (String name : List.of("application-b.properties", "application-a.yml", "application.properties",
+                "application.yaml", "application.yml", "application-a.properties")) {
+            Files.writeString(dir.resolve(name), "key: " + name);
+        }
+
+        List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
+
+        assertThat(groups.getFirst().documents())
+                .extracting(document -> document.file().getFileName().toString())
+                .containsExactly("application.yaml", "application.yml", "application.properties",
+                        "application-a.yml", "application-a.properties", "application-b.properties");
+    }
+
+    @Test
+    @DisplayName("P11: application.properties overrides an on-profile block of application.yml, as it comes later in source order")
+    void propertiesBaseShouldOverrideOnProfileBlockOfYml(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("application.yml"), """
+                shared.key: from-yml
+                ---
+                spring.config.activate.on-profile: a
+                shared.key: from-yml-block
+                """);
+        Files.writeString(dir.resolve("application.properties"), "shared.key=from-properties");
+
+        assertThat(properties(dir, "a")).containsEntry("shared.key", "from-properties");
+    }
+}

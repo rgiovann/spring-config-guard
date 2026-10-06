@@ -193,15 +193,21 @@ Each stage has a deliberately narrow responsibility. Preserve these
 boundaries unless there is a concrete architectural reason to change them.
 
 `ConfigLoader` handles file discovery (skipping `src/test/` and Maven/Gradle
-build output, see ARCHITECTURE.md ADR-006), YAML/properties parsing and
-per-file profile documents.
-It does not merge base and profile configurations.
+build output, see ARCHITECTURE.md ADR-006), YAML/properties parsing, and
+splits each file into its documents, in file order, with each document's
+`spring.config.activate.on-profile` parsed into a `ProfileExpression`.
+It never merges documents.
 
-`ConfigFileGrouper` groups `application.yml` with corresponding
-`application-{profile}.yml` files in the same directory.
+`ConfigFileGrouper` groups `application.yml` with the
+`application-{profile}.yml` files in the same directory, and puts their
+documents in Spring Boot's source order (ADR-012).
 
-`ProfileMerger` performs base/profile merging according to the project's
-implemented Spring configuration semantics.
+`ProfileMerger` evaluates the base (Spring's `default` profile active) and
+one configuration per profile the files or expressions name, each the fold,
+in source order, of the documents that apply (ADR-012). Several profiles
+active together are not evaluated; a document only such a combination
+activates is counted in a stderr warning. `ConfigServerAssembler` builds the
+same ordered documents per service in Config Server Mode.
 SCG doesn't know the Java type a property binds to. A key written as a
 scalar in one source and as a map or object in another (`app.x` vs.
 `app.x.y`) keeps both shapes, as Spring's `Environment` does; Spring picks

@@ -3,6 +3,7 @@ package dev.scg.rules;
 import dev.scg.core.ConfigLoader;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
+import dev.scg.core.ConfigFileGrouper;
 import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
@@ -84,8 +85,8 @@ class H2ConsoleExposedRuleTest {
     void unquotedYamlOnIsHigh(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("application.yml"), "spring.h2.console.enabled: on\n");
 
-        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
-                .flatMap(file -> new ProfileMerger().merge(file).stream())
+        List<Finding> findings = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir)).stream()
+                .flatMap(group -> new ProfileMerger().merge(group).stream())
                 .flatMap(config -> rule.check(config).stream())
                 .toList();
 
@@ -98,8 +99,8 @@ class H2ConsoleExposedRuleTest {
     void trailingSpaceThroughTheLoaderIsSilent(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("application.properties"), "spring.h2.console.enabled=true \n");
 
-        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
-                .flatMap(file -> new ProfileMerger().merge(file).stream())
+        List<Finding> findings = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir)).stream()
+                .flatMap(group -> new ProfileMerger().merge(group).stream())
                 .flatMap(config -> rule.check(config).stream())
                 .toList();
 

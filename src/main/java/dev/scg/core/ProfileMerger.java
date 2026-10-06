@@ -1,20 +1,29 @@
 package dev.scg.core;
 
+import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Merges the base document (without a profile) from a ConfigFile with each
- * named profile document, producing one EffectiveConfig per profile found
- * + always one EffectiveConfig for the base alone ("no active profile").
- * ConfigLoader already guarantees that there is at most 1 ConfigDocument per
- * profile label (duplicate documents with the same label have already been
- * merged there). ProfileMerger does not need to handle this case — it only
- * combines the base with one profile at a time.
+ * Builds the EffectiveConfigs of one GroupedConfigFile, as Spring Boot would
+ * resolve them (ARCHITECTURE.md, ADR-012): one for no active profile, labeled
+ * {@link #BASE_PROFILE_LABEL}, and one per known profile P, labeled P. Each is the
+ * fold, in the group's source order, of every document that applies when those
+ * profiles are active: with none active, Spring activates the {@code default}
+ * profile, so the base is evaluated with {@code {default}}; profile P with
+ * {@code {P}}.
  * <p>
- * Merge rule: a scalar key from the profile overrides the one from the base;
- * an entire list (identified by the prefix before the first '[') is REPLACED,
- * never merged index by index — this reflects the actual Spring runtime
- * behavior, where redefining a list discards the previous list completely.
+ * The known profiles are every name the group's conditions refer to (file names
+ * like application-prod.yml and {@code on-profile} expressions, including names
+ * only negated, as {@code api-docs} in {@code !api-docs}), except {@code default},
+ * which belongs to the base. Several profiles active together are not evaluated;
+ * {@link #documentsNotEvaluated} lists the documents only such a combination
+ * activates.
+ * <p>
+ * Merge rule (between two documents of the fold): a scalar key from the later
+ * document overrides the earlier one; an entire list (identified by the prefix
+ * before the first '[') is REPLACED, never merged index by index — this reflects
+ * the actual Spring runtime behavior, where redefining a list discards the
+ * previous list completely.
  */
 public final class ProfileMerger {
 
@@ -32,6 +41,9 @@ public final class ProfileMerger {
      */
     public static final String BASE_PROFILE_LABEL = "__spring_config_guard_base__";
 
+    /** The profile Spring Boot activates when no profile is active. */
+    static final String DEFAULT_PROFILE = "default";
+
     /**
      * The value of a key written as a YAML null ({@code debug:}, {@code debug: ~}): an empty string,
      * as Spring Boot's {@code OriginTrackedYamlLoader} loads it (checked in 4.1.1). The key stays
@@ -40,64 +52,77 @@ public final class ProfileMerger {
      */
     static final String NULL_VALUE = "";
 
-    public List<EffectiveConfig> merge(ConfigFile configFile) {
-        Map<String, String> baseProperties = findBaseProperties(configFile);
-
+    /**
+     * The base configuration first, then one per known profile.
+     * <p>
+     * Each one's source file is where its configuration is most likely fixed: for a profile P,
+     * the file of the last applied document whose condition names P; otherwise, and for the
+     * base, the file of the last applied document.
+     */
+    public List<EffectiveConfig> merge(GroupedConfigFile group) {
         List<EffectiveConfig> result = new ArrayList<>();
-        result.add(new EffectiveConfig(
-                configFile.path(),
-                BASE_PROFILE_LABEL,
-                Collections.unmodifiableMap(stripInternalSentinels(baseProperties))
-        ));
-
-        for (ConfigDocument document : configFile.documents()) {
-            if (document.profile().isEmpty()) {
-                continue;
-            }
-            String profileLabel = document.profile().get();
-            Map<String, String> merged = mergeProperties(baseProperties, document.properties());
-            result.add(new EffectiveConfig(configFile.path(), profileLabel, Collections.unmodifiableMap(merged)));
+        result.add(evaluate(group, Set.of(DEFAULT_PROFILE), BASE_PROFILE_LABEL, Optional.empty()));
+        for (String profile : knownProfiles(group)) {
+            result.add(evaluate(group, Set.of(profile), profile, Optional.of(profile)));
         }
-
         return result;
     }
 
-    /** Package-visible so ConfigServerAssembler can reuse this for both the Global and each service file. */
-    Map<String, String> findBaseProperties(ConfigFile configFile) {
-        for (ConfigDocument document : configFile.documents()) {
-            if (document.profile().isEmpty()) {
-                return document.properties();
+    /**
+     * The conditioned documents that apply to none of the configurations {@link #merge} builds:
+     * those only several profiles active together activate ({@code a & b}, or an
+     * {@code on-profile} inside application-x.yml naming another profile).
+     */
+    public List<SourceDocument> documentsNotEvaluated(GroupedConfigFile group) {
+        List<Set<String>> evaluated = new ArrayList<>();
+        evaluated.add(Set.of(DEFAULT_PROFILE));
+        knownProfiles(group).forEach(profile -> evaluated.add(Set.of(profile)));
+        return group.documents().stream()
+                .filter(SourceDocument::isConditional)
+                .filter(document -> evaluated.stream().noneMatch(document::appliesTo))
+                .toList();
+    }
+
+    private static Set<String> knownProfiles(GroupedConfigFile group) {
+        Set<String> profiles = new LinkedHashSet<>();
+        group.documents().forEach(document -> profiles.addAll(document.profileNames()));
+        profiles.remove(DEFAULT_PROFILE);
+        return profiles;
+    }
+
+    private EffectiveConfig evaluate(GroupedConfigFile group, Set<String> activeProfiles,
+                                     String label, Optional<String> profile) {
+        Map<String, String> folded = null;
+        Path lastApplied = group.path();
+        Path lastNamingProfile = null;
+        for (SourceDocument document : group.documents()) {
+            if (!document.appliesTo(activeProfiles)) {
+                continue;
+            }
+            Map<String, String> properties = document.document().properties();
+            // The first document starts the fold as written, so a null's key takes its sentinel's place.
+            folded = folded == null ? new LinkedHashMap<>(properties) : mergeWithoutStrippingSentinels(folded, properties);
+            lastApplied = document.file();
+            if (profile.isPresent() && document.profileNames().contains(profile.get())) {
+                lastNamingProfile = document.file();
             }
         }
-        return Map.of();
+        Path sourceFile = lastNamingProfile != null ? lastNamingProfile : lastApplied;
+        Map<String, String> properties = folded == null ? Map.of() : stripInternalSentinels(folded);
+        return new EffectiveConfig(sourceFile, label, Collections.unmodifiableMap(properties));
     }
 
     /**
-     * Merges base + overlay (profile document). Scalar keys from the
-     * overlay override those from the base. List keys (format "root[n]"
-     * or "root[n].subkey") in the overlay cause the entire list for that root
-     * to be REMOVED from the base before the overlay is applied — no orphaned
-     * base index is left mixed with the new overlay index.
+     * Merges an earlier document's properties (base) with a later one's (overlay), for
+     * {@link #merge}'s ordered fold. Scalar keys from the overlay override those from the base.
+     * List keys (format "root[n]" or "root[n].subkey") in the overlay cause the entire list for
+     * that root to be REMOVED from the base before the overlay is applied — no orphaned base index
+     * is left mixed with the new overlay index. An explicit-null override resolves to
+     * {@link #NULL_VALUE} immediately.
      * <p>
-     * Package-visible (not private) so {@code ConfigServerAssembler} can reuse this exact
-     * pairwise merge semantics as the building block for its 4-layer cascade
-     * (Global-base/Global-profile/Service-base/Service-profile), instead of duplicating
-     * list-replacement/purge behavior in a second implementation.
-     */
-    Map<String, String> mergeProperties(Map<String, String> base, Map<String, String> overlay) {
-        return stripInternalSentinels(mergeWithoutStrippingSentinels(base, overlay));
-    }
-
-    /**
-     * Same merge/purge logic as {@link #mergeProperties}, but does not strip
-     * the internal sentinel keys from the result. Used by {@code ConfigFileGrouper}
-     * to fold multiple physical sources of the SAME precedence tier (e.g. two
-     * files naming the same profile) into one document, without losing
-     * sentinel information that the later, real {@link #merge} pass against
-     * the true base still needs: an empty-list sentinel folded away here
-     * would otherwise never trigger the purge of a conflicting base list at
-     * that later pass. An explicit-null override still resolves to
-     * {@link #NULL_VALUE} immediately (that part isn't deferrable).
+     * The internal sentinel keys are kept, and stripped only once the fold is complete: an
+     * empty-list sentinel stripped mid-fold would never purge a conflicting list of an earlier
+     * document at a later step.
      */
     Map<String, String> mergeWithoutStrippingSentinels(Map<String, String> base, Map<String, String> overlay) {
         Map<String, String> merged = new LinkedHashMap<>(base);

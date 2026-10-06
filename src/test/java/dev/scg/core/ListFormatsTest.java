@@ -116,7 +116,7 @@ class ListFormatsTest {
     private static List<Finding> scg001(Path dir) throws IOException {
         List<EffectiveConfig> configs = new ArrayList<>();
         for (GroupedConfigFile group : new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir))) {
-            configs.addAll(new ProfileMerger().merge(group.mergedFile()));
+            configs.addAll(new ProfileMerger().merge(group));
         }
         return new RuleEngine(RuleRegistry.discoverRules()).run(configs).stream()
                 .filter(finding -> finding.ruleId().equals("SCG001"))

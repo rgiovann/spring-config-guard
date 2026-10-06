@@ -220,7 +220,7 @@ class BracketedMapKeysTest {
     private static List<EffectiveConfig> effectiveConfigs(Path dir) throws IOException {
         List<EffectiveConfig> result = new ArrayList<>();
         for (GroupedConfigFile group : new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir))) {
-            result.addAll(new ProfileMerger().merge(group.mergedFile()));
+            result.addAll(new ProfileMerger().merge(group));
         }
         return result;
     }

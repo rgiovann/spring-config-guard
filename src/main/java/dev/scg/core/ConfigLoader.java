@@ -15,24 +15,19 @@ import java.nio.charset.StandardCharsets;
  * (application*.properties / application*.yml / .yaml) within a directory,
  * flattening each one into one (or more) Map<String,String> of dotted key -> value.
  * <p>
- * A YAML file can contain multiple documents separated by "---", each
- * optionally associated with a profile via spring.config.activate.on-profile.
- * loadYaml returns one ConfigDocument per profile label FOUND in the file
- * (documents without a profile — including multiple such documents — are all
- * merged into the same "base"; documents with the same named profile are also
- * merged together).
+ * A file can contain multiple documents ("---" in YAML, "#---" or "!---" in
+ * .properties), each optionally conditioned by spring.config.activate.on-profile.
+ * Each document becomes one ConfigDocument, in file order, with its condition
+ * parsed into a {@link ProfileExpression}; documents are never merged here.
  * <p>
- * Important: this method does NOT merge base with profile — that is the
- * responsibility of ProfileMerger, which consumes the List<ConfigDocument>
- * produced here.
+ * Important: this class does NOT decide which documents apply or merge them —
+ * that is the responsibility of ConfigFileGrouper (source order) and
+ * ProfileMerger (the fold per set of active profiles).
  */
 public final class ConfigLoader {
 
     /** Spring metadata key indicating which profile a document belongs to. */
     private static final String ON_PROFILE_KEY = "spring.config.activate.on-profile";
-
-    /** Internal label used in the grouping structure to represent "no profile" (base). */
-    private static final String BASE_LABEL = "";
 
     /**
      * Sentinel key suffix emitted when YAML explicitly defines an
@@ -155,32 +150,26 @@ public final class ConfigLoader {
 
     private List<ConfigDocument> loadProperties(Path p) throws IOException {
         List<String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
-
-        // Intermediate structure for grouping documents by profile
-        Map<String, List<Map<String, String>>> groupedByLabel = new LinkedHashMap<>();
-
+        List<ConfigDocument> documents = new ArrayList<>();
         StringBuilder currentDocBuilder = new StringBuilder();
 
         for (String line : lines) {
             // Spring Boot requires the separator to be exactly '#---' or "!---"
             // (ignoring surrounding whitespace) (Spring Boot docs)
             if (line.trim().equals("#---") || line.trim().equals("!---"))  {
-                processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
+                addPropertiesDocument(p, currentDocBuilder.toString(), documents);
                 currentDocBuilder.setLength(0); // Clear the buffer for the next document
             } else {
                 currentDocBuilder.append(line).append("\n");
             }
         }
         // Process the last (or only) block of the file
-        processPropertiesDocument(currentDocBuilder.toString(), groupedByLabel);
+        addPropertiesDocument(p, currentDocBuilder.toString(), documents);
 
-        return buildConfigDocuments(groupedByLabel);
+        return atLeastOneDocument(documents);
     }
 
-    private void processPropertiesDocument(
-            String rawContent,
-            Map<String, List<Map<String, String>>> groupedByLabel
-    ) throws IOException {
+    private void addPropertiesDocument(Path p, String rawContent, List<ConfigDocument> documents) throws IOException {
         if (rawContent.isBlank()) {
             return;
         }
@@ -196,77 +185,21 @@ public final class ConfigLoader {
         for (String name : props.stringPropertyNames()) {
             flatDocument.put(normalizeMapKeys(name), props.getProperty(name));
         }
-
-        // Extracts the profile using relaxed binding — spring.config.activate.on-profile,
-        // onProfile, ON_PROFILE, etc. are the same key for the actual Spring implementation.
-        Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
-        String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
-        String label = (profileValue == null || profileValue.isBlank())
-                ? BASE_LABEL
-                : profileValue.strip();
-
-        // Remove the actual infrastructure key (it may not be the literal ON_PROFILE_KEY)
-        // to avoid polluting the linting rules
-        onProfileActualKey.ifPresent(flatDocument::remove);
-
-        groupedByLabel
-                .computeIfAbsent(label, key -> new ArrayList<>())
-                .add(flatDocument);
-    }
-
-    private List<ConfigDocument> buildConfigDocuments(
-            Map<String, List<Map<String, String>>> groupedByLabel
-    ) {
-        List<ConfigDocument> result = new ArrayList<>();
-
-        for (var entry : groupedByLabel.entrySet()) {
-            String label = entry.getKey();
-            List<Map<String, String>> mapsForLabel = entry.getValue();
-
-            Map<String, String> merged = new LinkedHashMap<>();
-            for (Map<String, String> flatDocument : mapsForLabel) {
-                merged.putAll(flatDocument); // Last value wins in case of duplicate keys within the same profile
-            }
-
-            Optional<String> profile = label.equals(BASE_LABEL)
-                    ? Optional.empty()
-                    : Optional.of(label);
-
-            result.add(new ConfigDocument(profile, merged));
-        }
-
-        // Maintains the invariant: every ConfigFile has at least 1 ConfigDocument
-        if (result.isEmpty()) {
-            result.add(new ConfigDocument(Optional.empty(), new LinkedHashMap<>()));
-        }
-
-        return result;
+        documents.add(toDocument(p, flatDocument));
     }
 
     /**
-     * Loads a YAML file that may contain multiple documents ("---"),
-     * returning one ConfigDocument per distinct profile label found.
-     * <p>
-     * Step A/B/C (per raw document): flattens, extracts
-     * spring.config.activate.on-profile — missing key and present-but-blank
-     * value are both treated as base, without distinguishing the two. This is
-     * a syntax/config-quality nuance, not a security risk, and is deliberately
-     * out of this project's scope (same boundary as profile boolean
-     * expressions and multi-profile activation). Removes the metadata key
-     * from the flattened map.
-     * <p>
-     * Step D (grouping): documents with the SAME label (including multiple "base"
-     * documents) are merged together, in the order they appear in the file —
-     * the last value for a duplicate key wins, the same rule already used
-     * for duplicate keys within a single document.
+     * Loads a YAML file that may contain multiple documents ("---"), returning
+     * one ConfigDocument per non-empty document, in file order. Documents are
+     * never merged here, not even two with the same {@code on-profile}: which
+     * documents apply, and in which order, is decided per set of active profiles
+     * by ProfileMerger.
      */
     private List<ConfigDocument> loadYaml(Path p) throws IOException {
         try (var in = Files.newInputStream(p)) {
             Yaml yaml = new Yaml();
             Iterable<Object> rawDocuments = yaml.loadAll(in);
-
-            // LinkedHashMap preserves the order of FIRST appearance of each label in the file.
-            Map<String, List<Map<String, String>>> groupedByLabel = new LinkedHashMap<>();
+            List<ConfigDocument> documents = new ArrayList<>();
 
             for (Object rawDocument : rawDocuments) {
                 if (rawDocument == null) {
@@ -279,28 +212,10 @@ public final class ConfigLoader {
                 flatten(rawDocument, "", rawFlat);
                 Map<String, String> flatDocument = new LinkedHashMap<>();
                 rawFlat.forEach((key, value) -> flatDocument.put(normalizeMapKeys(key), value));
-
-                Optional<String> onProfileActualKey = RelaxedProperties.findActualKey(flatDocument, ON_PROFILE_KEY);
-                String profileValue = onProfileActualKey.map(flatDocument::get).orElse(null);
-                String label = (profileValue == null || profileValue.isBlank())
-                        ? BASE_LABEL
-                        : profileValue.strip();
-
-                // Removes the metadata from the data map — consumers of
-                // ConfigDocument should not see this key as if it were a regular business
-                // property. Removes the ACTUAL key found (it may be on-profile, onProfile,
-                // ON_PROFILE, etc.), not the literal constant —
-                // relaxed binding is also applied when detecting the profile activation
-                // metadata itself.
-
-                onProfileActualKey.ifPresent(flatDocument::remove);
-
-                groupedByLabel
-                        .computeIfAbsent(label, key -> new ArrayList<>())
-                        .add(flatDocument);
+                documents.add(toDocument(p, flatDocument));
             }
 
-            return buildConfigDocuments(groupedByLabel);
+            return atLeastOneDocument(documents);
 
         }  catch (YAMLException e) {
 
@@ -315,6 +230,87 @@ public final class ConfigLoader {
 
         throw new IOException("Invalid YAML in '%s': %s".formatted(p, e.getMessage()), e);
     }
+    }
+
+    /** Keeps the invariant that every ConfigFile has at least one ConfigDocument. */
+    private static List<ConfigDocument> atLeastOneDocument(List<ConfigDocument> documents) {
+        if (documents.isEmpty()) {
+            documents.add(new ConfigDocument(Optional.empty(), Map.of()));
+        }
+        return documents;
+    }
+
+    /**
+     * Separates a flattened document's {@code spring.config.activate.on-profile} from its
+     * properties, and parses it as Spring Boot does (ARCHITECTURE.md, ADR-012). The key is
+     * matched with relaxed binding ({@code onProfile}, {@code ON_PROFILE}) and in every form
+     * flattening gives it: a scalar, a YAML list ({@code on-profile[0]}, {@code [1]}, read as
+     * the comma-separated list it binds to), a YAML null or an empty list. Measured against
+     * Spring Boot 4.1.1 (VALIDATION.md, "Profile expressions in {@code on-profile}"):
+     * <ul>
+     *   <li>a null, empty string or empty list is no condition: the document always applies;</li>
+     *   <li>a blank value ({@code " "}), an empty list item or a malformed expression stops
+     *       the application, so it is an input error here too, as invalid YAML is.</li>
+     * </ul>
+     * Every form of the key is removed from the properties, so no rule sees it.
+     */
+    private static ConfigDocument toDocument(Path p, Map<String, String> flatDocument) throws IOException {
+        String target = RelaxedProperties.canonicalize(ON_PROFILE_KEY);
+        String scalar = null;
+        TreeMap<Integer, String> items = new TreeMap<>();
+
+        var iterator = flatDocument.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            String key = entry.getKey();
+            boolean isNull = key.endsWith(NULL_SCALAR_SENTINEL_SUFFIX);
+            String bare = stripSentinelSuffix(key);
+            int bracket = bare.indexOf('[');
+            String root = bracket >= 0 ? bare.substring(0, bracket) : bare;
+            if (!RelaxedProperties.canonicalize(root).equals(target)) {
+                continue;
+            }
+            Integer index = bracket < 0 ? null : listIndex(bare.substring(bracket));
+            if (bracket >= 0 && index == null) {
+                continue; // not a list item ("[]", an unclosed "["): left among the properties, as any key
+            }
+            iterator.remove();
+            String value = isNull ? "" : entry.getValue();
+            if (index == null) {
+                if (!key.endsWith(EMPTY_LIST_SENTINEL_SUFFIX) && !key.endsWith(EMPTY_MAP_SENTINEL_SUFFIX)) {
+                    scalar = value;
+                }
+            } else {
+                items.put(index, value);
+            }
+        }
+
+        String text = items.isEmpty() ? scalar : String.join(",", items.values());
+        if (text == null || text.isEmpty()) {
+            return new ConfigDocument(Optional.empty(), flatDocument);
+        }
+        try {
+            return new ConfigDocument(Optional.of(ProfileExpression.parse(text)), flatDocument);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid %s in '%s': %s".formatted(ON_PROFILE_KEY, p, e.getMessage()), e);
+        }
+    }
+
+    /** The index of a {@code [n]} suffix, or null when the suffix is anything else. */
+    private static Integer listIndex(String suffix) {
+        if (!suffix.matches("\\[\\d{1,9}]")) {
+            return null;
+        }
+        return Integer.parseInt(suffix.substring(1, suffix.length() - 1));
+    }
+
+    private static String stripSentinelSuffix(String key) {
+        for (String suffix : List.of(NULL_SCALAR_SENTINEL_SUFFIX, EMPTY_LIST_SENTINEL_SUFFIX, EMPTY_MAP_SENTINEL_SUFFIX)) {
+            if (key.endsWith(suffix)) {
+                return key.substring(0, key.length() - suffix.length());
+            }
+        }
+        return key;
     }
 
     /**

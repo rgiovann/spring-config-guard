@@ -3,6 +3,7 @@ package dev.scg.rules;
 import dev.scg.core.ConfigLoader;
 import dev.scg.core.EffectiveConfig;
 import dev.scg.core.Finding;
+import dev.scg.core.ConfigFileGrouper;
 import dev.scg.core.ProfileMerger;
 import dev.scg.core.Severity;
 import org.junit.jupiter.api.DisplayName;
@@ -398,8 +399,8 @@ class RabbitMqInsecureTransportRuleTest {
     void yamlListIsRead(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("application.yml"), "spring.rabbitmq.addresses:\n  - rabbit.internal:5672\n");
 
-        List<Finding> findings = new ConfigLoader().loadDirectory(dir).stream()
-                .flatMap(file -> new ProfileMerger().merge(file).stream())
+        List<Finding> findings = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir)).stream()
+                .flatMap(group -> new ProfileMerger().merge(group).stream())
                 .flatMap(config -> rule.check(config).stream())
                 .toList();
 

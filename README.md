@@ -141,11 +141,12 @@ the build output (`target/`, `build/`) next to a `pom.xml` or
 |---|---|
 | `0` | No finding at or above `--fail-on`, or `--fail-on=NONE`. `INFO` findings never count. |
 | `1` | At least one finding at or above `--fail-on`. |
-| `2` | Usage or input error: an unknown argument, an invalid `--fail-on` value, a path that isn't a directory, a missing or invalid policy file, or a configuration file that can't be read or parsed (invalid YAML). |
+| `2` | Usage or input error: an unknown argument, an invalid `--fail-on` value, a path that isn't a directory, a missing or invalid policy file, or a configuration file that can't be read or parsed (invalid YAML, or a `spring.config.activate.on-profile` Spring Boot would refuse to start with, such as `'a & b \| c'`). |
 
 The report goes to stdout. Errors and coverage warnings go to stderr: an
 unfollowed `spring.config.import`, config files in more than one Spring
-location, and the number of findings a policy suppressed. See
+location, documents only several active profiles apply, and the number of
+findings a policy suppressed. See
 [Scope & Limitations](#scope--limitations).
 
 ## Rules
@@ -196,13 +197,18 @@ secure.
 
 ## How SCG evaluates configuration
 
-* **Profiles.** For each directory, SCG pairs `application.yml` with its
-  `application-{profile}.yml` files and with the
-  `spring.config.activate.on-profile` documents inside them. It then
-  evaluates the base on its own and each profile merged over the base.
-  Rules run on every resulting configuration and don't depend on the
-  profile's name: a finding in a profile called `dev` is still reported.
-  To accept a risk in a given profile, use a [Policy](#policy).
+* **Profiles.** For each directory, SCG reads `application.yml` with its
+  `application-{profile}.yml` files, and every document's
+  `spring.config.activate.on-profile` as Spring does: a list of profile
+  expressions (`!api-docs`, `a | b`, `a,b`). It evaluates the base, where
+  Spring's `default` profile is active, and each profile any file name or
+  expression names. Each configuration applies, in Spring's order, every
+  document whose conditions match: `.properties` over `.yml` over
+  `.yaml`, profile-specific files over the rest, a later document in a
+  file over an earlier one. Rules run on every resulting configuration and
+  don't depend on the profile's name: a finding in a profile called `dev`
+  is still reported. To accept a risk in a given profile, use a
+  [Policy](#policy).
 * **Relaxed binding.** `show-details`, `showDetails` and `show_details` are
   the same key, as in Spring. So is a bracketed map key
   (`spring.kafka.properties[security.protocol]`) and its dotted form.
@@ -276,7 +282,10 @@ origin is written in `application.yml`. Other cases:
   higher precedence.
 * A profile defined both by `application-prod.yml` and by an
   `on-profile: prod` document in `application.yml` is reported against
-  `application-prod.yml`.
+  `application-prod.yml`. In general, a profile's findings name the last
+  file, in Spring's order, with a document for that profile; the base's,
+  the last file applied to it (`application-default.yml`, when there is
+  one).
 * In Config Server Mode, a property from the Global `application.yml` is
   reported against the service's file.
 
@@ -337,14 +346,17 @@ config-repo/
   **Global** configuration.
 * Every other `.yml`, `.yaml` or `.properties` file directly in the directory
   is one **service**, named after the file.
-* A service's profiles come from the `spring.config.activate.on-profile`
-  documents in the Global file or in that service's own file. SCG
-  evaluates each such profile in four layers, lowest to highest
-  precedence:
+* A service's profiles come from the Global `application-{profile}`
+  files and from the `spring.config.activate.on-profile` documents in the
+  Global files or in that service's own files. Each configuration applies
+  the documents that match, in this order, lowest to highest precedence:
 
   ```text
-  Global-base  <  Global-profile  <  Service-base  <  Service-profile
+  Global application.*  <  the service's files  <  Global application-{profile}.*
   ```
+
+  Every document of a file counts, its `on-profile` blocks included, so a
+  service's base overrides a Global `on-profile` block.
 
 * `sourceFile` is always the service's file.
 
@@ -400,9 +412,8 @@ jobs:
 
 SCG reads only `application.{yml,yaml,properties}` files. It doesn't depend
 on Spring Boot and doesn't run the application. Within that boundary, "the
-effective configuration" means the base merged with **one** profile, per
-directory, or the four-layer cascade in
-[Config Server Mode](#config-server-mode). The cases below are outside it.
+effective configuration" means the base or **one** active profile, per
+directory or, in [Config Server Mode](#config-server-mode), per service. The cases below are outside it.
 They aren't false negatives of a rule.
 
 * **Runtime values.** Real environment variables, JVM system properties and
@@ -411,14 +422,13 @@ They aren't false negatives of a rule.
   as a possible risk (see
   [How SCG evaluates configuration](#how-scg-evaluates-configuration)).
 * **Several profiles active together** (e.g. `dev,cloud`). Each profile is
-  evaluated on its own over the base. The combination of two profiles that
-  set the same key isn't computed.
-* **Profile expressions in `on-profile`.** Spring accepts expressions such
-  as `!api-docs` there. SCG reads the value as a literal profile name, so
-  `on-profile: '!api-docs'` becomes a profile called `!api-docs`. That
-  profile repeats the base's findings, and the settings in that document
-  don't apply to the other profiles. This is tracked in
-  [BACKLOG.md](BACKLOG.md).
+  evaluated on its own. The combination of two profiles that set the same
+  key isn't computed, and neither are profile groups
+  (`spring.profiles.group`). A document only a combination activates
+  (`on-profile: 'a & b'`, or an `on-profile` inside `application-x.yml`
+  naming another profile) is applied to no configuration, and SCG prints:
+  `spring-config-guard: N document(s) apply only when several profiles are active together, which is not evaluated.`
+  See [ADR-012](ARCHITECTURE.md#adr-012-on-profile-evaluated-as-spring-boot-does-one-ordered-fold-per-set-of-active-profiles).
 * **`spring.config.import`** isn't followed. When a scanned file uses it,
   SCG prints to stderr:
   `spring-config-guard: N file(s) import external configuration via spring.config.import that was not scanned.`
