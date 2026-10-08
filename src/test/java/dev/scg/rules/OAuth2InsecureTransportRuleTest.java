@@ -16,18 +16,18 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class JwtResourceServerInsecureTransportRuleTest {
+class OAuth2InsecureTransportRuleTest {
 
     private static final String ISSUER_URI_KEY = "spring.security.oauth2.resourceserver.jwt.issuer-uri";
     private static final String JWK_SET_URI_KEY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";
     private static final String PUBLIC_KEY_LOCATION_KEY = "spring.security.oauth2.resourceserver.jwt.public-key-location";
     private static final String INTROSPECTION_URI_KEY = "spring.security.oauth2.resourceserver.opaquetoken.introspection-uri";
 
-    private JwtResourceServerInsecureTransportRule rule;
+    private OAuth2InsecureTransportRule rule;
 
     @BeforeEach
     void setUp() {
-        rule = new JwtResourceServerInsecureTransportRule();
+        rule = new OAuth2InsecureTransportRule();
     }
 
     @Test

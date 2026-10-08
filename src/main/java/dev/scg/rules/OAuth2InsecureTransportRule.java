@@ -58,7 +58,7 @@ import java.util.Optional;
  *
  * @see EnvironmentPlaceholder
  */
-public final class JwtResourceServerInsecureTransportRule implements Rule {
+public final class OAuth2InsecureTransportRule implements Rule {
 
     private static final String ISSUER_URI_KEY = "spring.security.oauth2.resourceserver.jwt.issuer-uri";
     private static final String JWK_SET_URI_KEY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";

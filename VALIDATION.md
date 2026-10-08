@@ -1823,7 +1823,7 @@ HIGH, each on its own, since Spring Boot uses both (`token-uri` overrides
 the endpoint discovery finds). The SCG column is for a remote host; on a
 loopback host, a `token-uri` is INFO and an `issuer-uri` stays HIGH, as
 its metadata may name other hosts (L17). An unresolved placeholder is
-INFO. `JwtResourceServerInsecureTransportRuleTest` pins each row. The
+INFO. `OAuth2InsecureTransportRuleTest` pins each row. The
 login-flow keys and `authorization-uri` stay silent (`BACKLOG.md`,
 "OAuth2 Client login-flow URIs over HTTP").
 
