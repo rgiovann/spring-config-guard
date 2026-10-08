@@ -8,6 +8,73 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.17.0
+
+**Added**
+- Profile groups: each profile is evaluated with the profiles its
+  `spring.profiles.group` activates, nested groups included, as Spring
+  Boot expands them (ADR-013). `spring.profiles.include` is not evaluated
+  yet.
+- A stderr warning counts the documents that apply only when several
+  profiles are active together (`on-profile: 'a & b'`, or an `on-profile`
+  inside `application-x.yml` naming another profile), which SCG doesn't
+  evaluate.
+
+**Fixed**
+- `spring.config.activate.on-profile` is evaluated as Spring Boot does
+  (ADR-012): a list of profile expressions (`!api-docs`, `a | b`,
+  `a & b`, `a,b`), and the documents of a directory folded in Spring's
+  order (files without a profile in their name, then
+  `application-{profile}` files, documents as written). It used to be a
+  literal profile name: an expression became a profile of its own, a YAML
+  list was folded into the base (a false negative), `default` was a
+  profile of its own, and a document conditioned on a profile always won
+  over the documents after it.
+- `application.yml` takes precedence over `application.yaml` in the same
+  directory, as in Spring Boot; SCG ranked them the other way.
+- Config Server Mode reads every `application*` file, in Spring's order
+  (Global files, the service's files, Global `application-{profile}`
+  files). It used to read only the one listed last, so a service written
+  in two formats lost a file.
+- A YAML null (`x: ~`, or `spring:` with nothing under it) no longer
+  removes the keys under it that earlier sources set; Spring keeps and
+  binds them.
+- Checked against Spring Boot 4.1.1; see `VALIDATION.md`, "Profile
+  expressions in `on-profile`" (P1–P15, E1–E11), "Profile groups"
+  (G1–G7) and "ProfileMerger correctness benchmark" (cases 35–38).
+
+**Detection changes**
+- **Profile labels**: an expression is no longer a profile label
+  (`[profile: !api-docs]` is gone; its document applies to every profile
+  the expression matches), and neither is `default`, which is part of the
+  base. A policy entry naming `default` or an expression no longer
+  matches any finding, and an unknown profile in a policy file is not an
+  error: name the profiles the findings now show, or `base`.
+- **Exit code 2** for an `on-profile` Spring Boot refuses to start with:
+  a blank or malformed expression (`'a & b | c'`) or an empty item
+  (`[a, ""]`). Such a file used to be scanned with the value as a profile
+  name.
+- **More findings**: a document whose `on-profile` is a YAML list now
+  applies to each profile listed, not to the base; a profile now reports
+  what its group's profiles set.
+- **Fewer findings**: a document under `on-profile: default` is reported
+  once, under the base, no longer again under a `default` profile.
+- **Either way**: a document under an expression such as `'!x'` now
+  applies to the base and to each profile it matches (all but `x` and
+  the profiles whose group activates `x`), where it can turn a setting on
+  or off; it used to apply only to a profile named after the expression.
+- On the reference corpus and the demo fixtures, against `v1.16.0`:
+  `spring-petclinic-microservices-config` goes from 53 to 48 findings
+  (the five SCG001 of a `default` label, already reported under the
+  base); every other finding is identical. In `jhipster-sample-app`, a
+  project with profile groups and a `'!api-docs'` block, 25 become 23.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged; exit code 2 keeps its meaning (usage or input error).
+
+Full diff: `v1.16.0...v1.17.0`.
+
 ## v1.16.0
 
 **Added**
