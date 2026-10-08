@@ -8,6 +8,60 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.18.0
+
+**Added**
+- SCG014 reports a Kafka client that uses TLS (`SSL` or `SASL_SSL`) with a
+  blank `ssl.endpoint.identification.algorithm` (empty, a YAML null or
+  spaces), as MEDIUM: the client then doesn't check that the broker's
+  certificate matches its host name, so any certificate it trusts is
+  accepted for any broker (CWE-295). Read in `spring.kafka.properties`, a
+  client's own map and the Spring Cloud Stream binder maps, with the
+  precedence of `security.protocol`. Any other value, or the key left out
+  (`https` by default), is silent.
+- SCG015 reports a RabbitMQ connection that uses TLS (`ssl.enabled`, an
+  SSL bundle or an `amqps://` address) with
+  `spring.rabbitmq.ssl.verify-hostname` false, which turns the host name
+  check off, or `spring.rabbitmq.ssl.validate-server-certificate` false
+  with no key store, trust store or bundle, which accepts any server, as
+  MEDIUM (CWE-295). With a store or a bundle, Spring AMQP ignores
+  `validate-server-certificate`, and SCG015 stays silent.
+- Both are INFO on loopback brokers and for a value, or a TLS setting,
+  from an unresolved placeholder. Measured on the wire against Spring Boot
+  4.1.1, kafka-clients 4.2.1 and Spring AMQP 4.1.1; see `VALIDATION.md`,
+  "TLS without server verification (Kafka and RabbitMQ)".
+
+**Fixed**
+- SCG006 no longer reports every field of an OAuth2 client registration,
+  an SSL bundle or another Spring Boot map of objects as INFO because the
+  name the application gave the entry contains a secret word
+  (`registration.messaging-client-client-credentials.client-id`). A field
+  that names a secret (`client-secret`) is still HIGH, and a map the
+  application defines (`app.secrets.<name>`) is still INFO.
+
+**Detection changes**
+- **More findings**: SCG014 and SCG015, as above (MEDIUM; with
+  `--fail-on=MEDIUM`, a project that writes one of them now fails).
+  SCG015 also reports `ssl.enabled=true` with
+  `validate-server-certificate=false` and no store, which it left silent.
+- **Fewer findings**: SCG006's INFO on fields under a user-named key of a
+  Spring Boot map of objects (the eleven such maps in Spring Boot 4.1.1's
+  metadata).
+- On the reference corpus and the demo fixtures, against `v1.17.0`:
+  `spring-authorization-server` goes from 62 to 31 findings (31 SCG006
+  INFO from OAuth2 registration names), and `spring-cloud-stream-samples`
+  from 47 to 48 (a blank `ssl.endpoint.identification.algorithm` on
+  `SSL`, INFO on `localhost` brokers); every other finding is identical.
+- `VALIDATION.md` adds `jhipster-sample-app`,
+  `spring-authorization-server` and `spring-ai-examples` as reference
+  projects, eight in all.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.17.0...v1.18.0`.
+
 ## v1.17.0
 
 **Added**

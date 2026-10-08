@@ -397,7 +397,7 @@ jobs:
           java-version: '21'
       - name: Lint Spring Boot configuration
         run: |
-          curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.17.0/spring-config-guard.jar
+          curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.18.0/spring-config-guard.jar
           java -jar spring-config-guard.jar . --fail-on=HIGH
 ```
 

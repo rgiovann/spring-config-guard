@@ -15,7 +15,7 @@ evidence, each reproducible from this repository:
   [README](spring-env-benchmark/README.md) lists them and what each needs).
 
 Every number and every **SCG** column in this document is the result of
-**SCG v1.17.0**. Most scenario rows are pinned by a test named after
+**SCG v1.18.0**. Most scenario rows are pinned by a test named after
 them, so a change in behavior fails the build before it can make this
 document wrong. The rest, mostly in the sections of SCG001, SCG003,
 SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
