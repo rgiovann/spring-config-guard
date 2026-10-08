@@ -19,25 +19,9 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the rest of the findings from the candidate reference
-projects, then the GitHub Action, then the one item of new coverage with a
-real case.
+Done in this order: the GitHub Action, then the one item of new coverage
+with a real case.
 Everything else waits in Deferred for a real case or a need.
-
-### Findings from the candidate reference projects
-
-Three projects proposed as new reference projects, run against the v1.16.0
-jar on 2026-10-06, to be added to `VALIDATION.md`, pinned at the commit
-below, with their precision check. jhipster's finding, `on-profile` read as
-a literal name, is settled (ADR-012, ADR-013), and so are SCG006's in the
-other two (`VALIDATION.md`, "SCG006 key matching"): a secret pattern in an
-OAuth2 registration id is no longer INFO in spring-authorization-server,
-and a sample value (`<YOUR-OPENAI-API-KEY>`) stays HIGH in
-spring-ai-examples.
-
-* `jhipster/jhipster-sample-app` (`6b000b5`, Spring Boot 4.1.1)
-* `spring-projects/spring-authorization-server` (`4283973`, its samples)
-* `spring-projects/spring-ai-examples` (`7416412`)
 
 ### GitHub Action for the Marketplace
 
@@ -253,7 +237,10 @@ Found while reviewing SCG017: an OAuth2 Client (login) reads
 secret, the authorization code exchange and the ID token keys. SCG017 reads
 only the resource server keys. Measure on the wire, with a login flow in the
 benchmark, which of these the client fetches and when, before deciding
-whether SCG017 or a rule of its own covers them.
+whether SCG017 or a rule of its own covers them. One reference project
+writes such a key, on a loopback host only: `spring-authorization-server`'s
+`demo-client` and `users-resource` set
+`provider.spring.issuer-uri: http://localhost:9000`.
 
 #### SCG006: user-named map keys in Spring Cloud maps
 

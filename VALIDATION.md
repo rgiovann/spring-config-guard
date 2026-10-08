@@ -3,7 +3,7 @@
 What SCG reports, checked against what Spring actually does. Three kinds of
 evidence, each reproducible from this repository:
 
-* **Reference projects**: five public repositories, pinned to a commit,
+* **Reference projects**: eight public repositories, pinned to a commit,
   scanned with the documented command; every finding was checked against
   the files (below).
 * **The pipeline**: `ProfileMerger`'s effective configuration compared with
@@ -45,12 +45,15 @@ per independently written file.
 | `codecentric/spring-boot-admin` | `8699ebd` | regular | 29 | 55 | 31 | 1 | 87 |
 | `spring-projects/spring-petclinic` | `818c413` | regular | 3 | 5 | — | — | 5 |
 | `spring-cloud/spring-cloud-stream-samples` | `2ff1168` | regular | 30 | 13 | 28 | 6 | 47 |
+| `jhipster/jhipster-sample-app` | `6b000b5` | regular | 5 | 10 | 3 | 10 | 23 |
+| `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 26 | — | 5 | 31 |
+| `spring-projects/spring-ai-examples` | `7416412` | regular | 25 | 1 | 1 | 38 | 40 |
 
 `spring-petclinic-microservices-config` is a real Spring Cloud Config
 Server backing repository, scanned the way it is consumed; it is the case
 that motivated [Config Server Mode](README.md#config-server-mode), since
 none of its service files match the `application*` naming the regular
-mode looks for. The other four are sample, test and teaching code: they
+mode looks for. The other seven are sample, test and teaching code: they
 stress-test precision on real-world configuration, and are not a security
 assessment of those projects.
 
@@ -216,6 +219,109 @@ git -C spring-cloud-stream-samples checkout 2ff1168833cfcab14d2251219dad15a8919c
 java -jar target/spring-config-guard.jar spring-cloud-stream-samples --json --fail-on=NONE
 ```
 
+## jhipster/jhipster-sample-app
+
+Run against JHipster's sample application (5 `application*.yml` files in
+`src/main/resources/config`), the corpus's case of profile expressions and
+profile groups:
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG001 | 6 | — | — | 6 |
+| SCG002 | 1 | — | — | 1 |
+| SCG006 | 3 | — | 1 | 4 |
+| SCG008 | — | 2 | — | 2 |
+| SCG009 | — | 1 | 3 | 4 |
+| SCG013 | — | — | 6 | 6 |
+| **Total** | **10** | **3** | **10** | **23** |
+
+A whole application, as the JHipster generator writes it, evaluated in six
+configurations: the base, `dev`, `prod`, `tls`, `secret-samples`, and
+`api-docs`, which an `on-profile: '!api-docs'` document and `dev`'s
+profile group name (how each resolves: "Profile expressions in
+`on-profile`"). The base's `exposure.include` lists `env`, `configprops`,
+`loggers` and `threaddump` (SCG001) and shows health details to
+`ROLE_ADMIN` (SCG013, INFO), and every configuration inherits both. `dev`
+turns on the H2 console (SCG002), sets `ROOT: DEBUG` (SCG009 MEDIUM) and
+three loggers at `DEBUG` (INFO), and keeps SpringDoc on (SCG008, as does
+`api-docs`); through its group it also gets what `secret-samples` sets:
+the JWT `base64-secret` (SCG006 HIGH, reported in `secret-samples` too)
+and a blank `spring.datasource.password` (INFO). `tls` writes
+`server.ssl.key-store-password: password`. The stderr warning counts
+`application-secret-samples.yml`'s `prod` document, which only `prod` and
+`secret-samples` together activate. CORS is configured under
+`jhipster.cors.*`, JHipster's own properties, which SCG003–SCG005 don't
+read, and `prod`'s `jdbc:postgresql://localhost:5432/...` has no `sslmode`,
+so SCG012 is silent (`BACKLOG.md`, "SCG012 cases left open").
+
+```bash
+git clone https://github.com/jhipster/jhipster-sample-app.git
+git -C jhipster-sample-app checkout 6b000b5d23a36c45e01472471b84a44fa2464044
+java -jar target/spring-config-guard.jar jhipster-sample-app --json --fail-on=NONE
+```
+
+## spring-projects/spring-authorization-server
+
+Run against Spring Authorization Server's samples and the samples of its
+reference documentation (10 `application.yml` files, 8 with findings):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG006 | 25 | — | 1 | 26 |
+| SCG009 | — | — | 3 | 3 |
+| SCG017 | 1 | — | 1 | 2 |
+| **Total** | **26** | **—** | **5** | **31** |
+
+The 25 SCG006 HIGH are secrets written in the samples: 11 client secrets
+of OAuth2 client registrations and authorization server clients
+(`secret`, `token`, `{noop}secret`, and two placeholder defaults such as
+`${GOOGLE_CLIENT_SECRET:google-client-secret}`), 2
+`spring.security.user.password`, and the key, keystore and truststore
+passwords of 4 JKS SSL bundles. The INFO is a client secret from
+`${OKTA_CLIENT_SECRET}`, without a default. The registrations are named
+after their grant (`messaging-client-client-credentials`), which adds no
+finding ("SCG006 key matching"). SCG009's 3 INFO are
+`org.springframework.security` at `trace`. SCG017: `users-resource`'s
+`issuer-uri: http://localhost:9000` is HIGH, an `issuer-uri` not lowered
+on a loopback host (L17), and `messages-resource`'s
+`jwk-set-uri: http://localhost:9000/oauth2/jwks` is INFO. The OAuth2 client
+side writes `provider.spring.issuer-uri: http://localhost:9000` too
+(`demo-client`, `users-resource`), which SCG017 doesn't read (`BACKLOG.md`,
+"OAuth2 Client provider URIs over HTTP").
+
+```bash
+git clone https://github.com/spring-projects/spring-authorization-server.git
+git -C spring-authorization-server checkout 428397367038618d84181f80255edb5a45de69a9
+java -jar target/spring-config-guard.jar spring-authorization-server --json --fail-on=NONE
+```
+
+## spring-projects/spring-ai-examples
+
+Run against Spring AI's examples (36 `application*.{yml,yaml,properties}`
+files outside `src/test/`, 25 with findings):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG006 | 1 | — | 36 | 37 |
+| SCG009 | — | 1 | 2 | 3 |
+| **Total** | **1** | **1** | **38** | **40** |
+
+36 of the 40 findings are INFO for an API key read from a placeholder
+without a default (`spring.ai.openai.api-key=${OPENAI_API_KEY}` in 19
+files, `spring.ai.anthropic.api-key=${ANTHROPIC_API_KEY}` in 17): the key
+is injected at runtime, and SCG can't see its value. The HIGH is the
+sample value `<YOUR-OPENAI-API-KEY>` in `kotlin/rag-with-kotlin` ("SCG006
+key matching"). SCG009: `debug=true` in `brave-docker-agents-gateway`
+(MEDIUM) and two loggers at `DEBUG` in `document-forge` (INFO). The two
+`spring.ai.openai.api-key=test-key-for-context-loading` are in `src/test`,
+which SCG doesn't scan (ADR-006).
+
+```bash
+git clone https://github.com/spring-projects/spring-ai-examples.git
+git -C spring-ai-examples checkout 74164123ba2d13cba7ae185a460b133914106b69
+java -jar target/spring-config-guard.jar spring-ai-examples --json --fail-on=NONE
+```
+
 ## Independent precision check (false positive / false negative review)
 
 Whether each finding above is correct, and whether a risk was missed,
@@ -228,12 +334,17 @@ checked without SCG's own code.
 | `spring-boot` | 76 | Independent greps, file by file, for the 8 rules that fired | No |
 | `spring-boot-admin` | 87 | Independent greps, file by file, for the 4 rules that fired | No |
 | `spring-cloud-stream-samples` | 47 | Every file with a password, secret or `security.protocol` read by hand | No |
+| `jhipster-sample-app` | 23 | Every file read; expected count derived by hand | No |
+| `spring-authorization-server` | 31 | Every file read; expected count derived by hand | No |
+| `spring-ai-examples` | 40 | Independent greps for every rule; every line with a secret-named key listed | No |
 
 **The small repositories** were read in full, with the expected findings
 derived against every rule before comparing with SCG's output: 3 SCG001 +
 2 SCG006 = 5 in `spring-petclinic`; 32 SCG001 + 8 SCG006 + 8 SCG012 = 48
-in `spring-petclinic-microservices-config`, as explained in their
-sections.
+in `spring-petclinic-microservices-config`; 6 SCG001 + 1 SCG002 +
+4 SCG006 + 2 SCG008 + 4 SCG009 + 6 SCG013 = 23 in `jhipster-sample-app`;
+26 SCG006 + 3 SCG009 + 2 SCG017 = 31 in `spring-authorization-server`, as
+explained in their sections.
 
 **The large repositories** were checked with plain `grep` (no shared logic
 with SCG) for the raw textual pattern behind each rule that fired, and the
@@ -300,8 +411,19 @@ declares a password, secret or `security.protocol`. The 31 SCG014 findings
 on an absent protocol follow from the absence of a key, so they were
 counted, not read one by one.
 
-**Rules with nothing to check here:** SCG003, SCG004, SCG005, SCG008,
-SCG010, SCG011, SCG015 and SCG016 fire in none of these repositories, which
+**`spring-ai-examples`** was checked with the greps above, which find one
+file, SCG009's `debug=true`; the other file SCG009 reports sets two
+loggers other than the root to `DEBUG`, outside the grep's pattern, as in
+`spring-boot`. Every line whose key names an API key, a secret, a
+password, a token or a credential was listed too: 19 OpenAI and 17
+Anthropic keys from a placeholder without a default (INFO), the sample
+value (HIGH), two `max-tokens` numbers, and, in `src/test`, two test keys
+and a blank password. A commented line is not a property: one file's
+`#spring.ai.openai.api-key=${OPENAI_API_KEY}` has no finding, as it
+shouldn't.
+
+**Rules with nothing to check here:** SCG003, SCG004, SCG005, SCG010,
+SCG011, SCG015 and SCG016 fire in none of these repositories, which
 don't use those properties. Their evidence is their own scenarios, below,
 and the `demo-project`/`demo-project-clean` fixtures.
 
@@ -423,7 +545,9 @@ sources, and a rule reads the shape of the property it checks. What
 remains is a limitation, not a divergence: SCG doesn't know types, so a
 rule reading a key in the shape Spring ignores would see a value Spring
 doesn't bind. No rule does so for a realistic configuration, and no
-reference project writes one key in both shapes.
+reference project writes one key in both shapes, apart from
+`jhipster-sample-app`'s null `spring:` over the `spring.*` keys of other
+files (case 36).
 
 One difference in representation remains, harmless for every current rule:
 for `[]` in a profile, SCG purges the base list and keeps no key, where
@@ -574,12 +698,13 @@ counted on 2026-10-06):
   `spring.profiles` key, which SCG doesn't read as an activation (they are
   folded into the base); not measured here.
 * `codecentric/spring-boot-admin` and `spring-petclinic`: plain profile
-  names only.
-* Of the candidate reference projects (`BACKLOG.md`), `jhipster-sample-app`
-  writes `on-profile: '!api-docs'` (P1) and two `on-profile` documents
-  (`dev`, `prod`) inside `application-secret-samples.yml` (P12), which
-  apply only when `secret-samples` and that profile are both active, and
-  declares `group.dev: [secret-samples, api-docs]` ("Profile groups"). The
+  names only; `spring-authorization-server` and `spring-ai-examples`: no
+  profiles.
+* `jhipster-sample-app` writes `on-profile: '!api-docs'` (P1) and two
+  `on-profile` documents (`dev`, `prod`) inside
+  `application-secret-samples.yml` (P12), which apply only when
+  `secret-samples` and that profile are both active, and declares
+  `group.dev: [secret-samples, api-docs]` ("Profile groups"). The
   `'!api-docs'` block, which turns SpringDoc off, reaches the
   base and the `prod`, `secret-samples` and `tls` profiles but not `dev`,
   whose group activates `api-docs`: SCG008 is reported for `dev` and
@@ -589,8 +714,7 @@ counted on 2026-10-06):
   together activate, is counted in the stderr warning. `dev` also reports
   the H2 console of `application-dev.yml` (SCG002), which the null
   `spring:` at the top of `application-secret-samples.yml` leaves on, in
-  Spring as in SCG ("ProfileMerger correctness benchmark", case 36). 23
-  findings in all.
+  Spring as in SCG ("ProfileMerger correctness benchmark", case 36).
 
 ## Profile groups (running Spring Boot 4.1.1 app)
 
@@ -667,8 +791,9 @@ SCG001 reports the endpoints of S1: it doesn't check that an endpoint's
 isn't in the app (it needs Spring Cloud Context); its `defaultAccess = NONE`
 was read in `spring-cloud-commons`' source, so it follows `heapdump`.
 
-None of the reference projects uses these keys with a web
-`exposure.include`.
+Of the reference projects, only `jhipster-sample-app` uses these keys with
+a web `exposure.include`: `management.endpoint.jhimetrics.access:
+read-only`, for an endpoint of JHipster's own, not one SCG001 reports.
 
 Split across config locations (ADR-005), checked with fixtures, each with
 the multi-location coverage warning: `exposure.include=env` in
@@ -948,12 +1073,11 @@ SSL bundles, health groups, additional SBOMs, OTLP `meter`, and gRPC's
 client `channel` and health `service`. A field of such an object is a known property whose own
 name says whether it is a secret: `registration.<id>.client-secret` is
 still HIGH, while `client-id` or `scope` is silent however the registration
-is named. Of the candidate reference projects (`BACKLOG.md`),
-`spring-authorization-server` names its registrations after their grant
-(`messaging-client-client-credentials`,
-`messaging-client-token-exchange-with-delegation`): its 31 INFO findings on
-`spring.security.oauth2.client.registration.<id>.*` came from the map key
-alone, and are gone. A map the application defines (`app.secrets.github`)
+is named. `spring-authorization-server` names its registrations after
+their grant (`messaging-client-client-credentials`,
+`messaging-client-token-exchange-with-delegation`): without this, the
+fields under those registrations would add 31 INFO findings, from the map
+key alone. A map the application defines (`app.secrets.github`)
 isn't listed, since its entries may be secrets, and stays INFO, as do the
 maps of Spring Cloud (a Stream binding named `tokenEvents`), not in Spring
 Boot's metadata.
@@ -972,7 +1096,7 @@ native properties are INFO, none of them a secret (`api-token-type`,
 `opaquetoken.client-id`), and so are the 6 non-boolean fields of
 `spring.security.oauth2.authorizationserver.client.<id>.token`, which the
 metadata doesn't list since they sit inside a map; every native secret is
-HIGH. In the reference projects, the 65 HIGH SCG006 findings are all on
+HIGH. In the reference projects, the 94 HIGH SCG006 findings are all on
 keys ending in a pattern, and no key there only contains one with a value
 that could be a secret.
 
@@ -1003,11 +1127,11 @@ something Spring or a library interprets (a placeholder, `{cipher}`,
 the value is. A sample value such as `<YOUR-OPENAI-API-KEY>`, `changeme`
 or `your-key-here` is bound as written, and telling it from a real secret
 would be a guess, a generic secret scanner's job. It is HIGH, as any other
-written value. Of the candidate reference projects, `spring-ai-examples`
-writes `spring.ai.openai.api-key=<YOUR-OPENAI-API-KEY>` once
-(`kotlin/rag-with-kotlin`) and `${OPENAI_API_KEY}` in 20 other
+written value. `spring-ai-examples` writes
+`spring.ai.openai.api-key=<YOUR-OPENAI-API-KEY>` once
+(`kotlin/rag-with-kotlin`) and `${OPENAI_API_KEY}` in 19 other
 `application*` files, the form the finding asks for. A search of the
-reference and candidate projects' `application*` files for `<...>`,
+reference projects' `application*` files for `<...>`,
 `your-`, `changeme`, `xxx`, `dummy`, `example` or `replace` in a key
 naming a password, secret, token or API key found no other.
 
@@ -1208,7 +1332,12 @@ loggers are INFO (`org.hibernate.SQL`, `org.springframework.security`,
 `org.thymeleaf` at `DEBUG`/`TRACE`); `spring-boot-admin` has 1 MEDIUM
 (`org.springframework.web=debug`) and 1 INFO (`de.codecentric=trace`);
 `spring-cloud-stream-samples` has 1 INFO
-(`org.springframework.kafka.config=debug`).
+(`org.springframework.kafka.config=debug`); `jhipster-sample-app` has 1
+MEDIUM (`ROOT: DEBUG` in `dev`) and 3 INFO (`tech.jhipster`,
+`org.hibernate.SQL` and its own package at `DEBUG`);
+`spring-authorization-server` has 3 INFO (`org.springframework.security`
+at `trace`); `spring-ai-examples` has 1 MEDIUM (`debug=true`) and 2 INFO
+(`org.springframework.ai` and its own package at `DEBUG`).
 
 ## SCG010 error response scenarios (running Spring Boot 4.1.1 and 3.5.16 apps)
 
@@ -1644,9 +1773,11 @@ SCG006 also reports the client secret written in the file.
 No reference project sets `public-key-location` or `introspection-uri`,
 and none sets more than one of the three key sources (checked with a grep
 for the four keys, in any of their relaxed forms, whatever their value).
-The one SCG017 finding, in `spring-boot`, is `jwk-set-uri:
-http://localhost:8080/oauth2/jwks`: INFO, on a loopback address
-("Loopback addresses in the transport rules", L13).
+The three SCG017 findings are on loopback addresses ("Loopback addresses
+in the transport rules"): `jwk-set-uri: http://localhost:8080/oauth2/jwks`
+in `spring-boot` and `jwk-set-uri: http://localhost:9000/oauth2/jwks` in
+`spring-authorization-server` are INFO (L13), and that project's
+`issuer-uri: http://localhost:9000` is HIGH (L17).
 
 ## Loopback addresses in the transport rules
 
@@ -1703,13 +1834,14 @@ remote address anywhere keeps every finding (L6). SCG015 counts every
 entry of `addresses` when it is set, since the client fails over to them,
 else `host`.
 
-In the reference projects, 15 findings are INFO for a written loopback
-host, from 8 properties: in `spring-petclinic-microservices-config`,
+In the reference projects, 16 findings are INFO for a written loopback
+host, from 9 properties: in `spring-petclinic-microservices-config`,
 SCG012's `jdbc:mysql://localhost:3306/petclinic?...useSSL=false`, inherited
 by its 8 services (HIGH on a remote host); in `spring-boot`, SCG017's
 `jwk-set-uri: http://localhost:8080/oauth2/jwks` (HIGH) and one SCG014 on
 `bootstrap-servers=localhost:9092` (MEDIUM); in
 `spring-cloud-stream-samples`, five SCG014 on binder `brokers` or
 `bootstrap-servers` at `localhost` (one HIGH for `SASL_PLAINTEXT`, four
-MEDIUM). The demo fixtures that showcase a HIGH use a remote host
+MEDIUM); in `spring-authorization-server`, SCG017's `jwk-set-uri:
+http://localhost:9000/oauth2/jwks` (HIGH). The demo fixtures that showcase a HIGH use a remote host
 (`localstack.dev.internal`, `customers-db`).
