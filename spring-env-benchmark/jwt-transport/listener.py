@@ -1,7 +1,8 @@
 """Listens on 127.0.0.1 at the given port and appends one line per connection to the given file:
 "TLS" when the client's first bytes are a TLS handshake record (0x16 0x03), "HTTP" when they are a
 plain HTTP request, with "+secret" when the request carries the given client secret, in the clear
-or base64-encoded in a Basic Authorization header. A plain request is
+or base64-encoded in a Basic Authorization header, the body included (read up to its
+Content-Length, as a form post carries the secret there). A plain request is
 answered with 404, so the client gives up quickly, except a GET for a path ending in ".pub" when a
 key file is given: it is served, as a key server would."""
 import base64
@@ -17,10 +18,21 @@ lock = threading.Lock()
 
 def handle(conn):
     conn.settimeout(5)
+    data = b""
     try:
         data = conn.recv(4096)
-    except OSError:
-        data = b""
+        head, _, body = data.partition(b"\r\n\r\n")
+        for line in head.split(b"\r\n"):
+            if line.lower().startswith(b"content-length:"):
+                length = int(line.split(b":", 1)[1].strip() or 0)
+                while len(body) < length:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    body += chunk
+                    data += chunk
+    except (OSError, ValueError):
+        pass
     if data[:2] == b"\x16\x03":
         kind = "TLS"
     elif data[:4] in (b"GET ", b"PUT ", b"POST", b"HEAD"):

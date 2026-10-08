@@ -19,8 +19,25 @@ or in an ADR.
 
 ## Pending
 
-Next: the GitHub Action.
+Next: OAuth2 Client provider URIs over HTTP, then the GitHub Action.
 Everything else waits in Deferred for a real case or a need.
+
+### OAuth2 Client provider URIs over HTTP
+
+An OAuth2 client (login or `client_credentials`) reads
+`spring.security.oauth2.client.provider.<name>.token-uri`, `issuer-uri`,
+`jwk-set-uri`, `user-info-uri` and `authorization-uri`; SCG017 reads only
+the resource server's keys. Measured on the wire (`VALIDATION.md`,
+"OAuth2 Client provider transport scenarios"): the client sends its secret
+to an `http://` `token-uri` as it is (C1, C2, C4), and fetches `issuer-uri`
+at startup, where plain HTTP lets whoever answers name the token endpoint
+(I1). `jwk-set-uri` and `user-info-uri` are used only in a login flow, not
+run. To decide: whether SCG017 covers them or a rule of its own does, and
+which keys (the measured two, or the login ones too, from Spring
+Security's code). One reference project writes such a key, on a loopback
+host only: `spring-authorization-server`'s `demo-client` and
+`users-resource` set `provider.spring.issuer-uri: http://localhost:9000`.
+
 
 ### GitHub Action for the Marketplace
 
@@ -199,19 +216,6 @@ of `uri`/`host`, and the scheme may come from the discovered instance rather
 than `spring.cloud.vault.scheme`, which is all SCG016 reads. Measure, with a
 registry in the benchmark, which scheme the client uses before deciding
 whether SCG016 should say anything when discovery is on.
-
-#### OAuth2 Client provider URIs over HTTP (measure first)
-
-Found while reviewing SCG017: an OAuth2 Client (login) reads
-`spring.security.oauth2.client.provider.<name>.token-uri`, `jwk-set-uri`,
-`issuer-uri` and `user-info-uri`, where `http://` would expose the client
-secret, the authorization code exchange and the ID token keys. SCG017 reads
-only the resource server keys. Measure on the wire, with a login flow in the
-benchmark, which of these the client fetches and when, before deciding
-whether SCG017 or a rule of its own covers them. One reference project
-writes such a key, on a loopback host only: `spring-authorization-server`'s
-`demo-client` and `users-resource` set
-`provider.spring.issuer-uri: http://localhost:9000`.
 
 #### SCG006: user-named map keys in Spring Cloud maps
 

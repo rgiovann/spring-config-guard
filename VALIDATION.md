@@ -1781,6 +1781,41 @@ in `spring-boot` and `jwk-set-uri: http://localhost:9000/oauth2/jwks` in
 `spring-authorization-server` are INFO (L13), and that project's
 `issuer-uri: http://localhost:9000` is HIGH (L17).
 
+## OAuth2 Client provider transport scenarios (Spring Boot 4.1.1, on the wire)
+
+Whether a Spring Boot OAuth2 client sends its client secret, or fetches
+its provider's metadata, over plain HTTP was checked on the wire, without
+an authorization server: `spring-env-benchmark/oauth2-client-transport-scenarios.sh`
+runs one `client_credentials` grant for a registration at startup (Spring
+Boot 4.1.1, `spring-boot-starter-oauth2-client`), and
+`jwt-transport/listener.py` on 127.0.0.1:8300 records whether the client
+spoke TLS or plain HTTP, and whether the request carried the client secret
+(in a Basic `Authorization` header, or in a form body).
+
+|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire |
+|---|---|---|
+|  C1 | `token-uri=http://...` (`client_secret_basic`, the default) | HTTP, secret in the clear |
+|  C2 | `token-uri=http://...`, `client-authentication-method=client_secret_post` | HTTP, secret in the clear |
+|  C3 | `token-uri=https://...` | TLS |
+|  C4 | `token-uri=HTTP://...` | HTTP, secret in the clear |
+|  I1 | `issuer-uri=http://...` | HTTP, at startup |
+|  I2 | `issuer-uri=https://...` | TLS, at startup |
+
+The client sends its secret to an `http://` `token-uri` as it is, in
+either authentication method (C1, C2), and matches the scheme in any case
+(C4). `issuer-uri` is fetched at startup, to discover the provider's
+endpoints (I1, I2); over plain HTTP, whoever answers can name any
+`token_endpoint`, and the client sends its secret there. The listener
+answers 404, so the application doesn't start in I1 and I2; the
+connection is made before that. Not run: `jwk-set-uri` and
+`user-info-uri`, used only in a login (`authorization_code`) flow, which
+needs a browser, and `authorization-uri`, which the user's browser
+visits, not the application. The script was run twice, with the same
+result.
+
+No rule reports these keys yet (`BACKLOG.md`, "OAuth2 Client provider
+URIs over HTTP").
+
 ## TLS without server verification (Kafka and RabbitMQ)
 
 Whether a Kafka or RabbitMQ client that uses TLS still checks the server
