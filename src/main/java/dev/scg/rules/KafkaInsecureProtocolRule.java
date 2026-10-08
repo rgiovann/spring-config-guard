@@ -3,6 +3,7 @@ package dev.scg.rules;
 import dev.scg.core.*;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,21 @@ import java.util.function.Predicate;
  * The Spring Cloud Stream Kafka and Kafka Streams binders are evaluated too, each named binder's
  * {@code environment} as a context of its own ({@link #checkBinders}; ARCHITECTURE.md, ADR-009).
  * <p>
+ * A client that uses TLS ({@code SSL} or {@code SASL_SSL}) with a blank
+ * {@code ssl.endpoint.identification.algorithm} is reported too: the client then doesn't check
+ * that the broker's certificate matches its host name, so any certificate it trusts is accepted
+ * for any broker (CWE-295). Measured on the wire with kafka-clients 4.2.1 (VALIDATION.md, "TLS
+ * without server verification (Kafka and RabbitMQ)"): empty, a YAML null and spaces all turn the
+ * check off, with or without an SSL bundle, and leave the trust check on. Any other value keeps
+ * it, or stops the client from connecting at all ({@code none}), so it is silent; so is a key left
+ * out, whose default is {@code https}. The key has no Spring Boot property of its own: it is read
+ * in the {@code properties} maps, with the precedence of {@code security.protocol}
+ * ({@link #evaluateHostnameVerification}), and in the binder maps
+ * ({@link #evaluateBinderHostnameVerification}). {@link Severity#MEDIUM}, as SCG012 reports a
+ * connection URL that turns certificate checks off: the traffic is encrypted, and reading it takes
+ * an active man in the middle. {@link Severity#INFO} when the value is an unresolved placeholder, or
+ * when the client's protocol is one, since whether it uses TLS can't be known.
+ * <p>
  * Severity {@link Severity#HIGH} for an insecure protocol written in the file: unencrypted transport
  * exposes data — and for {@code SASL_PLAINTEXT}, credentials — to anyone with network visibility.
  * {@link Severity#MEDIUM} when the protocol is only absent: the same default applies, but the
@@ -56,6 +72,13 @@ public final class KafkaInsecureProtocolRule implements Rule {
 
     private static final Set<String> RISKY_CANONICAL_VALUES = Set.of("plaintext", "saslplaintext");
 
+    private static final Set<String> TLS_CANONICAL_VALUES = Set.of("ssl", "saslssl");
+
+    private static final String HOSTNAME_ALGORITHM = "ssl.endpoint.identification.algorithm";
+
+    /** Whether a client's connection uses TLS, from the protocol it gets; UNKNOWN for an unresolved placeholder. */
+    private enum Transport { NOT_TLS, UNKNOWN, TLS }
+
     /**
      * An unset protocol is MEDIUM, a written insecure one HIGH: Kafka's default is PLAINTEXT, but the
      * protocol is often set outside these files, through an environment variable SCG can't see
@@ -72,20 +95,23 @@ public final class KafkaInsecureProtocolRule implements Rule {
 
     @Override
     public String description() {
-        return "Kafka cluster communication uses an unencrypted transport protocol (PLAINTEXT or SASL_PLAINTEXT)";
+        return "Kafka cluster communication uses an unencrypted transport protocol (PLAINTEXT or SASL_PLAINTEXT), "
+                + "or TLS without checking the broker's host name";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
         List<Finding> findings = new ArrayList<>();
+        Map<String, Finding> hostnameFindings = new LinkedHashMap<>();
         boolean springKafkaUnsetReported = false;
 
         // Step 1: Check for evidence of Spring Kafka usage
         if (RelaxedProperties.hasKeyWithPrefix(config.properties(), SPRING_KAFKA_PREFIX)) {
 
             // Steps 2 and 3: the protocol each client actually gets, and the clients that get none
-            List<String> uncovered = evaluateEffectiveProtocols(config,
-                    key -> RelaxedProperties.get(config.properties(), key), key -> true, key -> key, findings);
+            Function<String, String> get = key -> RelaxedProperties.get(config.properties(), key);
+            List<String> uncovered = evaluateEffectiveProtocols(config, get, key -> true, key -> key, findings);
+            evaluateHostnameVerification(config, get, key -> key, hostnameFindings);
             if (!uncovered.isEmpty()) {
                 springKafkaUnsetReported = true;
                 findings.add(new Finding(
@@ -103,7 +129,8 @@ public final class KafkaInsecureProtocolRule implements Rule {
         }
 
         // Step 4: the Spring Cloud Stream Kafka binders (ADR-009)
-        checkBinders(config, springKafkaUnsetReported, findings);
+        checkBinders(config, springKafkaUnsetReported, findings, hostnameFindings);
+        findings.addAll(hostnameFindings.values());
 
         return writesOnlyLoopbackBrokers(config)
                 ? findings.stream().map(ConnectionHosts::onLoopback).toList()
@@ -212,7 +239,8 @@ public final class KafkaInsecureProtocolRule implements Rule {
      *     inherited, not a binder of its own.</li>
      * </ul>
      */
-    private void checkBinders(EffectiveConfig config, boolean springKafkaUnsetReported, List<Finding> findings) {
+    private void checkBinders(EffectiveConfig config, boolean springKafkaUnsetReported, List<Finding> findings,
+                              Map<String, Finding> hostnameFindings) {
         List<KafkaBinderContexts.Context> contexts = KafkaBinderContexts.of(config);
         boolean namedKafkaBinders = contexts.stream()
                 .filter(context -> context.binderName().isPresent())
@@ -223,7 +251,9 @@ public final class KafkaInsecureProtocolRule implements Rule {
 
             if (!isMain) {
                 evaluateEffectiveProtocols(config, context::get, context::owns, context::writtenKey, findings);
+                evaluateHostnameVerification(config, context::get, context::writtenKey, hostnameFindings);
             }
+            evaluateBinderHostnameVerification(config, context, hostnameFindings);
             for (String key : binderTargetKeys()) {
                 if (!context.owns(key)) {
                     continue;
@@ -245,6 +275,132 @@ public final class KafkaInsecureProtocolRule implements Rule {
                 findings.add(binderProtocolUnsetFinding(config, context, KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX));
             }
         }
+    }
+
+    /**
+     * Evaluates each {@code ssl.endpoint.identification.algorithm} key a client actually gets, with
+     * the precedence of {@code security.protocol}: the client's {@code properties} map, then the
+     * common {@code spring.kafka.properties} map. Unlike the protocol, a blank value counts as written,
+     * since blank is what turns the check off. A key shared by several clients is evaluated with the
+     * most exposed of their transports.
+     * <p>
+     * Every context evaluates the keys it inherits too, since the risk is the key together with the
+     * context's protocol: a blank key at the top level is reported when a named binder's environment
+     * sets {@code SSL}, though the main context, without TLS, doesn't report it. Each key is reported
+     * once ({@link #recordHostnameFinding}).
+     */
+    private void evaluateHostnameVerification(EffectiveConfig config, Function<String, String> get,
+                                              Function<String, String> written,
+                                              Map<String, Finding> hostnameFindings) {
+        Map<String, Transport> transportBySupplyingKey = new LinkedHashMap<>();
+        for (String client : CLIENTS) {
+            List.of("spring.kafka." + client + ".properties." + HOSTNAME_ALGORITHM,
+                            "spring.kafka.properties." + HOSTNAME_ALGORITHM).stream()
+                    .filter(key -> get.apply(key) != null)
+                    .findFirst()
+                    .ifPresent(key -> transportBySupplyingKey.merge(key, transport(get, protocolChain(client)), KafkaInsecureProtocolRule::moreExposed));
+        }
+        transportBySupplyingKey.forEach((key, transport) -> evaluateHostnameKey(config, written.apply(key),
+                get.apply(key), transport).ifPresent(finding -> recordHostnameFinding(hostnameFindings, written.apply(key), finding)));
+    }
+
+    /** Keeps one finding per key as written, the most severe when several contexts report it. */
+    private static void recordHostnameFinding(Map<String, Finding> hostnameFindings, String key, Finding finding) {
+        hostnameFindings.merge(key, finding,
+                (kept, candidate) -> candidate.severity().compareTo(kept.severity()) < 0 ? candidate : kept);
+    }
+
+    /**
+     * The binder maps' {@code ssl.endpoint.identification.algorithm} keys of a context, its own and
+     * the ones it inherits (see {@link #evaluateHostnameVerification}), each evaluated as written,
+     * like their {@code security.protocol}: the {@code configuration} map always reaches the admin
+     * client, and the per-client maps have the highest precedence. The transport is
+     * the protocol the same clients get: the map's own, then {@code configuration}'s, then Spring
+     * Boot's.
+     */
+    private void evaluateBinderHostnameVerification(EffectiveConfig config, KafkaBinderContexts.Context context,
+                                                    Map<String, Finding> hostnameFindings) {
+        for (String prefix : List.of(KafkaBinderContexts.KAFKA_BINDER_PREFIX, KafkaBinderContexts.KAFKA_STREAMS_BINDER_PREFIX)) {
+            for (String map : KafkaBinderContexts.CLIENT_MAPS) {
+                String key = prefix + map + HOSTNAME_ALGORITHM;
+                String raw = context.get(key);
+                if (raw == null) {
+                    continue;
+                }
+                List<String> chain = new ArrayList<>();
+                chain.add(prefix + map + "security.protocol");
+                chain.add(prefix + "configuration.security.protocol");
+                switch (map) {
+                    case "consumer-properties." -> chain.addAll(protocolChain("consumer"));
+                    case "producer-properties." -> chain.addAll(protocolChain("producer"));
+                    default -> chain.addAll(List.of("spring.kafka.properties.security.protocol", "spring.kafka.security.protocol"));
+                }
+                String written = context.writtenKey(key);
+                evaluateHostnameKey(config, written, raw, transport(context::get, chain))
+                        .ifPresent(finding -> recordHostnameFinding(hostnameFindings, written, finding));
+            }
+        }
+    }
+
+    /**
+     * The transport a client gets from the first key of {@code chain} with a value: TLS for
+     * {@code SSL}/{@code SASL_SSL}, UNKNOWN for a placeholder without a default, and otherwise, an
+     * unset protocol included (Kafka's default is {@code PLAINTEXT}), not TLS.
+     */
+    private static Transport transport(Function<String, String> get, List<String> chain) {
+        for (String key : chain) {
+            String raw = get.apply(key);
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
+            if (resolved.isEmpty()) {
+                return Transport.UNKNOWN;
+            }
+            return TLS_CANONICAL_VALUES.contains(canonicalize(resolved.get().strip())) ? Transport.TLS : Transport.NOT_TLS;
+        }
+        return Transport.NOT_TLS;
+    }
+
+    private static Transport moreExposed(Transport a, Transport b) {
+        return a.compareTo(b) >= 0 ? a : b;
+    }
+
+    private Optional<Finding> evaluateHostnameKey(EffectiveConfig config, String key, String raw, Transport transport) {
+        if (transport == Transport.NOT_TLS) {
+            return Optional.empty(); // without TLS there is no certificate to check; the protocol finding covers it
+        }
+        String trimmed = raw.strip();
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(trimmed);
+        if (resolved.isEmpty()) {
+            return Optional.of(new Finding(
+                    id(),
+                    Severity.INFO,
+                    ("Kafka property '%s' relies on an unresolved environment placeholder '%s'. If it resolves to a " +
+                            "blank value, the client doesn't check that the broker's certificate matches its host name " +
+                            "(CWE-295); static analysis cannot verify the runtime value.")
+                            .formatted(key, raw),
+                    config.sourceFile().toString(),
+                    config.profileLabel()
+            ));
+        }
+        if (!resolved.get().isBlank()) {
+            return Optional.empty();
+        }
+        String message = ("'%s' is blank, which turns off the Kafka client's check that the broker's certificate " +
+                "matches its host name: the connection uses TLS, but any certificate the client trusts is accepted " +
+                "for any broker, so a man in the middle holding one can read and change the traffic (CWE-295). " +
+                "Remove the property, or set it to 'https'.").formatted(key);
+        if (trimmed.contains("${")) {
+            message += " The value originates from a static placeholder default ('%s').".formatted(raw);
+        }
+        Severity severity = Severity.MEDIUM;
+        if (transport == Transport.UNKNOWN) {
+            severity = Severity.INFO;
+            message += " Reported as INFO because the client's security.protocol is an unresolved placeholder, so " +
+                    "whether the connection uses TLS can't be known.";
+        }
+        return Optional.of(new Finding(id(), severity, message, config.sourceFile().toString(), config.profileLabel()));
     }
 
     /**

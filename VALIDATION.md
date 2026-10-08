@@ -44,7 +44,7 @@ per independently written file.
 | `spring-projects/spring-boot` | `adbbf04` | regular | 42 | 49 | 7 | 20 | 76 |
 | `codecentric/spring-boot-admin` | `8699ebd` | regular | 29 | 55 | 31 | 1 | 87 |
 | `spring-projects/spring-petclinic` | `818c413` | regular | 3 | 5 | — | — | 5 |
-| `spring-cloud/spring-cloud-stream-samples` | `2ff1168` | regular | 30 | 13 | 28 | 6 | 47 |
+| `spring-cloud/spring-cloud-stream-samples` | `2ff1168` | regular | 30 | 13 | 28 | 7 | 48 |
 | `jhipster/jhipster-sample-app` | `6b000b5` | regular | 5 | 10 | 3 | 10 | 23 |
 | `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 26 | — | 5 | 31 |
 | `spring-projects/spring-ai-examples` | `7416412` | regular | 25 | 1 | 1 | 38 | 40 |
@@ -193,21 +193,23 @@ Stream Kafka binder rather than `spring.kafka.*`.
 | SCG007 | 2 | — | — | 2 |
 | SCG009 | — | — | 1 | 1 |
 | SCG013 | — | 1 | — | 1 |
-| SCG014 | 2 | 27 | 5 | 34 |
-| **Total** | **13** | **28** | **6** | **47** |
+| SCG014 | 2 | 27 | 6 | 35 |
+| **Total** | **13** | **28** | **7** | **48** |
 
-31 of the 34 SCG014 findings report a protocol that isn't set, where
+31 of the 35 SCG014 findings report a protocol that isn't set, where
 Kafka's default is `PLAINTEXT` ([ADR-010](ARCHITECTURE.md#adr-010-a-finding-based-on-an-absent-key-is-reported-one-level-below-a-written-value)):
 2 modules using `spring.kafka.*` and 29 binders in use (samples that
 configure Kafka only through the binder, [ADR-009](ARCHITECTURE.md)). 27
 are MEDIUM; 4 are INFO, since the brokers they write are all on
-`localhost`. The other 16 findings are on explicit values: literal
+`localhost`. The other 17 findings are on explicit values: literal
 passwords (`spring.datasource.password` twice,
 `spring.security.user.password`, `jaas.options.password` in the Kafka and
 Kafka Streams binders, the three numeric SSL passwords in
 `kafka-ssl-demo`), the 2 JAAS passwords in
 `kafka-multi-binder-jaas` (SCG007), the 3 `SASL_PLAINTEXT` values written
-in a binder (one INFO, on `localhost` brokers), `exposure.include=*`,
+in a binder (one INFO, on `localhost` brokers), `kafka-ssl-demo`'s blank
+`ssl.endpoint.identification.algorithm` on `SSL`, which turns the broker
+host name check off (INFO, on `localhost` brokers), `exposure.include=*`,
 `show-details: ALWAYS` and one logger at a debug level.
 
 This repository uses no bracketed map keys, so it doesn't exercise
@@ -333,7 +335,7 @@ checked without SCG's own code.
 | `spring-petclinic-microservices-config` | 48 | Every file read; expected count derived by hand | No |
 | `spring-boot` | 76 | Independent greps, file by file, for the 8 rules that fired | No |
 | `spring-boot-admin` | 87 | Independent greps, file by file, for the 4 rules that fired | No |
-| `spring-cloud-stream-samples` | 47 | Every file with a password, secret or `security.protocol` read by hand | No |
+| `spring-cloud-stream-samples` | 48 | Every file with a password, secret or `security.protocol` read by hand | No |
 | `jhipster-sample-app` | 23 | Every file read; expected count derived by hand | No |
 | `spring-authorization-server` | 31 | Every file read; expected count derived by hand | No |
 | `spring-ai-examples` | 40 | Independent greps for every rule; every line with a secret-named key listed | No |
@@ -1801,37 +1803,41 @@ configuration Spring Boot 4.1.1 auto-configures for `KafkaAdmin`
 connection from the auto-configured `ConnectionFactory` (Spring AMQP
 4.1.1, `ssl.enabled=true`). `A` is `ssl.endpoint.identification.algorithm`.
 
-| # | Configuration | Server | Client |
-|---|---|---|---|
-| K0 | (none) | valid | accepted |
-| K1 | (none) | wrong host | refused |
-| K2 | `spring.kafka.properties.A=` | wrong host | **accepted** |
-| K3 | `spring.kafka.admin.properties.A=` | wrong host | **accepted** |
-| K4 | `spring.kafka.consumer.properties.A=` | wrong host | refused (the admin client keeps the default) |
-| K5 | `spring.kafka.properties.A=https` | wrong host | refused |
-| K6 | `spring.kafka.properties.A=HTTPS` | wrong host | refused |
-| K7 | `spring.kafka.properties.A=` | untrusted | refused |
-| Y1 | `A:` with nothing after it, in YAML (a null) | wrong host | **accepted** |
-| Y2 | `A: ' '` in YAML | wrong host | **accepted** |
-| KB0 | `spring.kafka.ssl.bundle` | valid | accepted |
-| KB1 | `spring.kafka.ssl.bundle` | wrong host | refused |
-| KB2 | `spring.kafka.ssl.bundle`, `spring.kafka.properties.A=` | wrong host | **accepted** |
-| KB3 | `spring.kafka.ssl.bundle` | untrusted | refused |
-| R0 | (none) | valid | accepted |
-| R1 | (none) | wrong host | refused |
-| R2 | `verify-hostname=false` | wrong host | **accepted** |
-| R3 | `verify-hostname=off` | wrong host | **accepted** |
-| R4 | (none) | untrusted | refused |
-| R5 | `validate-server-certificate=false` | untrusted | refused (ignored: a trust store is set) |
-| R6 | `validate-server-certificate=false` | wrong host | refused (ignored: a trust store is set) |
-| R7 | `verify-hostname=false` | untrusted | refused |
-| R8 | no trust store | untrusted | refused (the JVM's default trust store) |
-| R9 | no trust store, `validate-server-certificate=false` | untrusted | **accepted** |
-| R10 | no trust store, `validate-server-certificate=false` | wrong host | **accepted** |
-| RB0 | `spring.rabbitmq.ssl.bundle` | valid | accepted |
-| RB1 | `spring.rabbitmq.ssl.bundle` | wrong host | refused |
-| RB2 | `spring.rabbitmq.ssl.bundle`, `verify-hostname=false` | wrong host | **accepted** |
-| RB3 | `spring.rabbitmq.ssl.bundle`, `validate-server-certificate=false` | untrusted | refused (ignored: a bundle is set) |
+| # | Configuration | Server | Client | SCG |
+|---|---|---|---|---|
+| K0 | (none) | valid | accepted | silent |
+| K1 | (none) | wrong host | refused | silent |
+| K2 | `spring.kafka.properties.A=` | wrong host | **accepted** | MEDIUM |
+| K3 | `spring.kafka.admin.properties.A=` | wrong host | **accepted** | MEDIUM |
+| K4 | `spring.kafka.consumer.properties.A=` | wrong host | refused (the admin client keeps the default) | MEDIUM (for the consumer) |
+| K5 | `spring.kafka.properties.A=https` | wrong host | refused | silent |
+| K6 | `spring.kafka.properties.A=HTTPS` | wrong host | refused | silent |
+| K7 | `spring.kafka.properties.A=` | untrusted | refused | MEDIUM |
+| K8 | `spring.kafka.properties.A=none` | wrong host | refused | silent |
+| K9 | `spring.kafka.properties.A=LDAPS` | wrong host | refused | silent |
+| K10 | `spring.kafka.properties.A=none` | valid | refused (the client fails on any server) | silent |
+| Y1 | `A:` with nothing after it, in YAML (a null) | wrong host | **accepted** | MEDIUM |
+| Y2 | `A: ' '` in YAML | wrong host | **accepted** | MEDIUM |
+| KB0 | `spring.kafka.ssl.bundle` | valid | accepted | silent |
+| KB1 | `spring.kafka.ssl.bundle` | wrong host | refused | silent |
+| KB2 | `spring.kafka.ssl.bundle`, `spring.kafka.properties.A=` | wrong host | **accepted** | MEDIUM |
+| KB3 | `spring.kafka.ssl.bundle` | untrusted | refused | silent |
+| R0 | (none) | valid | accepted | — |
+| R1 | (none) | wrong host | refused | — |
+| R2 | `verify-hostname=false` | wrong host | **accepted** | — |
+| R3 | `verify-hostname=off` | wrong host | **accepted** | — |
+| R4 | (none) | untrusted | refused | — |
+| R5 | `validate-server-certificate=false` | untrusted | refused (ignored: a trust store is set) | — |
+| R6 | `validate-server-certificate=false` | wrong host | refused (ignored: a trust store is set) | — |
+| R7 | `verify-hostname=false` | untrusted | refused | — |
+| R8 | no trust store | untrusted | refused (the JVM's default trust store) | — |
+| R9 | no trust store, `validate-server-certificate=false` | untrusted | **accepted** | — |
+| R10 | no trust store, `validate-server-certificate=false` | wrong host | **accepted** | — |
+| RB0 | `spring.rabbitmq.ssl.bundle` | valid | accepted | — |
+| RB1 | `spring.rabbitmq.ssl.bundle` | wrong host | refused | — |
+| RB2 | `spring.rabbitmq.ssl.bundle`, `verify-hostname=false` | wrong host | **accepted** | — |
+| RB3 | `spring.rabbitmq.ssl.bundle`, `validate-server-certificate=false` | untrusted | refused (ignored: a bundle is set) | — |
+
 
 Every refusal was the client's `certificate_unknown` alert. The script
 was run twice, with the same result.
@@ -1841,7 +1847,10 @@ null, which Spring loads as an empty string, or spaces) turns the host
 name check off, with or without an SSL bundle (K2, Y1, Y2, KB2), and
 leaves the trust check on (K7): any certificate the client trusts is
 accepted for any broker. `https` in any case keeps the check (K5, K6), as
-does the default (K1, KB1). The key has no Spring Boot property of its
+does the default (K1, KB1). No other value turns it off: `LDAPS` checks
+the host too (K9), and a name the JDK doesn't know (`none`) makes the
+client refuse every server, the valid one included (K8, K10), so the
+application can't connect at all. The key has no Spring Boot property of its
 own: it reaches the client through `spring.kafka.properties` or a
 client's own map, which applies to that client only (K3, K4), as for
 `security.protocol` ("SCG014 protocol precedence"). The Spring Cloud
@@ -1860,8 +1869,15 @@ store, no trust store and no bundle is set: Spring AMQP 4.1.1's
 manager only on that path (`setupBasicSSL()`), and otherwise builds the
 trust managers from the stores, ignoring the property (R5, R6, RB3).
 
-These rows are what SCG014 and SCG015 are to be checked against; neither
-reports them yet (`BACKLOG.md`, "TLS without verifying the server").
+The SCG column is SCG014's result for the row's keys with a remote broker
+(on the scenarios' `127.0.0.1`, each MEDIUM is INFO, "Loopback addresses
+in the transport rules"). SCG014 reports a blank algorithm on a client
+that uses TLS: K4 is reported for
+the consumer, which gets the blank value, though the admin client measured
+doesn't, and K7 because the host name check is off, though the trust check
+refused this server. Every other Kafka row is silent; each row is pinned
+in `KafkaInsecureProtocolRuleTest`. SCG015 doesn't report the RabbitMQ
+rows yet (`BACKLOG.md`, "TLS without verifying the server").
 
 ## Loopback addresses in the transport rules
 
@@ -1918,14 +1934,17 @@ remote address anywhere keeps every finding (L6). SCG015 counts every
 entry of `addresses` when it is set, since the client fails over to them,
 else `host`.
 
-In the reference projects, 16 findings are INFO for a written loopback
-host, from 9 properties: in `spring-petclinic-microservices-config`,
+In the reference projects, 17 findings are INFO for a written loopback
+host, from 10 properties: in `spring-petclinic-microservices-config`,
 SCG012's `jdbc:mysql://localhost:3306/petclinic?...useSSL=false`, inherited
 by its 8 services (HIGH on a remote host); in `spring-boot`, SCG017's
 `jwk-set-uri: http://localhost:8080/oauth2/jwks` (HIGH) and one SCG014 on
 `bootstrap-servers=localhost:9092` (MEDIUM); in
-`spring-cloud-stream-samples`, five SCG014 on binder `brokers` or
+`spring-cloud-stream-samples`, six SCG014 on binder `brokers` or
 `bootstrap-servers` at `localhost` (one HIGH for `SASL_PLAINTEXT`, four
-MEDIUM); in `spring-authorization-server`, SCG017's `jwk-set-uri:
-http://localhost:9000/oauth2/jwks` (HIGH). The demo fixtures that showcase a HIGH use a remote host
-(`localstack.dev.internal`, `customers-db`).
+MEDIUM for an absent protocol, one MEDIUM for a blank
+`ssl.endpoint.identification.algorithm`); in
+`spring-authorization-server`, SCG017's `jwk-set-uri:
+http://localhost:9000/oauth2/jwks` (HIGH). The demo fixtures that
+showcase a HIGH use a remote host (`localstack.dev.internal`,
+`customers-db`).

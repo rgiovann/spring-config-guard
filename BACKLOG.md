@@ -19,8 +19,8 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: TLS without verifying the server, then the GitHub
-Action.
+Done in this order: TLS without verifying the server in SCG015, then
+the GitHub Action.
 Everything else waits in Deferred for a real case or a need.
 
 ### GitHub Action for the Marketplace
@@ -46,28 +46,23 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
   maintainer's decision), since false positives in a CI gate are what drive
   new users away first. Met with v1.15.0: every rule's review has shipped.
 
-### TLS without verifying the server (extends SCG014 and SCG015)
+### TLS without verifying the server: SCG015
 
-The transport rules report an unencrypted connection, not an encrypted one
-that accepts any server. Measured on the wire (`VALIDATION.md`, "TLS
-without server verification (Kafka and RabbitMQ)"); decided: each
-transport rule reports it next to its plaintext finding, as SCG012 does
-for `sslmode=require`, MEDIUM (INFO when every host is loopback), only
-when the connection uses TLS. A key left out keeps the check (silent); a
-placeholder without a default is INFO.
+SCG014 reports a Kafka client on TLS whose broker host name check is off
+(a blank `ssl.endpoint.identification.algorithm`, `VALIDATION.md`, "TLS
+without server verification (Kafka and RabbitMQ)"). SCG015 is to report
+the RabbitMQ rows the same way: MEDIUM next to its plaintext finding, INFO
+when every host is loopback, only when the connection uses TLS; a key left
+out keeps the check (silent), a placeholder without a default is INFO.
 
-* **SCG014**: `ssl.endpoint.identification.algorithm` blank (empty, a YAML
-  null or spaces) in the configuration a client gets, through
-  `spring.kafka.properties` or the client's own map, with the precedence
-  SCG014 already resolves, and in the binder contexts (ADR-009), on
-  `SSL`/`SASL_SSL` (K2, K3, Y1, Y2, KB2). A real case:
-  `spring-cloud-stream-samples`' `kafka-ssl-demo` writes it as a YAML null
-  with `security.protocol: SSL`, on `localhost` brokers (INFO).
-* **SCG015**: `spring.rabbitmq.ssl.verify-hostname` set to a false literal
-  (R2, R3, RB2); `spring.rabbitmq.ssl.validate-server-certificate` set to
-  a false literal, only when neither `ssl.key-store`, `ssl.trust-store`
-  nor `ssl.bundle` is set, since Spring AMQP ignores it otherwise (R9,
-  R10; silent in R5, R6, RB3). No reference project writes either.
+* `spring.rabbitmq.ssl.verify-hostname` set to a false literal (R2, R3,
+  RB2).
+* `spring.rabbitmq.ssl.validate-server-certificate` set to a false
+  literal, only when neither `ssl.key-store`, `ssl.trust-store` nor
+  `ssl.bundle` is set, since Spring AMQP ignores it otherwise (R9, R10;
+  silent in R5, R6, RB3).
+
+No reference project writes either.
 
 ## Deferred (post-1.0)
 

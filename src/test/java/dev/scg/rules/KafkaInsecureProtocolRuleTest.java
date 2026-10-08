@@ -510,4 +510,216 @@ class KafkaInsecureProtocolRuleTest {
         assertThat(rule.check(loopback)).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
         assertThat(rule.check(remoteInBinder)).extracting(Finding::severity).contains(Severity.HIGH);
     }
+
+    // --- TLS without host name verification (VALIDATION.md, "TLS without server verification (Kafka and RabbitMQ)")
+
+    private static final String ALGORITHM = "ssl.endpoint.identification.algorithm";
+
+    private List<Finding> hostnameFindings(EffectiveConfig config) {
+        return rule.check(config).stream().filter(f -> f.message().contains(ALGORITHM)).toList();
+    }
+
+    @ParameterizedTest(name = "blank value ''{0}''")
+    @ValueSource(strings = {"", " ", "   "})
+    @DisplayName("K2/Y1/Y2: a blank algorithm on SSL is MEDIUM (a YAML null is loaded as an empty string)")
+    void blankAlgorithmOnSslIsMedium(String blank) {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, blank)))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("'spring.kafka.properties." + ALGORITHM + "' is blank")
+                            .contains("CWE-295").contains("set it to 'https'");
+                });
+    }
+
+    @Test
+    @DisplayName("A blank algorithm on SASL_SSL is MEDIUM too")
+    void blankAlgorithmOnSaslSslIsMedium() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SASL_SSL", "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("K3: a blank algorithm in one client's properties map is reported under that key")
+    void blankAlgorithmInClientMap() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.admin.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("spring.kafka.admin.properties." + ALGORITHM);
+                });
+    }
+
+    @Test
+    @DisplayName("A blank common algorithm overridden by every client's own map isn't used, so it isn't reported")
+    void blankCommonAlgorithmOverriddenByEveryClient() {
+        String[] properties = {COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, ""};
+        List<String> all = new java.util.ArrayList<>(List.of(properties));
+        for (String client : List.of("producer", "consumer", "admin", "streams")) {
+            all.add("spring.kafka." + client + ".properties." + ALGORITHM);
+            all.add("https");
+        }
+        assertThat(hostnameFindings(config(all.toArray(String[]::new)))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("K4: a blank common algorithm one client overrides is still reported once, for the clients that keep it")
+    void blankCommonAlgorithmKeptByOtherClients() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL",
+                "spring.kafka.properties." + ALGORITHM, "",
+                "spring.kafka.consumer.properties." + ALGORITHM, "https")))
+                .singleElement().satisfies(finding ->
+                        assertThat(finding.message()).contains("'spring.kafka.properties." + ALGORITHM + "'"));
+    }
+
+    @ParameterizedTest(name = "''{0}''")
+    @ValueSource(strings = {"https", "HTTPS", "LDAPS", "none"})
+    @DisplayName("K5/K6/K8/K9: a non-blank algorithm checks the host, or stops the client from connecting: silent")
+    void nonBlankAlgorithmIsSilent(String value) {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, value))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A blank algorithm without TLS isn't reported: there is no certificate to check, and the protocol is reported")
+    void blankAlgorithmWithoutTlsIsLeftToTheProtocolFinding() {
+        List<Finding> findings = rule.check(config(COMMON_KEY, "PLAINTEXT", "spring.kafka.properties." + ALGORITHM, ""));
+        assertThat(findings).singleElement().satisfies(finding -> {
+            assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+            assertThat(finding.message()).doesNotContain(ALGORITHM);
+        });
+        assertThat(hostnameFindings(config("spring.kafka.bootstrap-servers", "kafka:9093",
+                "spring.kafka.properties." + ALGORITHM, ""))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An unresolved placeholder is INFO; an empty default is MEDIUM, saying where it comes from; a non-blank default is silent")
+    void placeholderAlgorithm() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, "${KAFKA_ALG}")))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, "${KAFKA_ALG:}")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("static placeholder default ('${KAFKA_ALG:}')");
+                });
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.properties." + ALGORITHM, "${KAFKA_ALG:https}")))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("A blank algorithm with the protocol from an unresolved placeholder is INFO: TLS can't be known")
+    void blankAlgorithmWithUnknownProtocolIsInfo() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "${KAFKA_PROTOCOL}", "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("unresolved placeholder");
+                });
+    }
+
+    @Test
+    @DisplayName("spring-cloud-stream-samples' kafka-ssl-demo: a blank algorithm in the binder's configuration on SSL, loopback brokers: INFO")
+    void binderConfigurationBlankAlgorithmOnLoopback() {
+        String binder = "spring.cloud.stream.kafka.binder.";
+        assertThat(hostnameFindings(config(
+                binder + "brokers", "localhost:9093",
+                binder + "configuration.security.protocol", "SSL",
+                binder + "configuration." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains(binder + "configuration." + ALGORITHM).contains("Lowered from MEDIUM");
+                });
+    }
+
+    @Test
+    @DisplayName("A blank algorithm in a binder map on a remote broker is MEDIUM, with the map's own protocol or configuration's")
+    void binderMapsBlankAlgorithm() {
+        String binder = "spring.cloud.stream.kafka.binder.";
+        assertThat(hostnameFindings(config(
+                binder + "brokers", "kafka.example.com:9093",
+                binder + "configuration.security.protocol", "SSL",
+                binder + "consumer-properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains(binder + "consumer-properties." + ALGORITHM);
+                });
+        assertThat(hostnameFindings(config(
+                binder + "brokers", "kafka.example.com:9093",
+                binder + "configuration.security.protocol", "SSL",
+                binder + "producer-properties.security.protocol", "PLAINTEXT",
+                binder + "producer-properties." + ALGORITHM, ""))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Inside a named binder's environment, its own blank algorithm is reported once, under the key as written")
+    void namedBinderEnvironmentBlankAlgorithm() {
+        String env = "spring.cloud.stream.binders.kafka1.environment.";
+        assertThat(hostnameFindings(config(
+                "spring.cloud.stream.binders.kafka1.type", "kafka",
+                env + "spring.kafka.bootstrap-servers", "kafka.example.com:9093",
+                env + "spring.kafka.security.protocol", "SSL",
+                env + "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains(env + "spring.kafka.properties." + ALGORITHM);
+                });
+    }
+
+    @Test
+    @DisplayName("A top-level blank algorithm inherited by a named binder is reported once, in the main context")
+    void inheritedBlankAlgorithmReportedOnce() {
+        assertThat(hostnameFindings(config(
+                "spring.cloud.stream.binders.kafka1.type", "kafka",
+                "spring.kafka.bootstrap-servers", "kafka.example.com:9093",
+                COMMON_KEY, "SSL",
+                "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> assertThat(finding.message()).contains("'spring.kafka.properties." + ALGORITHM + "'"));
+    }
+
+    @Test
+    @DisplayName("K0/K1: no algorithm written keeps the default check (https): silent")
+    void noAlgorithmIsSilent() {
+        assertThat(hostnameFindings(config("spring.kafka.bootstrap-servers", "kafka.example.com:9093", COMMON_KEY, "SSL")))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("K4: a blank algorithm in the consumer's map is MEDIUM, for the consumer that gets it")
+    void blankAlgorithmInConsumerMap() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.consumer.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("spring.kafka.consumer.properties." + ALGORITHM);
+                });
+    }
+
+    @Test
+    @DisplayName("K7: the trust check doesn't make a blank algorithm safe: still MEDIUM (whatever the server presents)")
+    void blankAlgorithmIndependentOfTrust() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL",
+                "spring.kafka.ssl.trust-store-location", "file:/etc/kafka/trust.p12",
+                "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("KB0-KB3: an SSL bundle doesn't change it: a blank algorithm is MEDIUM, none is silent")
+    void sslBundleDoesNotChangeTheResult() {
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.ssl.bundle", "kafka")))
+                .isEmpty();
+        assertThat(hostnameFindings(config(COMMON_KEY, "SSL", "spring.kafka.ssl.bundle", "kafka",
+                "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("A top-level blank algorithm is reported when only a named binder's environment sets SSL")
+    void inheritedBlankAlgorithmWithTlsOnlyInBinderEnvironment() {
+        String env = "spring.cloud.stream.binders.kafka1.environment.";
+        assertThat(hostnameFindings(config(
+                "spring.cloud.stream.binders.kafka1.type", "kafka",
+                "spring.kafka.bootstrap-servers", "kafka.example.com:9093",
+                env + "spring.kafka.security.protocol", "SSL",
+                "spring.kafka.properties." + ALGORITHM, "")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("'spring.kafka.properties." + ALGORITHM + "'");
+                });
+    }
 }

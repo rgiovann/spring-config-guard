@@ -86,6 +86,9 @@ kafka "K4 wrong host, consumer.properties.$A="              9302 $KT $K.consumer
 kafka "K5 wrong host, properties.$A=https"                  9302 $KT $K.properties.$A=https
 kafka "K6 wrong host, properties.$A=HTTPS"                  9302 $KT $K.properties.$A=HTTPS
 kafka "K7 untrusted, properties.$A="                        9303 $KT $K.properties.$A=
+kafka "K8 wrong host, properties.$A=none"                   9302 $KT $K.properties.$A=none
+kafka "K9 wrong host, properties.$A=LDAPS"                  9302 $KT $K.properties.$A=LDAPS
+kafka "K10 valid server, properties.$A=none"                9301 $KT $K.properties.$A=none
 kafka "Y1 wrong host, YAML $A: (null)"                      9302 $KT --spring.config.additional-location=file:$T/null-algorithm.yml
 kafka "Y2 wrong host, YAML $A: ' '"                         9302 $KT --spring.config.additional-location=file:$T/blank-algorithm.yml
 kafka "KB0 valid server, ssl.bundle"                        9301 $KB
