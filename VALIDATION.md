@@ -996,6 +996,21 @@ Where SCG006 stays silent was reviewed case by case (CLAUDE.md,
   them, and is silent. `1` and `0`, which Spring also reads as booleans,
   are reported in such a key, as a numeric secret.
 
+What a value looks like to a reader doesn't lower its severity: SCG006
+treats a value apart from a written secret only when its syntax is
+something Spring or a library interprets (a placeholder, `{cipher}`,
+`{vault}`, `ENC(`, `file:`, `classpath:`, a boolean), so it can tell what
+the value is. A sample value such as `<YOUR-OPENAI-API-KEY>`, `changeme`
+or `your-key-here` is bound as written, and telling it from a real secret
+would be a guess, a generic secret scanner's job. It is HIGH, as any other
+written value. Of the candidate reference projects, `spring-ai-examples`
+writes `spring.ai.openai.api-key=<YOUR-OPENAI-API-KEY>` once
+(`kotlin/rag-with-kotlin`) and `${OPENAI_API_KEY}` in 20 other
+`application*` files, the form the finding asks for. A search of the
+reference and candidate projects' `application*` files for `<...>`,
+`your-`, `changeme`, `xxx`, `dummy`, `example` or `replace` in a key
+naming a password, secret, token or API key found no other.
+
 On 6 more hand-built keys, `https://svc:s3cr3t@...` in
 `app.security.token-url` is HIGH, a `?token=` query and
 `classpath:certs/server.key` in a `private-key` are INFO, and a webhook

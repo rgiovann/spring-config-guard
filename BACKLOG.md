@@ -29,21 +29,15 @@ Everything else waits in Deferred for a real case or a need.
 Three projects proposed as new reference projects, run against the v1.16.0
 jar on 2026-10-06, to be added to `VALIDATION.md`, pinned at the commit
 below, with their precision check. jhipster's finding, `on-profile` read as
-a literal name, is settled (ADR-012, ADR-013), and so is
-spring-authorization-server's, a secret pattern in an OAuth2 registration id
-(`VALIDATION.md`, "SCG006 key matching"); spring-ai-examples' is below.
+a literal name, is settled (ADR-012, ADR-013), and so are SCG006's in the
+other two (`VALIDATION.md`, "SCG006 key matching"): a secret pattern in an
+OAuth2 registration id is no longer INFO in spring-authorization-server,
+and a sample value (`<YOUR-OPENAI-API-KEY>`) stays HIGH in
+spring-ai-examples.
 
 * `jhipster/jhipster-sample-app` (`6b000b5`, Spring Boot 4.1.1)
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
-
-#### SCG006: a placeholder written as sample text
-
-`spring-ai-examples` writes `spring.ai.openai.api-key=<YOUR-OPENAI-API-KEY>`
-(`kotlin/rag-with-kotlin`), reported as HIGH. The value is an instruction
-to the reader, not a secret, but a false positive here is arguable: the
-file invites the user to paste a real key in its place. Decide whether a
-value shaped like `<...>` is a hardcoded secret.
 
 ### GitHub Action for the Marketplace
 
