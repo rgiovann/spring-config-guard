@@ -171,7 +171,7 @@ depending on the evidence. The authoritative list is
 | SCG012 | HIGH / MEDIUM / INFO | Disabled or insecure TLS in database and broker connection URIs |
 | SCG013 | MEDIUM / INFO | Actuator health endpoint, or a health group, showing component details via `show-details`/`show-components` (`MEDIUM` to any caller; `INFO` to authenticated users, or for component names only) |
 | SCG014 | HIGH / MEDIUM / INFO | Kafka over an unencrypted protocol (`PLAINTEXT` or `SASL_PLAINTEXT`), or over TLS with the broker host name check off (a blank `ssl.endpoint.identification.algorithm`) |
-| SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS |
+| SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS, or with TLS that doesn't verify the broker (`ssl.verify-hostname` or `ssl.validate-server-certificate` false) |
 | SCG016 | HIGH / INFO | HashiCorp Vault over `http` |
 | SCG017 | HIGH / INFO | OAuth2 Resource Server fetching its JWT keys (`jwk-set-uri`, `issuer-uri` or `public-key-location`, whichever Spring Boot uses) or its token introspection (`introspection-uri`) over HTTP |
 

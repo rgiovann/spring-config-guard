@@ -1,6 +1,7 @@
 """Listens with TLS on the given ports and appends one line per connection to the given file: the
-port and whether the client finished the handshake ("accepted") or aborted it ("refused", with the
-alert the client sent), then closes the connection. Each port presents its own certificate:
+port and whether the client finished the handshake ("accepted"), aborted it with an alert
+("refused", with the alert), or dropped the connection without one ("closed": a client exiting in
+the middle of a retry), then closes the connection. Each port presents its own certificate:
   port:certfile:keyfile [port:certfile:keyfile ...]"""
 import socket
 import ssl
@@ -9,6 +10,11 @@ import threading
 
 out_file, specs = sys.argv[1], sys.argv[2:]
 lock = threading.Lock()
+
+
+def refusal(error):
+    reason = error.reason or str(error)
+    return ("closed:" if reason == "UNEXPECTED_EOF_WHILE_READING" else "refused:") + reason
 
 
 def record(port, result):
@@ -32,11 +38,11 @@ def serve(port, certfile, keyfile):
                     tls.recv(1)
                     record(port, "accepted")
                 except ssl.SSLError as e:
-                    record(port, "refused:" + (e.reason or str(e)))
+                    record(port, refusal(e))
                 except OSError:
                     record(port, "accepted")
         except ssl.SSLError as e:
-            record(port, "refused:" + (e.reason or str(e)))
+            record(port, refusal(e))
         except OSError as e:
             record(port, "closed:" + type(e).__name__)
 

@@ -19,8 +19,7 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: TLS without verifying the server in SCG015, then
-the GitHub Action.
+Next: the GitHub Action.
 Everything else waits in Deferred for a real case or a need.
 
 ### GitHub Action for the Marketplace
@@ -45,24 +44,6 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
 * **Order**: only after every rule is reviewed and released (the
   maintainer's decision), since false positives in a CI gate are what drive
   new users away first. Met with v1.15.0: every rule's review has shipped.
-
-### TLS without verifying the server: SCG015
-
-SCG014 reports a Kafka client on TLS whose broker host name check is off
-(a blank `ssl.endpoint.identification.algorithm`, `VALIDATION.md`, "TLS
-without server verification (Kafka and RabbitMQ)"). SCG015 is to report
-the RabbitMQ rows the same way: MEDIUM next to its plaintext finding, INFO
-when every host is loopback, only when the connection uses TLS; a key left
-out keeps the check (silent), a placeholder without a default is INFO.
-
-* `spring.rabbitmq.ssl.verify-hostname` set to a false literal (R2, R3,
-  RB2).
-* `spring.rabbitmq.ssl.validate-server-certificate` set to a false
-  literal, only when neither `ssl.key-store`, `ssl.trust-store` nor
-  `ssl.bundle` is set, since Spring AMQP ignores it otherwise (R9, R10;
-  silent in R5, R6, RB3).
-
-No reference project writes either.
 
 ## Deferred (post-1.0)
 

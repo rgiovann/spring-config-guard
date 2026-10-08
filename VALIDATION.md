@@ -1657,7 +1657,7 @@ transport rules").
 |  B1 | `ssl.bundle` set | TLS (5672) | silent  |
 |  B2 | `ssl.bundle=${SCG_BUNDLE:}` (resolves empty) | AMQP (5672) | MEDIUM  |
 |  B2u | `ssl.bundle=${SCG_BUNDLE}` (no default) | decided at runtime | INFO  |
-|  V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | silent  |
+|  V1 | `ssl.enabled=true`, `ssl.validate-server-certificate=false` | TLS (5671) | MEDIUM  |
 |  A1 | `addresses=127.0.0.1:5672` | AMQP | MEDIUM  |
 |  A2 | `addresses=amqps://...` | TLS | silent  |
 |  A3 | `addresses=amqp://...`, `ssl.enabled=true` | AMQP | HIGH (SCG012)  |
@@ -1675,9 +1675,9 @@ the client like a single value (Y1), so the rule reads the list's first
 entry. The RabbitMQ Java client
 (amqp-client 5.30.0) authenticates with SASL `PLAIN` by default, which sends
 the user name and password as they are, so a plain connection carries the
-credentials in the clear. V1 is TLS without checking the broker's
-certificate, which SCG015 doesn't cover (`BACKLOG.md`, "TLS without
-verifying the server").
+credentials in the clear. V1 is TLS that, with no trust store, accepts
+any server: SCG015 reports it as MEDIUM ("TLS without server verification
+(Kafka and RabbitMQ)").
 
 `determineEnabled()` tests the bundle with `StringUtils.hasText`, so a
 placeholder that resolves empty leaves TLS off and the client speaks plain
@@ -1822,25 +1822,29 @@ connection from the auto-configured `ConnectionFactory` (Spring AMQP
 | KB1 | `spring.kafka.ssl.bundle` | wrong host | refused | silent |
 | KB2 | `spring.kafka.ssl.bundle`, `spring.kafka.properties.A=` | wrong host | **accepted** | MEDIUM |
 | KB3 | `spring.kafka.ssl.bundle` | untrusted | refused | silent |
-| R0 | (none) | valid | accepted | — |
-| R1 | (none) | wrong host | refused | — |
-| R2 | `verify-hostname=false` | wrong host | **accepted** | — |
-| R3 | `verify-hostname=off` | wrong host | **accepted** | — |
-| R4 | (none) | untrusted | refused | — |
-| R5 | `validate-server-certificate=false` | untrusted | refused (ignored: a trust store is set) | — |
-| R6 | `validate-server-certificate=false` | wrong host | refused (ignored: a trust store is set) | — |
-| R7 | `verify-hostname=false` | untrusted | refused | — |
-| R8 | no trust store | untrusted | refused (the JVM's default trust store) | — |
-| R9 | no trust store, `validate-server-certificate=false` | untrusted | **accepted** | — |
-| R10 | no trust store, `validate-server-certificate=false` | wrong host | **accepted** | — |
-| RB0 | `spring.rabbitmq.ssl.bundle` | valid | accepted | — |
-| RB1 | `spring.rabbitmq.ssl.bundle` | wrong host | refused | — |
-| RB2 | `spring.rabbitmq.ssl.bundle`, `verify-hostname=false` | wrong host | **accepted** | — |
-| RB3 | `spring.rabbitmq.ssl.bundle`, `validate-server-certificate=false` | untrusted | refused (ignored: a bundle is set) | — |
+| R0 | (none) | valid | accepted | silent |
+| R1 | (none) | wrong host | refused | silent |
+| R2 | `verify-hostname=false` | wrong host | **accepted** | MEDIUM |
+| R3 | `verify-hostname=off` | wrong host | **accepted** | MEDIUM |
+| R4 | (none) | untrusted | refused | silent |
+| R5 | `validate-server-certificate=false` | untrusted | refused (ignored: a trust store is set) | silent |
+| R6 | `validate-server-certificate=false` | wrong host | refused (ignored: a trust store is set) | silent |
+| R7 | `verify-hostname=false` | untrusted | refused | MEDIUM |
+| R8 | no trust store | untrusted | refused (the JVM's default trust store) | silent |
+| R9 | no trust store, `validate-server-certificate=false` | untrusted | **accepted** | MEDIUM |
+| R10 | no trust store, `validate-server-certificate=false` | wrong host | **accepted** | MEDIUM |
+| R11 | `addresses=amqps://...`, `ssl.enabled` unset | wrong host | refused | silent |
+| R12 | `addresses=amqps://...`, `verify-hostname=false` | wrong host | **accepted** | MEDIUM |
+| R13 | `addresses=amqps://...`, no trust store, `validate-server-certificate=false` | untrusted | **accepted** | MEDIUM |
+| RB0 | `spring.rabbitmq.ssl.bundle` | valid | accepted | silent |
+| RB1 | `spring.rabbitmq.ssl.bundle` | wrong host | refused | silent |
+| RB2 | `spring.rabbitmq.ssl.bundle`, `verify-hostname=false` | wrong host | **accepted** | MEDIUM |
+| RB3 | `spring.rabbitmq.ssl.bundle`, `validate-server-certificate=false` | untrusted | refused (ignored: a bundle is set) | silent |
 
 
-Every refusal was the client's `certificate_unknown` alert. The script
-was run twice, with the same result.
+Every refusal was the client's `certificate_unknown` alert; a connection
+dropped without an alert (a client exiting in the middle of a retry)
+isn't counted. The script was run three times, with the same result.
 
 **Kafka.** A blank `ssl.endpoint.identification.algorithm` (empty, a YAML
 null, which Spring loads as an empty string, or spaces) turns the host
@@ -1860,24 +1864,28 @@ SCG014 reads it as a context of its own
 ([ADR-009](ARCHITECTURE.md#adr-009-spring-cloud-stream-kafka-binders-evaluated-as-their-own-contexts)).
 
 **RabbitMQ.** `spring.rabbitmq.ssl.verify-hostname` set to a false literal
-turns the host name check off, with a trust store or a bundle (R2, R3,
-RB2), and leaves the trust check on (R7).
+turns the host name check off, with a trust store, a bundle or an
+`amqps://` address (R2, R3, RB2, R12), and leaves the trust check on (R7).
 `spring.rabbitmq.ssl.validate-server-certificate=false` accepts any
-server, untrusted or for another host (R9, R10), but only when no key
+server, untrusted or for another host (R9, R10, R13), but only when no key
 store, no trust store and no bundle is set: Spring AMQP 4.1.1's
 `RabbitConnectionFactoryBean.setUpSSL()` installs its trust-everything
 manager only on that path (`setupBasicSSL()`), and otherwise builds the
 trust managers from the stores, ignoring the property (R5, R6, RB3).
 
-The SCG column is SCG014's result for the row's keys with a remote broker
+The SCG column is SCG014's or SCG015's result for the row's keys with a
+remote broker
 (on the scenarios' `127.0.0.1`, each MEDIUM is INFO, "Loopback addresses
 in the transport rules"). SCG014 reports a blank algorithm on a client
 that uses TLS: K4 is reported for
 the consumer, which gets the blank value, though the admin client measured
 doesn't, and K7 because the host name check is off, though the trust check
 refused this server. Every other Kafka row is silent; each row is pinned
-in `KafkaInsecureProtocolRuleTest`. SCG015 doesn't report the RabbitMQ
-rows yet (`BACKLOG.md`, "TLS without verifying the server").
+in `KafkaInsecureProtocolRuleTest`. SCG015 reports `verify-hostname` false
+on a connection that uses TLS (`ssl.enabled`, a bundle or an `amqps://`
+address), and `validate-server-certificate` false when no key store,
+trust store or bundle is set, as MEDIUM; every other RabbitMQ row is
+silent, and each is pinned in `RabbitMqInsecureTransportRuleTest`.
 
 ## Loopback addresses in the transport rules
 

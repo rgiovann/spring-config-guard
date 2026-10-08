@@ -374,16 +374,24 @@ class RabbitMqInsecureTransportRuleTest {
     }
 
     @Test
-    @DisplayName("H1, H3, H4, B1, A5, V1: silent when ssl.enabled is a true literal or a bundle is set: all started a TLS handshake")
+    @DisplayName("H1, H3, H4, B1, A5: silent when ssl.enabled is a true literal or a bundle is set: all started a TLS handshake")
     void silentWhenTlsIsOn() {
         for (String value : List.of("true", "yes", "TRUE")) {
             assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, value))).isEmpty();
         }
         assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "rabbit"))).isEmpty();
         assertThat(check(Map.of(ADDRESSES_KEY, "rabbit.internal:5672", SSL_ENABLED_KEY, "true"))).isEmpty();
-        // V1: TLS without validating the server's certificate is out of this rule's scope (BACKLOG.md)
+    }
+
+    @Test
+    @DisplayName("V1: TLS on, validate-server-certificate=false and no store: no plaintext finding, the verification one is MEDIUM")
+    void tlsOnWithoutValidation() {
         assertThat(check(Map.of(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true",
-                "spring.rabbitmq.ssl.validate-server-certificate", "false"))).isEmpty();
+                "spring.rabbitmq.ssl.validate-server-certificate", "false")))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("validate-server-certificate=false");
+                });
     }
 
     @Test
@@ -460,5 +468,128 @@ class RabbitMqInsecureTransportRuleTest {
     void placeholderHostKeepsMedium() {
         assertThat(check(Map.of(HOST_KEY, "${RABBIT_HOST:localhost}")))
                 .singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
+    }
+
+    // --- TLS without server verification (VALIDATION.md, "TLS without server verification (Kafka and RabbitMQ)")
+
+    private static final String VERIFY = "spring.rabbitmq.ssl.verify-hostname";
+    private static final String VALIDATE = "spring.rabbitmq.ssl.validate-server-certificate";
+    private static final String TRUST_STORE = "spring.rabbitmq.ssl.trust-store";
+
+    private List<Finding> verificationFindings(String... keysAndValues) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        for (int i = 0; i < keysAndValues.length; i += 2) {
+            properties.put(keysAndValues[i], keysAndValues[i + 1]);
+        }
+        return check(properties).stream()
+                .filter(f -> f.message().contains(VERIFY) || f.message().contains(VALIDATE))
+                .toList();
+    }
+
+    @Test
+    @DisplayName("R0, R1, R4, R8, RB0, RB1, R11: TLS with the checks left on reports nothing about verification")
+    void checksLeftOnAreSilent() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", TRUST_STORE, "file:/etc/trust.p12")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "rabbit")).isEmpty();
+        assertThat(verificationFindings(ADDRESSES_KEY, "amqps://rabbit.internal:5671", VERIFY, "true")).isEmpty();
+    }
+
+    @ParameterizedTest(name = "verify-hostname={0}")
+    @ValueSource(strings = {"false", "off", "no", "FALSE"})
+    @DisplayName("R2, R3: verify-hostname set to a false literal on TLS is MEDIUM")
+    void verifyHostnameFalseIsMedium(String value) {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true",
+                TRUST_STORE, "file:/etc/trust.p12", VERIFY, value))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains(VERIFY + "=" + value).contains("host name").contains("CWE-295");
+                });
+    }
+
+    @Test
+    @DisplayName("RB2, R12: verify-hostname=false with a bundle or an amqps:// address is MEDIUM too")
+    void verifyHostnameFalseWithBundleOrAmqps() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "rabbit", VERIFY, "false"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+        assertThat(verificationFindings(ADDRESSES_KEY, "amqps://rabbit.internal:5671", VERIFY, "false"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("R7: verify-hostname=false is reported whatever the trust check does with the server")
+    void verifyHostnameFalseIndependentOfTrust() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", VERIFY, "false"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("R9, R10, R13: validate-server-certificate=false without any store or bundle is MEDIUM: any server is accepted")
+    void validateFalseWithoutStoresIsMedium() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", VALIDATE, "false"))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains(VALIDATE + "=false").contains("any server certificate");
+                });
+        assertThat(verificationFindings(ADDRESSES_KEY, "amqps://rabbit.internal:5671", VALIDATE, "false"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+    }
+
+    @Test
+    @DisplayName("R5, R6, RB3: validate-server-certificate=false with a key store, trust store or bundle is ignored by Spring AMQP: silent")
+    void validateFalseWithStoresIsSilent() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", TRUST_STORE, "file:/etc/trust.p12", VALIDATE, "false")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", "spring.rabbitmq.ssl.key-store", "file:/etc/key.p12", VALIDATE, "false")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "rabbit", VALIDATE, "false")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", TRUST_STORE, "file:/etc/trust.p12", VALIDATE, "${VALIDATE}")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A trust store from a placeholder without a default makes validate-server-certificate=false INFO: Spring may ignore it")
+    void validateFalseWithUnknownStoreIsInfo() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", TRUST_STORE, "${TRUST_STORE}", VALIDATE, "false"))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("unresolved placeholder");
+                });
+    }
+
+    @Test
+    @DisplayName("Without TLS, the verification keys are silent: the plaintext finding covers the connection")
+    void verificationWithoutTlsIsSilent() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", VERIFY, "false", VALIDATE, "false")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "false", VERIFY, "false")).isEmpty();
+        assertThat(verificationFindings(ADDRESSES_KEY, "amqp://rabbit.internal:5672", SSL_ENABLED_KEY, "true", VERIFY, "false")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_BUNDLE_KEY, "${BUNDLE:}", VERIFY, "false")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Placeholders: an unresolved value is INFO, a false default MEDIUM with its origin, a true default silent; TLS from a placeholder makes it INFO")
+    void verificationPlaceholders() {
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", VERIFY, "${VERIFY_HOSTNAME}"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", VERIFY, "${VERIFY_HOSTNAME:false}"))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
+                    assertThat(finding.message()).contains("static placeholder default ('${VERIFY_HOSTNAME:false}')");
+                });
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "true", VERIFY, "${VERIFY_HOSTNAME:true}")).isEmpty();
+        assertThat(verificationFindings(HOST_KEY, "rabbit.internal", SSL_ENABLED_KEY, "${RABBIT_TLS}", VERIFY, "false"))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("whether the connection uses TLS");
+                });
+    }
+
+    @Test
+    @DisplayName("Without host or addresses (a broker set elsewhere), verify-hostname=false on TLS is still MEDIUM; on a loopback host, INFO")
+    void verificationWithoutHostAndOnLoopback() {
+        assertThat(verificationFindings(SSL_ENABLED_KEY, "true", VERIFY, "false"))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.MEDIUM));
+        assertThat(verificationFindings(HOST_KEY, "localhost", SSL_ENABLED_KEY, "true", VERIFY, "false"))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("Lowered from MEDIUM");
+                });
     }
 }

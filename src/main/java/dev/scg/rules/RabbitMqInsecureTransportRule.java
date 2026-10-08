@@ -44,6 +44,21 @@ import java.util.Optional;
  * but TLS may be enabled outside the scanned files (ARCHITECTURE.md, ADR-010). Either is
  * {@link Severity#INFO} when every broker is a loopback address ({@link ConnectionHosts}). No
  * profile exemption (Zero-Trust).
+ * <p>
+ * A connection that uses TLS but doesn't verify the broker is reported too (CWE-295), measured on
+ * the wire with Spring AMQP 4.1.1 (VALIDATION.md, "TLS without server verification (Kafka and
+ * RabbitMQ)"): {@code spring.rabbitmq.ssl.verify-hostname} false turns the host name check off,
+ * with a trust store, a bundle or an {@code amqps://} address alike, and leaves the trust check on;
+ * {@code spring.rabbitmq.ssl.validate-server-certificate} false accepts any server, but only when no
+ * key store, trust store or bundle is set, since {@code RabbitConnectionFactoryBean.setUpSSL()}
+ * ignores it otherwise ({@link #verificationFindings}). TLS is on with {@code ssl.enabled} true, a
+ * bundle, or an {@code amqps://} first address; without TLS both are silent, the plaintext finding
+ * covering the connection. {@link Severity#MEDIUM}, as SCG012 reports a connection URL that turns
+ * certificate checks off: the traffic is encrypted, and reading it takes an active man in the
+ * middle. {@link Severity#INFO} for an unresolved placeholder, or when whether TLS is on, or whether
+ * a store is set, depends on one. Unlike the plaintext check, these don't need {@code host} or
+ * {@code addresses}: a broker set elsewhere is still verified, or not, by these keys.
+ * <p>
  * Plain {@link Rule}: the property keys are fixed facts of Spring AMQP's binding, not
  * organization-specific.
  */
@@ -55,6 +70,12 @@ public final class RabbitMqInsecureTransportRule implements Rule {
     private static final String ADDRESSES_KEY = "spring.rabbitmq.addresses";
     private static final String SSL_ENABLED_KEY = "spring.rabbitmq.ssl.enabled";
     private static final String SSL_BUNDLE_KEY = "spring.rabbitmq.ssl.bundle";
+    private static final String VERIFY_HOSTNAME_KEY = "spring.rabbitmq.ssl.verify-hostname";
+    private static final String VALIDATE_CERTIFICATE_KEY = "spring.rabbitmq.ssl.validate-server-certificate";
+    private static final List<String> STORE_KEYS = List.of("spring.rabbitmq.ssl.key-store", "spring.rabbitmq.ssl.trust-store");
+
+    /** Whether the connection uses TLS; UNKNOWN when it depends on an unresolved placeholder. */
+    private enum Tls { OFF, UNKNOWN, ON }
 
     @Override
     public String id() {
@@ -63,11 +84,21 @@ public final class RabbitMqInsecureTransportRule implements Rule {
 
     @Override
     public String description() {
-        return "RabbitMQ connection (host/port form) without TLS transport encryption enabled";
+        return "RabbitMQ connection (host/port form) without TLS transport encryption enabled, or with TLS "
+                + "that doesn't verify the broker";
     }
 
     @Override
     public List<Finding> check(EffectiveConfig config) {
+        List<Finding> findings = new ArrayList<>(transportFindings(config));
+        findings.addAll(verificationFindings(config));
+        return loopbackOnly(config.properties(), RelaxedProperties.get(config.properties(), HOST_KEY))
+                ? findings.stream().map(ConnectionHosts::onLoopback).toList()
+                : findings;
+    }
+
+    /** The plaintext check: a {@code host} or scheme-less {@code addresses} without TLS. */
+    private List<Finding> transportFindings(EffectiveConfig config) {
         String hostRaw = RelaxedProperties.get(config.properties(), HOST_KEY);
         String addressesRaw = firstAddresses(config.properties());
 
@@ -105,10 +136,154 @@ public final class RabbitMqInsecureTransportRule implements Rule {
             }
         }
 
-        List<Finding> findings = evaluateSslEnabled(config, enabledRaw);
-        return loopbackOnly(config.properties(), hostRaw)
-                ? findings.stream().map(ConnectionHosts::onLoopback).toList()
-                : findings;
+        return evaluateSslEnabled(config, enabledRaw);
+    }
+
+    /**
+     * The verification check: {@code verify-hostname} or {@code validate-server-certificate} set to
+     * a false literal on a connection that uses TLS.
+     */
+    private List<Finding> verificationFindings(EffectiveConfig config) {
+        Map<String, String> properties = config.properties();
+        Tls tls = tls(properties);
+        if (tls == Tls.OFF) {
+            return List.of(); // no certificate to check; the plaintext finding covers the connection
+        }
+        List<Finding> findings = new ArrayList<>();
+        String verifyRaw = RelaxedProperties.get(properties, VERIFY_HOSTNAME_KEY);
+        disabled(verifyRaw).ifPresent(resolved -> findings.add(resolved
+                ? verificationFinding(config, tls, verifyRaw, VERIFY_HOSTNAME_KEY,
+                        "turns off the RabbitMQ client's check that the broker's certificate matches its host name: "
+                                + "the connection uses TLS, but any certificate the client trusts is accepted for any "
+                                + "broker, so a man in the middle holding one can read and change the traffic, "
+                                + "credentials included (CWE-295). Remove the property, or set it to 'true'.", null)
+                : unresolvedFinding(config, VERIFY_HOSTNAME_KEY, verifyRaw)));
+
+        String validateRaw = RelaxedProperties.get(properties, VALIDATE_CERTIFICATE_KEY);
+        disabled(validateRaw).ifPresent(resolved -> {
+            Tls stores = storesSet(properties);
+            if (stores == Tls.ON) {
+                return; // Spring AMQP builds the trust managers from the stores and ignores the property
+            }
+            if (!resolved) {
+                findings.add(unresolvedFinding(config, VALIDATE_CERTIFICATE_KEY, validateRaw));
+                return;
+            }
+            findings.add(verificationFinding(config, tls, validateRaw, VALIDATE_CERTIFICATE_KEY,
+                    "makes the RabbitMQ client accept any server certificate, untrusted or for another host, since "
+                            + "no key store, trust store or SSL bundle is set: the connection uses TLS, but a man in "
+                            + "the middle can read and change the traffic, credentials included (CWE-295). Remove the "
+                            + "property, and trust the broker's certificate authority with 'spring.rabbitmq.ssl.trust-store' "
+                            + "or an SSL bundle.",
+                    stores == Tls.UNKNOWN ? "a key store, trust store or bundle is an unresolved placeholder, and "
+                            + "Spring AMQP ignores the property when one is set" : null));
+        });
+        return findings;
+    }
+
+    /**
+     * Whether the connection uses TLS: an {@code amqps://} first address turns it on and
+     * {@code amqp://} off, whatever else is set; otherwise a bundle with text or {@code ssl.enabled}
+     * true turns it on. UNKNOWN when it depends on an unresolved placeholder.
+     */
+    private static Tls tls(Map<String, String> properties) {
+        String addressesRaw = firstAddresses(properties);
+        if (addressesRaw != null && !addressesRaw.isBlank()) {
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(addressesRaw.strip());
+            if (resolved.isPresent()) {
+                String address = resolved.get().strip().toLowerCase(Locale.ROOT);
+                if (address.startsWith("amqps://")) {
+                    return Tls.ON;
+                }
+                if (address.startsWith("amqp://")) {
+                    return Tls.OFF;
+                }
+            }
+        }
+        Tls bundle = hasText(RelaxedProperties.get(properties, SSL_BUNDLE_KEY));
+        if (bundle == Tls.ON) {
+            return Tls.ON;
+        }
+        String enabledRaw = RelaxedProperties.get(properties, SSL_ENABLED_KEY);
+        Tls enabled = Tls.OFF;
+        if (enabledRaw != null && !enabledRaw.isBlank()) {
+            Optional<String> resolved = EnvironmentPlaceholder.resolve(enabledRaw.strip());
+            enabled = resolved.isEmpty() ? Tls.UNKNOWN
+                    : RelaxedBoolean.isTrueLiteral(resolved.get().strip()) ? Tls.ON : Tls.OFF;
+        }
+        if (enabled == Tls.ON) {
+            return Tls.ON;
+        }
+        return bundle == Tls.UNKNOWN || enabled == Tls.UNKNOWN ? Tls.UNKNOWN : Tls.OFF;
+    }
+
+    /** Whether a key store, a trust store or a bundle is set: ON when one has text, UNKNOWN for a placeholder. */
+    private static Tls storesSet(Map<String, String> properties) {
+        Tls result = hasText(RelaxedProperties.get(properties, SSL_BUNDLE_KEY));
+        for (String key : STORE_KEYS) {
+            Tls store = hasText(RelaxedProperties.get(properties, key));
+            if (store.compareTo(result) > 0) {
+                result = store;
+            }
+        }
+        return result;
+    }
+
+    /** ON when the value has text, as Spring's {@code StringUtils.hasText} reads it; UNKNOWN for an unresolved placeholder. */
+    private static Tls hasText(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Tls.OFF;
+        }
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
+        if (resolved.isEmpty()) {
+            return Tls.UNKNOWN;
+        }
+        return resolved.get().isBlank() ? Tls.OFF : Tls.ON;
+    }
+
+    /**
+     * Empty when the value doesn't turn the check off (unset, blank, true, anything Spring wouldn't
+     * read as false); true when it resolves to a false literal; false when it is an unresolved
+     * placeholder, which may.
+     */
+    private static Optional<Boolean> disabled(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<String> resolved = EnvironmentPlaceholder.resolve(raw.strip());
+        if (resolved.isEmpty()) {
+            return Optional.of(false);
+        }
+        return RelaxedBoolean.isFalseLiteral(resolved.get().strip()) ? Optional.of(true) : Optional.empty();
+    }
+
+    private Finding verificationFinding(EffectiveConfig config, Tls tls, String raw, String key, String consequence,
+                                        String storeDoubt) {
+        String message = "'%s=%s' %s".formatted(key, raw, consequence);
+        if (raw.contains("${")) {
+            message += " The value originates from a static placeholder default ('%s').".formatted(raw);
+        }
+        Severity severity = Severity.MEDIUM;
+        if (tls == Tls.UNKNOWN) {
+            severity = Severity.INFO;
+            message += " Reported as INFO because whether the connection uses TLS depends on an unresolved placeholder.";
+        } else if (storeDoubt != null) {
+            severity = Severity.INFO;
+            message += " Reported as INFO because " + storeDoubt + ".";
+        }
+        return new Finding(id(), severity, message, config.sourceFile().toString(), config.profileLabel());
+    }
+
+    private Finding unresolvedFinding(EffectiveConfig config, String key, String raw) {
+        return new Finding(
+                id(),
+                Severity.INFO,
+                ("RabbitMQ property '%s' relies on an unresolved environment placeholder '%s'. If it resolves to " +
+                        "false, the client doesn't fully verify the broker's certificate (CWE-295); static analysis " +
+                        "cannot verify the runtime value.").formatted(key, raw),
+                config.sourceFile().toString(),
+                config.profileLabel()
+        );
     }
 
     /**

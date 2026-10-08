@@ -9,7 +9,8 @@
 #   9302  signed by the same CA, for wrong.example only         (a trusted certificate, wrong host)
 #   9303  self-signed, for localhost and 127.0.0.1              (the right host, untrusted)
 # The clients trust the test CA (target/trust.p12) and connect to 127.0.0.1. The listener records
-# whether the client finished the handshake ("accepted") or aborted it ("refused", with the alert).
+# whether the client finished the handshake ("accepted") or aborted it ("refused", with the alert);
+# a connection dropped without an alert, a client exiting in the middle of a retry, isn't printed.
 # Each scenario runs kafka-tls/ (an AdminClient built from Spring Boot 4.1.1's auto-configured
 # KafkaAdmin) or rabbit-transport/ (one connection from the auto-configured ConnectionFactory),
 # with the properties as command-line arguments. Y1 and Y2 load a YAML file.
@@ -61,7 +62,7 @@ scenario() { # name, jar, arguments
     timeout 120 java -jar "$jar" "$@" > "$LOG" 2>&1
     sleep 1
     local seen
-    seen=$(sort "$SEEN" | uniq | tr '\n' ' ')
+    seen=$(grep -v ':closed:' "$SEEN" | sort | uniq | tr '\n' ' ')
     if grep -q "APPLICATION FAILED" "$LOG"; then
         printf '%-58s app did not start: %s\n' "$name" "$(grep -m1 -oE 'Reason: .*' "$LOG" | sed -E 's/^Reason: //')"
     else
@@ -115,6 +116,13 @@ rabbit "R7 untrusted, verify-hostname=false"                9303 $RT $R.ssl.veri
 rabbit "R8 untrusted, no trust-store"                       9303
 rabbit "R9 untrusted, no trust-store, validate-server-certificate=false" 9303 $R.ssl.validate-server-certificate=false
 rabbit "R10 wrong host, no trust-store, validate-server-certificate=false" 9302 $R.ssl.validate-server-certificate=false
+rabbitaddr() { # name, arguments: TLS from an amqps:// address, ssl.enabled left unset
+    local name=$1; shift
+    scenario "$name" "$RJ" $R.connection-timeout=2s "$@"
+}
+rabbitaddr "R11 wrong host, addresses=amqps://"                     $R.addresses=amqps://127.0.0.1:9302 $RT
+rabbitaddr "R12 wrong host, addresses=amqps://, verify-hostname=false" $R.addresses=amqps://127.0.0.1:9302 $RT $R.ssl.verify-hostname=false
+rabbitaddr "R13 untrusted, addresses=amqps://, no trust-store, validate-server-certificate=false" $R.addresses=amqps://127.0.0.1:9303 $R.ssl.validate-server-certificate=false
 rabbit "RB0 valid server, ssl.bundle"                       9301 $RB
 rabbit "RB1 wrong host, ssl.bundle"                         9302 $RB
 rabbit "RB2 wrong host, ssl.bundle, verify-hostname=false"  9302 $RB $R.ssl.verify-hostname=false
