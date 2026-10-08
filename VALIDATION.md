@@ -46,7 +46,7 @@ per independently written file.
 | `spring-projects/spring-petclinic` | `818c413` | regular | 3 | 5 | — | — | 5 |
 | `spring-cloud/spring-cloud-stream-samples` | `2ff1168` | regular | 30 | 13 | 28 | 7 | 48 |
 | `jhipster/jhipster-sample-app` | `6b000b5` | regular | 5 | 10 | 3 | 10 | 23 |
-| `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 26 | — | 5 | 31 |
+| `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 28 | — | 6 | 34 |
 | `spring-projects/spring-ai-examples` | `7416412` | regular | 25 | 1 | 1 | 38 | 40 |
 
 `spring-petclinic-microservices-config` is a real Spring Cloud Config
@@ -271,8 +271,8 @@ reference documentation (10 `application.yml` files, 8 with findings):
 |---|---|---|---|---|
 | SCG006 | 25 | — | 1 | 26 |
 | SCG009 | — | — | 3 | 3 |
-| SCG017 | 1 | — | 1 | 2 |
-| **Total** | **26** | **—** | **5** | **31** |
+| SCG017 | 3 | — | 2 | 5 |
+| **Total** | **28** | **—** | **6** | **34** |
 
 The 25 SCG006 HIGH are secrets written in the samples: 11 client secrets
 of OAuth2 client registrations and authorization server clients
@@ -286,10 +286,13 @@ finding ("SCG006 key matching"). SCG009's 3 INFO are
 `org.springframework.security` at `trace`. SCG017: `users-resource`'s
 `issuer-uri: http://localhost:9000` is HIGH, an `issuer-uri` not lowered
 on a loopback host (L17), and `messages-resource`'s
-`jwk-set-uri: http://localhost:9000/oauth2/jwks` is INFO. The OAuth2 client
-side writes `provider.spring.issuer-uri: http://localhost:9000` too
-(`demo-client`, `users-resource`), which SCG017 doesn't read (`BACKLOG.md`,
-"OAuth2 Client provider URIs over HTTP").
+`jwk-set-uri: http://localhost:9000/oauth2/jwks` is INFO. On the OAuth2
+client side, `provider.spring.issuer-uri: http://localhost:9000` in
+`demo-client` and `users-resource` is HIGH, as an issuer URI on a loopback
+host is, and `sociallogin`'s `provider.okta.token-uri:
+${okta.base-url}/oauth2/v1/token` is INFO, since `okta.base-url` is
+`${OKTA_BASE_URL}`, without a default ("OAuth2 Client provider transport
+scenarios").
 
 ```bash
 git clone https://github.com/spring-projects/spring-authorization-server.git
@@ -337,7 +340,7 @@ checked without SCG's own code.
 | `spring-boot-admin` | 87 | Independent greps, file by file, for the 4 rules that fired | No |
 | `spring-cloud-stream-samples` | 48 | Every file with a password, secret or `security.protocol` read by hand | No |
 | `jhipster-sample-app` | 23 | Every file read; expected count derived by hand | No |
-| `spring-authorization-server` | 31 | Every file read; expected count derived by hand | No |
+| `spring-authorization-server` | 34 | Every file read; expected count derived by hand | No |
 | `spring-ai-examples` | 40 | Independent greps for every rule; every line with a secret-named key listed | No |
 
 **The small repositories** were read in full, with the expected findings
@@ -345,7 +348,7 @@ derived against every rule before comparing with SCG's output: 3 SCG001 +
 2 SCG006 = 5 in `spring-petclinic`; 32 SCG001 + 8 SCG006 + 8 SCG012 = 48
 in `spring-petclinic-microservices-config`; 6 SCG001 + 1 SCG002 +
 4 SCG006 + 2 SCG008 + 4 SCG009 + 6 SCG013 = 23 in `jhipster-sample-app`;
-26 SCG006 + 3 SCG009 + 2 SCG017 = 31 in `spring-authorization-server`, as
+26 SCG006 + 3 SCG009 + 5 SCG017 = 34 in `spring-authorization-server`, as
 explained in their sections.
 
 **The large repositories** were checked with plain `grep` (no shared logic
@@ -1775,11 +1778,13 @@ SCG006 also reports the client secret written in the file.
 No reference project sets `public-key-location` or `introspection-uri`,
 and none sets more than one of the three key sources (checked with a grep
 for the four keys, in any of their relaxed forms, whatever their value).
-The three SCG017 findings are on loopback addresses ("Loopback addresses
-in the transport rules"): `jwk-set-uri: http://localhost:8080/oauth2/jwks`
-in `spring-boot` and `jwk-set-uri: http://localhost:9000/oauth2/jwks` in
-`spring-authorization-server` are INFO (L13), and that project's
-`issuer-uri: http://localhost:9000` is HIGH (L17).
+The resource server SCG017 findings are on loopback addresses ("Loopback
+addresses in the transport rules"): `jwk-set-uri:
+http://localhost:8080/oauth2/jwks` in `spring-boot` and `jwk-set-uri:
+http://localhost:9000/oauth2/jwks` in `spring-authorization-server` are
+INFO (L13), and that project's `issuer-uri: http://localhost:9000` is
+HIGH (L17). Its OAuth2 client findings are in "OAuth2 Client provider
+transport scenarios".
 
 ## OAuth2 Client provider transport scenarios (Spring Boot 4.1.1, on the wire)
 
@@ -1792,14 +1797,14 @@ Boot 4.1.1, `spring-boot-starter-oauth2-client`), and
 spoke TLS or plain HTTP, and whether the request carried the client secret
 (in a Basic `Authorization` header, or in a form body).
 
-|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire |
-|---|---|---|
-|  C1 | `token-uri=http://...` (`client_secret_basic`, the default) | HTTP, secret in the clear |
-|  C2 | `token-uri=http://...`, `client-authentication-method=client_secret_post` | HTTP, secret in the clear |
-|  C3 | `token-uri=https://...` | TLS |
-|  C4 | `token-uri=HTTP://...` | HTTP, secret in the clear |
-|  I1 | `issuer-uri=http://...` | HTTP, at startup |
-|  I2 | `issuer-uri=https://...` | TLS, at startup |
+|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire | SCG |
+|---|---|---|---|
+|  C1 | `token-uri=http://...` (`client_secret_basic`, the default) | HTTP, secret in the clear | HIGH |
+|  C2 | `token-uri=http://...`, `client-authentication-method=client_secret_post` | HTTP, secret in the clear | HIGH |
+|  C3 | `token-uri=https://...` | TLS | silent |
+|  C4 | `token-uri=HTTP://...` | HTTP, secret in the clear | HIGH |
+|  I1 | `issuer-uri=http://...` | HTTP, at startup | HIGH |
+|  I2 | `issuer-uri=https://...` | TLS, at startup | silent |
 
 The client sends its secret to an `http://` `token-uri` as it is, in
 either authentication method (C1, C2), and matches the scheme in any case
@@ -1813,8 +1818,14 @@ needs a browser, and `authorization-uri`, which the user's browser
 visits, not the application. The script was run twice, with the same
 result.
 
-No rule reports these keys yet (`BACKLOG.md`, "OAuth2 Client provider
-URIs over HTTP").
+SCG017 reports an `http://` `token-uri` or `issuer-uri` of any provider as
+HIGH, each on its own, since Spring Boot uses both (`token-uri` overrides
+the endpoint discovery finds). The SCG column is for a remote host; on a
+loopback host, a `token-uri` is INFO and an `issuer-uri` stays HIGH, as
+its metadata may name other hosts (L17). An unresolved placeholder is
+INFO. `JwtResourceServerInsecureTransportRuleTest` pins each row. The
+login-flow keys and `authorization-uri` stay silent (`BACKLOG.md`,
+"OAuth2 Client login-flow URIs over HTTP").
 
 ## TLS without server verification (Kafka and RabbitMQ)
 

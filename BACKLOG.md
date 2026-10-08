@@ -19,25 +19,21 @@ or in an ADR.
 
 ## Pending
 
-Next: OAuth2 Client provider URIs over HTTP, then the GitHub Action.
+Next: the GitHub Action. OAuth2 Client login-flow URIs wait for their
+measurement.
 Everything else waits in Deferred for a real case or a need.
 
-### OAuth2 Client provider URIs over HTTP
+### OAuth2 Client login-flow URIs over HTTP
 
-An OAuth2 client (login or `client_credentials`) reads
-`spring.security.oauth2.client.provider.<name>.token-uri`, `issuer-uri`,
-`jwk-set-uri`, `user-info-uri` and `authorization-uri`; SCG017 reads only
-the resource server's keys. Measured on the wire (`VALIDATION.md`,
-"OAuth2 Client provider transport scenarios"): the client sends its secret
-to an `http://` `token-uri` as it is (C1, C2, C4), and fetches `issuer-uri`
-at startup, where plain HTTP lets whoever answers name the token endpoint
-(I1). `jwk-set-uri` and `user-info-uri` are used only in a login flow, not
-run. To decide: whether SCG017 covers them or a rule of its own does, and
-which keys (the measured two, or the login ones too, from Spring
-Security's code). One reference project writes such a key, on a loopback
-host only: `spring-authorization-server`'s `demo-client` and
-`users-resource` set `provider.spring.issuer-uri: http://localhost:9000`.
-
+SCG017 reports an OAuth2 Client provider's `http://` `token-uri` and
+`issuer-uri`, both measured on the wire (`VALIDATION.md`, "OAuth2 Client
+provider transport scenarios"). Still silent: `jwk-set-uri` (the keys the
+client validates the ID token with) and `user-info-uri` (where it sends
+the access token), used only in a login (`authorization_code`) flow.
+Measure them before reporting: a listener that answers the token endpoint
+with a token, so the flow reaches them, driven without a browser through
+the login redirect and its callback. `authorization-uri` stays out: the
+user's browser visits it, not the application.
 
 ### GitHub Action for the Marketplace
 

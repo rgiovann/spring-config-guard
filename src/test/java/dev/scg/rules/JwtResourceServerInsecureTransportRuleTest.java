@@ -550,4 +550,86 @@ class JwtResourceServerInsecureTransportRuleTest {
         assertThat(rule.check(configOf(Map.of(ISSUER_URI_KEY, "http://localhost:9000"))))
                 .singleElement().extracting(Finding::severity).isEqualTo(Severity.HIGH);
     }
+
+    // --- OAuth2 Client provider (VALIDATION.md, "OAuth2 Client provider transport scenarios")
+
+    private static final String PROVIDER = "spring.security.oauth2.client.provider.scg.";
+
+    @ParameterizedTest(name = "token-uri={0}")
+    @ValueSource(strings = {"http://auth.example.com/token", "HTTP://auth.example.com/token"})
+    @DisplayName("C1, C2, C4: an http:// token-uri is HIGH: the client sends its secret there in the clear")
+    void clientTokenUriOverHttpIsHigh(String value) {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "token-uri", value))))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message()).contains(PROVIDER + "token-uri").contains("client secret");
+                });
+    }
+
+    @Test
+    @DisplayName("I1: an http:// issuer-uri is HIGH: whoever answers names the token endpoint")
+    void clientIssuerUriOverHttpIsHigh() {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "issuer-uri", "http://auth.example.com"))))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message()).contains(PROVIDER + "issuer-uri").contains("token endpoint");
+                });
+    }
+
+    @Test
+    @DisplayName("C3, I2: https:// is silent")
+    void clientOverHttpsIsSilent() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "token-uri", "https://auth.example.com/token",
+                PROVIDER + "issuer-uri", "https://auth.example.com")))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Both keys are used, so both are reported")
+    void clientTokenAndIssuerBothReported() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "token-uri", "http://auth.example.com/token",
+                PROVIDER + "issuer-uri", "http://auth.example.com"))))
+                .hasSize(2).allSatisfy(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+    }
+
+    @Test
+    @DisplayName("Loopback: a token-uri is INFO; an issuer-uri stays HIGH, since its metadata may name other hosts (spring-authorization-server's demo-client)")
+    void clientLoopback() {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "token-uri", "http://localhost:9000/oauth2/token"))))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        assertThat(rule.check(configOf(Map.of("spring.security.oauth2.client.provider.spring.issuer-uri", "http://localhost:9000"))))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+    }
+
+    @Test
+    @DisplayName("Placeholders: unresolved is INFO, an http:// default HIGH with its origin, an empty default silent")
+    void clientPlaceholders() {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "token-uri", "${TOKEN_URI}"))))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "token-uri", "${TOKEN_URI:http://auth.example.com/token}"))))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message()).contains("static placeholder fallback");
+                });
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "token-uri", "${TOKEN_URI:}")))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Relaxed binding: a camelCase key is reported under the key as written")
+    void clientRelaxedKey() {
+        assertThat(rule.check(configOf(Map.of("spring.security.oauth2.client.provider.scg.tokenUri", "http://auth.example.com/token"))))
+                .singleElement().satisfies(finding -> assertThat(finding.message()).contains("provider.scg.tokenUri"));
+    }
+
+    @Test
+    @DisplayName("Out of scope: the login-flow keys (jwk-set-uri, user-info-uri), authorization-uri and registration keys are silent")
+    void clientOtherKeysSilent() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "jwk-set-uri", "http://auth.example.com/jwks",
+                PROVIDER + "user-info-uri", "http://auth.example.com/userinfo",
+                PROVIDER + "authorization-uri", "http://auth.example.com/authorize",
+                "spring.security.oauth2.client.registration.scg.redirect-uri", "http://app.example.com/login/oauth2/code/scg"))))
+                .isEmpty();
+    }
 }

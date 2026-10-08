@@ -173,7 +173,7 @@ depending on the evidence. The authoritative list is
 | SCG014 | HIGH / MEDIUM / INFO | Kafka over an unencrypted protocol (`PLAINTEXT` or `SASL_PLAINTEXT`), or over TLS with the broker host name check off (a blank `ssl.endpoint.identification.algorithm`) |
 | SCG015 | HIGH / MEDIUM / INFO | RabbitMQ connection (host/port form) without TLS, or with TLS that doesn't verify the broker (`ssl.verify-hostname` or `ssl.validate-server-certificate` false) |
 | SCG016 | HIGH / INFO | HashiCorp Vault over `http` |
-| SCG017 | HIGH / INFO | OAuth2 Resource Server fetching its JWT keys (`jwk-set-uri`, `issuer-uri` or `public-key-location`, whichever Spring Boot uses) or its token introspection (`introspection-uri`) over HTTP |
+| SCG017 | HIGH / INFO | OAuth2 Resource Server fetching its JWT keys (`jwk-set-uri`, `issuer-uri` or `public-key-location`, whichever Spring Boot uses) or its token introspection (`introspection-uri`) over HTTP, or an OAuth2 Client sending its secret to a `token-uri`, or discovering its provider at an `issuer-uri`, over HTTP |
 
 How to read a severity:
 

@@ -36,6 +36,17 @@ import java.util.Optional;
  * placeholder, it may resolve empty at runtime, so an HTTP value after it is {@link Severity#INFO}.
  * The scheme is matched in any case: {@code HTTP://} connected in plain HTTP too.
  * <p>
+ * The same applies to an OAuth2 Client's provider ({@code spring.security.oauth2.client.provider.<name>.*},
+ * {@link #checkClientProviders}): an {@code http://} {@code token-uri} receives the client secret in
+ * the clear, with {@code client_secret_basic} and {@code client_secret_post} alike, and
+ * {@code issuer-uri} is fetched at startup to discover the provider's endpoints, so whoever answers
+ * can name the token endpoint the secret is sent to (VALIDATION.md, "OAuth2 Client provider
+ * transport scenarios"). Both are used, each for its own purpose ({@code token-uri} overrides the
+ * discovered endpoint), so each is evaluated on its own, with the same severities: {@link Severity#HIGH},
+ * INFO for an unresolved placeholder or a loopback {@code token-uri}. Not checked:
+ * {@code jwk-set-uri} and {@code user-info-uri}, used only in a login flow that wasn't measured, and
+ * {@code authorization-uri}, which the user's browser visits, not the application.
+ * <p>
  * Deliberately a dedicated rule rather than an addition to {@link InsecureDatabaseTransportRule}'s
  * (SCG012) {@code uri-based}/{@code risky-schemes} list: the same {@code http://} signal causes a
  * qualitatively different, more severe outcome here that a generic scheme scanner can't express in
@@ -60,6 +71,25 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
     private static final String INSECURE_SCHEME = "http://";
 
+    private static final String CLIENT_PROVIDER_PREFIX =
+            RelaxedProperties.canonicalize("spring.security.oauth2.client.provider.");
+    private static final String CLIENT_TOKEN_URI = RelaxedProperties.canonicalize("token-uri");
+    private static final String CLIENT_ISSUER_URI = RelaxedProperties.canonicalize("issuer-uri");
+
+    private static final String RESOURCE_SERVER_CONSEQUENCE = """
+            the application fetches it in plain HTTP. Whoever can read or rewrite that traffic can serve their own keys (or, for introspection, \
+            read the client secret and answer that any token is active), so the application accepts \
+            tokens they issue: authentication bypass.\
+            """;
+    private static final String CLIENT_TOKEN_CONSEQUENCE = """
+            the OAuth2 client sends its client secret there in plain HTTP, so whoever can read that traffic gets the \
+            secret, and the tokens issued for it, and can obtain tokens as this client.\
+            """;
+    private static final String CLIENT_ISSUER_CONSEQUENCE = """
+            the OAuth2 client discovers its provider's endpoints there at startup, in plain HTTP, so whoever can \
+            rewrite that traffic can name the token endpoint the client sends its secret to.\
+            """;
+
     @Override
     public String id() {
         return "SCG017";
@@ -67,7 +97,8 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
     @Override
     public String description() {
-        return "Insecure transport (HTTP) configured for OAuth2 Resource Server token validation endpoints";
+        return "Insecure transport (HTTP) configured for OAuth2 Resource Server token validation endpoints, "
+                + "or for an OAuth2 Client provider's token and issuer URIs";
     }
 
     @Override
@@ -86,7 +117,8 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
             if (resolved.isPresent() && resolved.get().isBlank()) {
                 continue;
             }
-            evaluateKey(key, rawValue, placeholderBefore, config, findings);
+            evaluateKey(key, rawValue, placeholderBefore, key.equals(ISSUER_URI_KEY), RESOURCE_SERVER_CONSEQUENCE,
+                    config, findings);
             if (resolved.isPresent()) {
                 break;
             }
@@ -97,9 +129,35 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
         String introspectionUri = rawValue(config, INTROSPECTION_URI_KEY);
         if (introspectionUri != null) {
-            evaluateKey(INTROSPECTION_URI_KEY, introspectionUri, null, config, findings);
+            evaluateKey(INTROSPECTION_URI_KEY, introspectionUri, null, false, RESOURCE_SERVER_CONSEQUENCE,
+                    config, findings);
         }
+        checkClientProviders(config, findings);
         return findings;
+    }
+
+    /**
+     * Each OAuth2 Client provider's {@code token-uri} and {@code issuer-uri}, under the key as
+     * written. Spring Boot uses both when both are set, so neither hides the other.
+     */
+    private void checkClientProviders(EffectiveConfig config, List<Finding> findings) {
+        config.properties().forEach((writtenKey, value) -> {
+            String canonical = RelaxedProperties.canonicalize(writtenKey);
+            if (!canonical.startsWith(CLIENT_PROVIDER_PREFIX) || value == null || value.isBlank()) {
+                return;
+            }
+            String rest = canonical.substring(CLIENT_PROVIDER_PREFIX.length());
+            int dot = rest.indexOf('.');
+            if (dot <= 0) {
+                return;
+            }
+            String setting = rest.substring(dot + 1);
+            if (setting.equals(CLIENT_TOKEN_URI)) {
+                evaluateKey(writtenKey, value.strip(), null, false, CLIENT_TOKEN_CONSEQUENCE, config, findings);
+            } else if (setting.equals(CLIENT_ISSUER_URI)) {
+                evaluateKey(writtenKey, value.strip(), null, true, CLIENT_ISSUER_CONSEQUENCE, config, findings);
+            }
+        });
     }
 
     /** The value stripped, or {@code null} when the key is absent or blank. */
@@ -111,9 +169,12 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
     /**
      * @param placeholderBefore a key that comes before this one in {@link #KEY_SOURCES} and is set to
      *                          an unresolved placeholder, or {@code null}
+     * @param issuer            whether the key is an issuer URI, which isn't lowered on a loopback host:
+     *                          the metadata it serves may name endpoints on another host
+     * @param consequence       what plain HTTP there lets an attacker do
      */
-    private void evaluateKey(String key, String rawValue, String placeholderBefore, EffectiveConfig config,
-                             List<Finding> findings) {
+    private void evaluateKey(String key, String rawValue, String placeholderBefore, boolean issuer, String consequence,
+                             EffectiveConfig config, List<Finding> findings) {
         Optional<String> resolved = EnvironmentPlaceholder.resolve(rawValue);
 
         if (resolved.isEmpty()) {
@@ -140,13 +201,13 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
 
         if (resolvedValue.toLowerCase(Locale.ROOT).startsWith(INSECURE_SCHEME)) {
             boolean isFromStaticDefault = !rawValue.equalsIgnoreCase(resolvedValue);
-            String message = buildHighSeverityMessage(key, rawValue, isFromStaticDefault);
+            String message = buildHighSeverityMessage(key, rawValue, isFromStaticDefault, consequence);
             if (placeholderBefore == null) {
                 Finding finding = new Finding(id(), Severity.HIGH, message,
                         config.sourceFile().toString(), config.profileLabel());
-                // Not issuer-uri: OIDC discovery fetches the keys from the jwks_uri the metadata names,
-                // which may be on another host.
-                boolean loopback = !key.equals(ISSUER_URI_KEY) && ConnectionHosts.allLoopback(rawValue);
+                // Not an issuer URI: discovery fetches the endpoints the metadata names, which may be on
+                // another host.
+                boolean loopback = !issuer && ConnectionHosts.allLoopback(rawValue);
                 findings.add(loopback ? ConnectionHosts.onLoopback(finding) : finding);
             } else {
                 findings.add(new Finding(id(), Severity.INFO,
@@ -157,13 +218,9 @@ public final class JwtResourceServerInsecureTransportRule implements Rule {
         }
     }
 
-    private String buildHighSeverityMessage(String key, String rawValue, boolean isFromStaticDefault) {
-        String baseMessage = """
-            Insecure transport (HTTP) configured in '%s' (%s): the application fetches it in plain HTTP. \
-            Whoever can read or rewrite that traffic can serve their own keys (or, for introspection, \
-            read the client secret and answer that any token is active), so the application accepts \
-            tokens they issue: authentication bypass.\
-            """.formatted(key, rawValue);
+    private String buildHighSeverityMessage(String key, String rawValue, boolean isFromStaticDefault,
+                                            String consequence) {
+        String baseMessage = "Insecure transport (HTTP) configured in '%s' (%s): %s".formatted(key, rawValue, consequence);
 
         if (isFromStaticDefault) {
             return baseMessage + " Value originates from a static placeholder fallback.";
