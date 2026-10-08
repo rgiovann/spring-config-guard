@@ -55,10 +55,12 @@ here and in the repository root.
 | `rabbit-transport-scenarios.sh` | SCG015 | SCG015 RabbitMQ transport scenarios | `rabbit-transport/` | `keytool` |
 | `vault-transport-scenarios.sh` | SCG016 | SCG016 Vault transport scenarios | `vault-transport/` | |
 | `jwt-transport-scenarios.sh` | SCG017 | SCG017 resource server transport scenarios | `jwt-transport/` | `openssl` |
+| `tls-verification-scenarios.sh` | SCG014, SCG015 | TLS without server verification (Kafka and RabbitMQ) | `kafka-tls/`, `rabbit-transport/` | `keytool`, `openssl` |
 
-The transport scripts (SCG015 to SCG017) need no broker or server: the
-`listener.py` in each app's directory records what the client sends on
-the wire. `h2-console/loopback-proxy.py` is the same-host reverse proxy
+The transport scripts (SCG015 to SCG017, and the TLS verification one)
+need no broker or server: the `listener.py` in each app's directory, or
+`tls-verification/tls_listener.py`, records what the client sends on the
+wire. `h2-console/loopback-proxy.py` is the same-host reverse proxy
 the SCG002 scenarios go through.
 
 SCG006, SCG007 and SCG012 have no script: they were checked against

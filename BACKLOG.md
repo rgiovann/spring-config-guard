@@ -19,8 +19,8 @@ or in an ADR.
 
 ## Pending
 
-Done in this order: the GitHub Action, then the one item of new coverage
-with a real case.
+Done in this order: TLS without verifying the server, then the GitHub
+Action.
 Everything else waits in Deferred for a real case or a need.
 
 ### GitHub Action for the Marketplace
@@ -46,35 +46,28 @@ so a CI gate no longer needs the README's `curl` + `java -jar` step.
   maintainer's decision), since false positives in a CI gate are what drive
   new users away first. Met with v1.15.0: every rule's review has shipped.
 
-### TLS without verifying the server (candidate rule)
+### TLS without verifying the server (extends SCG014 and SCG015)
 
 The transport rules report an unencrypted connection, not an encrypted one
-that accepts any server. Found in two clients so far; decide severity and
-whether it is one rule or an extension of each transport rule once, for
-all of them.
+that accepts any server. Measured on the wire (`VALIDATION.md`, "TLS
+without server verification (Kafka and RabbitMQ)"); decided: each
+transport rule reports it next to its plaintext finding, as SCG012 does
+for `sslmode=require`, MEDIUM (INFO when every host is loopback), only
+when the connection uses TLS. A key left out keeps the check (silent); a
+placeholder without a default is INFO.
 
-RabbitMQ, found while reviewing SCG015: `spring.rabbitmq.ssl.validate-server-certificate=false`
-(or `ssl.verify-hostname=false`) with `ssl.enabled=true` still started a
-TLS handshake on the wire (`VALIDATION.md`, "SCG015 RabbitMQ transport
-scenarios", V1), with SCG015 silent. Still to measure: that the client then
-accepts a certificate that doesn't match or isn't trusted.
-
-Kafka, found while reviewing SCG014, which covers only an unencrypted protocol: a
-Kafka client on `SSL`/`SASL_SSL` with `ssl.endpoint.identification.algorithm`
-set to an empty value encrypts but doesn't check that the broker's
-certificate matches its host name, so a man in the middle with any trusted
-certificate can intercept the traffic. A common workaround for certificate
-errors. Checked so far in kafka-clients 4.2.1: the default is `https`, and
-the client passes the configured value straight to
-`SSLParameters.setEndpointIdentificationAlgorithm`. Still to confirm before
-building it: that the JDK skips the check for an empty value (a test
-against a TLS listener whose certificate doesn't match the host), and the
-keys that set it (`spring.kafka.properties.ssl.endpoint.identification.algorithm`,
-the per-client maps, the binder maps), with the same precedence as SCG014.
-Decide then whether it extends SCG014 or is a rule of its own. A real case:
-`spring-cloud-stream-samples` writes
-`spring.cloud.stream.kafka.binder.configuration.ssl.endpoint.identification.algorithm:`
-empty in a base file (found while fixing the YAML null in a base file).
+* **SCG014**: `ssl.endpoint.identification.algorithm` blank (empty, a YAML
+  null or spaces) in the configuration a client gets, through
+  `spring.kafka.properties` or the client's own map, with the precedence
+  SCG014 already resolves, and in the binder contexts (ADR-009), on
+  `SSL`/`SASL_SSL` (K2, K3, Y1, Y2, KB2). A real case:
+  `spring-cloud-stream-samples`' `kafka-ssl-demo` writes it as a YAML null
+  with `security.protocol: SSL`, on `localhost` brokers (INFO).
+* **SCG015**: `spring.rabbitmq.ssl.verify-hostname` set to a false literal
+  (R2, R3, RB2); `spring.rabbitmq.ssl.validate-server-certificate` set to
+  a false literal, only when neither `ssl.key-store`, `ssl.trust-store`
+  nor `ssl.bundle` is set, since Spring AMQP ignores it otherwise (R9,
+  R10; silent in R5, R6, RB3). No reference project writes either.
 
 ## Deferred (post-1.0)
 
@@ -198,7 +191,9 @@ it is reported.
 * `server.ssl.enabled-protocols=TLSv1,TLSv1.1` or `server.ssl.protocol=TLSv1`.
   The JDK disables TLS 1.0/1.1 by default (`jdk.tls.disabledAlgorithms`),
   so check whether these take effect, fail the handshake or fail the
-  startup on Java 21 before deciding a severity.
+  startup on Java 21 before deciding a severity. Clients have the same
+  setting: `spring-cloud-stream-samples`' `kafka-ssl-demo` writes
+  `ssl.enabled.protocols: TLSv1.2,TLSv1.1,TLSv1` for its Kafka binder.
 * `server.servlet.session.tracking-modes=url`: the session ID travels in the
   URL, where logs and the `Referer` header can leak it, and a link carrying
   one can fix a victim's session. Confirm on Tomcat and Jetty that it is

@@ -1779,6 +1779,90 @@ in `spring-boot` and `jwk-set-uri: http://localhost:9000/oauth2/jwks` in
 `spring-authorization-server` are INFO (L13), and that project's
 `issuer-uri: http://localhost:9000` is HIGH (L17).
 
+## TLS without server verification (Kafka and RabbitMQ)
+
+Whether a Kafka or RabbitMQ client that uses TLS still checks the server
+was checked on the wire, without a broker:
+`spring-env-benchmark/tls-verification-scenarios.sh` starts a TLS listener
+on three ports, each presenting its own certificate, and records whether
+the client finished the handshake or refused it:
+
+* 9301, the control: signed by a test CA the clients trust, for
+  `localhost` and `127.0.0.1`;
+* 9302, a trusted certificate for the wrong host: signed by the same CA,
+  for `wrong.example` only;
+* 9303, the right host but untrusted: self-signed.
+
+The clients connect to `127.0.0.1` and trust the test CA, through
+`spring.kafka.ssl.trust-store-*` or `spring.rabbitmq.ssl.trust-store*`,
+or an SSL bundle (the `B` rows). Kafka is an `AdminClient` built from the
+configuration Spring Boot 4.1.1 auto-configures for `KafkaAdmin`
+(kafka-clients 4.2.1, `security.protocol=SSL`); RabbitMQ is one
+connection from the auto-configured `ConnectionFactory` (Spring AMQP
+4.1.1, `ssl.enabled=true`). `A` is `ssl.endpoint.identification.algorithm`.
+
+| # | Configuration | Server | Client |
+|---|---|---|---|
+| K0 | (none) | valid | accepted |
+| K1 | (none) | wrong host | refused |
+| K2 | `spring.kafka.properties.A=` | wrong host | **accepted** |
+| K3 | `spring.kafka.admin.properties.A=` | wrong host | **accepted** |
+| K4 | `spring.kafka.consumer.properties.A=` | wrong host | refused (the admin client keeps the default) |
+| K5 | `spring.kafka.properties.A=https` | wrong host | refused |
+| K6 | `spring.kafka.properties.A=HTTPS` | wrong host | refused |
+| K7 | `spring.kafka.properties.A=` | untrusted | refused |
+| Y1 | `A:` with nothing after it, in YAML (a null) | wrong host | **accepted** |
+| Y2 | `A: ' '` in YAML | wrong host | **accepted** |
+| KB0 | `spring.kafka.ssl.bundle` | valid | accepted |
+| KB1 | `spring.kafka.ssl.bundle` | wrong host | refused |
+| KB2 | `spring.kafka.ssl.bundle`, `spring.kafka.properties.A=` | wrong host | **accepted** |
+| KB3 | `spring.kafka.ssl.bundle` | untrusted | refused |
+| R0 | (none) | valid | accepted |
+| R1 | (none) | wrong host | refused |
+| R2 | `verify-hostname=false` | wrong host | **accepted** |
+| R3 | `verify-hostname=off` | wrong host | **accepted** |
+| R4 | (none) | untrusted | refused |
+| R5 | `validate-server-certificate=false` | untrusted | refused (ignored: a trust store is set) |
+| R6 | `validate-server-certificate=false` | wrong host | refused (ignored: a trust store is set) |
+| R7 | `verify-hostname=false` | untrusted | refused |
+| R8 | no trust store | untrusted | refused (the JVM's default trust store) |
+| R9 | no trust store, `validate-server-certificate=false` | untrusted | **accepted** |
+| R10 | no trust store, `validate-server-certificate=false` | wrong host | **accepted** |
+| RB0 | `spring.rabbitmq.ssl.bundle` | valid | accepted |
+| RB1 | `spring.rabbitmq.ssl.bundle` | wrong host | refused |
+| RB2 | `spring.rabbitmq.ssl.bundle`, `verify-hostname=false` | wrong host | **accepted** |
+| RB3 | `spring.rabbitmq.ssl.bundle`, `validate-server-certificate=false` | untrusted | refused (ignored: a bundle is set) |
+
+Every refusal was the client's `certificate_unknown` alert. The script
+was run twice, with the same result.
+
+**Kafka.** A blank `ssl.endpoint.identification.algorithm` (empty, a YAML
+null, which Spring loads as an empty string, or spaces) turns the host
+name check off, with or without an SSL bundle (K2, Y1, Y2, KB2), and
+leaves the trust check on (K7): any certificate the client trusts is
+accepted for any broker. `https` in any case keeps the check (K5, K6), as
+does the default (K1, KB1). The key has no Spring Boot property of its
+own: it reaches the client through `spring.kafka.properties` or a
+client's own map, which applies to that client only (K3, K4), as for
+`security.protocol` ("SCG014 protocol precedence"). The Spring Cloud
+Stream binder's `configuration` map, where `spring-cloud-stream-samples`
+writes the key, wasn't run here: the binder isn't in the benchmark, and
+SCG014 reads it as a context of its own
+([ADR-009](ARCHITECTURE.md#adr-009-spring-cloud-stream-kafka-binders-evaluated-as-their-own-contexts)).
+
+**RabbitMQ.** `spring.rabbitmq.ssl.verify-hostname` set to a false literal
+turns the host name check off, with a trust store or a bundle (R2, R3,
+RB2), and leaves the trust check on (R7).
+`spring.rabbitmq.ssl.validate-server-certificate=false` accepts any
+server, untrusted or for another host (R9, R10), but only when no key
+store, no trust store and no bundle is set: Spring AMQP 4.1.1's
+`RabbitConnectionFactoryBean.setUpSSL()` installs its trust-everything
+manager only on that path (`setupBasicSSL()`), and otherwise builds the
+trust managers from the stores, ignoring the property (R5, R6, RB3).
+
+These rows are what SCG014 and SCG015 are to be checked against; neither
+reports them yet (`BACKLOG.md`, "TLS without verifying the server").
+
 ## Loopback addresses in the transport rules
 
 Traffic to a loopback address doesn't leave the host, so nobody on the
