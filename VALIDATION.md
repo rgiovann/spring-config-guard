@@ -331,8 +331,7 @@ string, and so does SCG), placeholder-with-default resolution, the same
 profile (`prod`) sourced from both a named file and an on-profile block
 inside the base file — the two merging together, with the named file
 winning a key conflict — and, with the same key in `application.yml` and
-`application.yaml`, `.yml` winning (case 35; before 2026-10-06 SCG let
-`.yaml` win).
+`application.yaml`, `.yml` winning (case 35).
 
 A second set, under `app.bracket-map`, checks bracketed map keys
 ([ADR-007](ARCHITECTURE.md#adr-007-bracketed-map-keys-rewritten-into-dotted-form-at-load-time)):
@@ -372,7 +371,7 @@ in the property sources, and the target type decides which one binds (the
 sub-keys for a `Map` or an object, the scalar for a `String`), even when the
 ignored shape comes from the profile. A YAML null in the profile over a
 base map or object (cases 36 and 37) is the same: the base's sub-keys stay
-and bind. Before 2026-10-06 SCG removed them; it keeps them now.
+and bind, in SCG as in Spring.
 
 **Comparison method:** `/actuator/env`'s PropertySources are filtered down
 to the file-based ones, resolved by canonical key
@@ -504,12 +503,7 @@ extra condition (P12); Spring Boot 4.1.1 rejects only
 SCG evaluates the base with `default` active and one configuration per
 profile any file name or expression refers to, `default` excepted
 ([ADR-012](ARCHITECTURE.md#adr-012-on-profile-evaluated-as-spring-boot-does-one-ordered-fold-per-set-of-active-profiles)),
-so every cell where it builds a configuration matches Spring's. Before
-2026-10-06 (v1.16.0 and earlier) it took the value as a literal profile
-name: an expression or a list became a configuration named after the
-string (P1, P2, P4–P7, P14), a YAML list was folded into the base, a false
-negative (P3), `default` was a profile of its own (P8, P9), a conditioned
-document always won (P10, P11), and a malformed value was accepted (P13).
+so every cell where it builds a configuration matches Spring's.
 
 A Config Server repository's order (P15), measured as the Spring Cloud
 Config reference says the server resolves it, with
@@ -525,8 +519,7 @@ block) and `application-dev.yml`:
 Every document of `svc.yml`, its base included, overrides `application.yml`'s
 `dev` block (`k1`), and `application-dev.yml` overrides `svc.yml`'s `dev`
 block (`k4`). `ConfigServerAssembler` uses that order, pinned by
-`ConfigServerAssemblerTest` with the same files. Before 2026-10-06 it
-read only one `application*` file, whichever the file system listed last.
+`ConfigServerAssemblerTest` with the same files.
 
 The grammar's edge cases, measured with one document per value (the last
 part of the script). Each cell says whether Spring applied the document;
@@ -573,9 +566,8 @@ effect on findings since the document then applies to every configuration.
 counted on 2026-10-06):
 
 * `spring-petclinic-microservices-config`: five services start with an
-  `on-profile: default` document (P8), part of each service's base. Until
-  2026-10-06 SCG built a `default` configuration for each, which repeated
-  the service's SCG001 HIGH: 5 findings, now gone (53 to 48).
+  `on-profile: default` document (P8), part of each service's base: SCG
+  builds no `default` configuration for them.
 * `spring-boot`: one expression, `goodbye | dev`, in a smoke test with no
   findings.
 * `spring-cloud-stream-samples`: two documents use the legacy
@@ -587,8 +579,8 @@ counted on 2026-10-06):
   writes `on-profile: '!api-docs'` (P1) and two `on-profile` documents
   (`dev`, `prod`) inside `application-secret-samples.yml` (P12), which
   apply only when `secret-samples` and that profile are both active, and
-  declares `group.dev: [secret-samples, api-docs]` ("Profile groups"). Since
-  2026-10-06 the `'!api-docs'` block, which turns SpringDoc off, reaches the
+  declares `group.dev: [secret-samples, api-docs]` ("Profile groups"). The
+  `'!api-docs'` block, which turns SpringDoc off, reaches the
   base and the `prod`, `secret-samples` and `tls` profiles but not `dev`,
   whose group activates `api-docs`: SCG008 is reported for `dev` and
   `api-docs` only. The `dev` document of `application-secret-samples.yml`
@@ -597,8 +589,8 @@ counted on 2026-10-06):
   together activate, is counted in the stderr warning. `dev` also reports
   the H2 console of `application-dev.yml` (SCG002), which the null
   `spring:` at the top of `application-secret-samples.yml` leaves on, in
-  Spring as in SCG ("ProfileMerger correctness benchmark", case 36). 25
-  findings with v1.16.0, 23 now.
+  Spring as in SCG ("ProfileMerger correctness benchmark", case 36). 23
+  findings in all.
 
 ## Profile groups (running Spring Boot 4.1.1 app)
 
