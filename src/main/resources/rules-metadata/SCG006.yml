@@ -149,3 +149,24 @@ ignored-key-prefixes:
 public-material-suffixes:
   - certificate
   - certificate-location
+
+# Spring Boot maps whose key is a name the application chooses and whose value is an object
+# Spring Boot defines: every Map<String, object> in Spring Boot 4.1.1's configuration metadata.
+# For a key under one of these, the segment right after the prefix (the map key) doesn't count
+# when checking whether the key contains a pattern: the object's fields are known properties,
+# and a field's own name says whether it holds a secret. "registration.<id>.client-secret" ends
+# in a pattern and is still HIGH; "registration.messaging-client-client-credentials.client-id"
+# (spring-authorization-server's samples) no longer contains one. A map the application defines
+# ("app.secrets.<name>") isn't listed here: its entries may well be secrets.
+user-named-map-prefixes:
+  - spring.security.oauth2.client.registration
+  - spring.security.oauth2.client.provider
+  - spring.security.oauth2.authorizationserver.client
+  - spring.security.saml2.relyingparty.registration
+  - spring.ssl.bundle.jks
+  - spring.ssl.bundle.pem
+  - management.endpoint.health.group
+  - management.endpoint.sbom.additional
+  - management.otlp.metrics.export.meter
+  - spring.grpc.client.channel
+  - spring.grpc.server.health.service

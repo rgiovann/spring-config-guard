@@ -939,6 +939,25 @@ pattern is INFO, which never fails a build on its own (checked: exit 0 with
 `--fail-on=LOW`): it may still name a secret, so it stays visible instead of
 being silenced.
 
+The map key of a Spring Boot map whose entries are objects Spring Boot
+defines doesn't count toward that INFO (`user-named-map-prefixes`). Spring
+Boot 4.1.1's metadata has eleven such maps, every `Map<String, object>` in
+its modules: OAuth2 client `registration` and `provider`, the authorization
+server's `client`, SAML's `relyingparty.registration`, the `jks` and `pem`
+SSL bundles, health groups, additional SBOMs, OTLP `meter`, and gRPC's
+client `channel` and health `service`. A field of such an object is a known property whose own
+name says whether it is a secret: `registration.<id>.client-secret` is
+still HIGH, while `client-id` or `scope` is silent however the registration
+is named. Of the candidate reference projects (`BACKLOG.md`),
+`spring-authorization-server` names its registrations after their grant
+(`messaging-client-client-credentials`,
+`messaging-client-token-exchange-with-delegation`): its 31 INFO findings on
+`spring.security.oauth2.client.registration.<id>.*` came from the map key
+alone, and are gone. A map the application defines (`app.secrets.github`)
+isn't listed, since its entries may be secrets, and stays INFO, as do the
+maps of Spring Cloud (a Stream binding named `tokenEvents`), not in Spring
+Boot's metadata.
+
 |  | SCG |
 |---|---|
 |  20 non-secrets | 1 HIGH, 15 INFO, 4 silent  |

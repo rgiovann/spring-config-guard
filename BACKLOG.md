@@ -29,24 +29,13 @@ Everything else waits in Deferred for a real case or a need.
 Three projects proposed as new reference projects, run against the v1.16.0
 jar on 2026-10-06, to be added to `VALIDATION.md`, pinned at the commit
 below, with their precision check. jhipster's finding, `on-profile` read as
-a literal name, is settled (ADR-012, ADR-013); the other two each have one
-below.
+a literal name, is settled (ADR-012, ADR-013), and so is
+spring-authorization-server's, a secret pattern in an OAuth2 registration id
+(`VALIDATION.md`, "SCG006 key matching"); spring-ai-examples' is below.
 
 * `jhipster/jhipster-sample-app` (`6b000b5`, Spring Boot 4.1.1)
 * `spring-projects/spring-authorization-server` (`4283973`, its samples)
 * `spring-projects/spring-ai-examples` (`7416412`)
-
-#### SCG006: a secret pattern in a map key
-
-`spring-authorization-server`'s samples name OAuth2 client registrations
-after their grant (`messaging-client-client-credentials`,
-`messaging-client-token-exchange-with-delegation`). The registration id is
-a map key, so every property under it (`client-id`, `scope`, `provider`,
-`authorization-grant-type`, ...) "contains a secret pattern" and is
-reported as INFO: 32 INFO findings, all under
-`spring.security.oauth2.client.registration.<id>.*`. Its 25 HIGH findings
-look correct. Decide whether a pattern that matches only inside a map key
-the user named should stay silent.
 
 #### SCG006: a placeholder written as sample text
 
@@ -271,6 +260,18 @@ secret, the authorization code exchange and the ID token keys. SCG017 reads
 only the resource server keys. Measure on the wire, with a login flow in the
 benchmark, which of these the client fetches and when, before deciding
 whether SCG017 or a rule of its own covers them.
+
+#### SCG006: user-named map keys in Spring Cloud maps
+
+SCG006 ignores the map key of the Spring Boot maps whose entries are
+objects Spring Boot defines (`user-named-map-prefixes`, the eleven such maps
+in Spring Boot 4.1.1's metadata), so an OAuth2 registration named
+`messaging-client-client-credentials` no longer makes each of its fields
+INFO. Spring Cloud's maps are outside Spring Boot's metadata and not
+listed, e.g. `spring.cloud.stream.bindings.<name>`: a binding named
+`tokenEvents-in-0` still makes its `destination` INFO. Add such a map when
+a real project shows the noise, after checking in the library's own
+metadata that its entries are objects the library defines.
 
 #### SCG006: credentials in the OTLP headers maps
 

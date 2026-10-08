@@ -352,6 +352,59 @@ class HardcodedSecretsRuleTest {
             assertThat(rule.check(createConfig(Map.of("app.token-value", value)))).isEmpty();
         }
 
+        @ParameterizedTest(name = "Silent: ''{0}''")
+        @CsvSource(delimiter = '|', value = {
+                // spring-authorization-server's samples name registrations after their grant
+                "spring.security.oauth2.client.registration.messaging-client-client-credentials.client-id | messaging-client",
+                "spring.security.oauth2.client.registration.messaging-client-client-credentials.authorization-grant-type | client_credentials",
+                "spring.security.oauth2.client.registration.messaging-client-token-exchange-with-delegation.scope | message.read",
+                "spring.security.oauth2.client.registration.mtls-demo-client-client-credentials.client-authentication-method | tls_client_auth",
+                "spring.security.oauth2.client.provider.token-provider.user-name-attribute | sub",
+                "spring.security.oauth2.authorizationserver.client.secret-client.registration.client-id | secret-client",
+                "spring.security.saml2.relyingparty.registration.credentials-idp.entity-id | https://sp.example.com",
+                "spring.ssl.bundle.jks.secret-bundle.key.alias | server",
+                "spring.ssl.bundle.pem.secret-bundle.protocol | TLS",
+                "management.endpoint.health.group.token-checks.include | db",
+                "management.endpoint.sbom.additional.token-service.media-type | application/vnd.cyclonedx+json",
+                "management.otlp.metrics.export.meter.token-requests.histogram-flavor | base2-exponential-bucket-histogram",
+                "spring.grpc.client.channel.token-service.address | static://localhost:9090",
+                "spring.grpc.server.health.service.token-service.include | db"
+        })
+        @DisplayName("Ignores the map key of a Spring Boot map whose entries are objects Spring Boot defines: the field's name says whether it is a secret")
+        void shouldIgnoreUserNamedMapKeyOfSpringBootMap(String key, String value) {
+            assertThat(rule.check(createConfig(Map.of(key, value)))).isEmpty();
+        }
+
+        @ParameterizedTest(name = "HIGH: ''{0}''")
+        @ValueSource(strings = {
+                "spring.security.oauth2.client.registration.messaging-client-client-credentials.client-secret",
+                "spring.security.oauth2.authorizationserver.client.secret-client.registration.client-secret",
+                "spring.ssl.bundle.pem.secret-bundle.keystore.private-key-password"
+        })
+        @DisplayName("Still reports a field that names a secret under such a map, whatever its map key is named")
+        void shouldStillReportSecretFieldUnderUserNamedMapKey(String key) {
+            assertThat(rule.check(createConfig(Map.of(key, "s3cr3t-value"))))
+                    .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+        }
+
+        @ParameterizedTest(name = "INFO: ''{0}''")
+        @ValueSource(strings = {
+                // A map the application defines: its entries may be secrets
+                "app.secrets.github",
+                "app.credentials.stripe.value",
+                // A segment Spring Boot names, after the map key, still counts
+                "spring.security.oauth2.authorizationserver.client.web.token.access-token-format",
+                // Only the segment right after the prefix is the map key; one written with dots spans more
+                "spring.security.oauth2.client.registration.acme.token-exchange.client-id",
+                // The prefix is matched on a '.' boundary
+                "spring.security.oauth2.client.registrations.token-client.client-id"
+        })
+        @DisplayName("Keeps INFO for a pattern outside the map key of a listed Spring Boot map")
+        void shouldKeepInfoOutsideUserNamedMapKey(String key) {
+            assertThat(rule.check(createConfig(Map.of(key, "c2VjcmV0LXZhbHVl"))))
+                    .singleElement().satisfies(this::assertAmbiguousKeyInfo);
+        }
+
         private void assertAmbiguousKeyInfo(Finding finding) {
             assertThat(finding.severity()).isEqualTo(Severity.INFO);
             assertThat(finding.message()).contains("doesn't end in it");

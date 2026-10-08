@@ -32,6 +32,17 @@ import java.util.stream.Collectors;
  * ({@code logging.level.org.springframework.security.oauth2.server.authorization.token=DEBUG}),
  * and their value is never a secret.
  * <p>
+ * Under {@code user-named-map-prefixes}, Spring Boot maps whose key is a name the application
+ * chooses and whose value is an object Spring Boot defines (an OAuth2 client registration, an SSL
+ * bundle), the map key doesn't count toward the INFO for a key that only contains a pattern. Each
+ * field of such an object is a known property, and the field's own name says whether it holds a
+ * secret: {@code registration.<id>.client-secret} ends in a pattern and is still HIGH, while
+ * {@code client-id} or {@code scope} isn't one whatever the registration is named. Without this, a
+ * registration named after its grant ({@code messaging-client-client-credentials}, in
+ * spring-authorization-server's samples) made each of its fields an INFO, which a policy can only
+ * suppress with the whole rule. A map the application defines ({@code app.secrets.github}) isn't
+ * listed: its entries may be secrets, so they stay INFO.
+ * <p>
  * Also accepted: a key that names a secret but holds a plain file path, e.g.
  * {@code server.ssl.certificate-private-key=/etc/tls/server.key}, is reported. Only prefixed
  * values are recognized as locations, since the same family of keys
@@ -75,6 +86,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private List<String> ignoredKeySuffixes;
     private List<String> ignoredKeyPrefixes;
     private List<String> publicMaterialSuffixes;
+    private List<String> userNamedMapPrefixes;
     private static final String RULE_NAME = "SCG006";
 
 
@@ -99,6 +111,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
         List<String> rawIgnoredKeySuffixes = metadata.getOrDefault("ignored-key-suffixes", List.of());
         List<String> rawIgnoredKeyPrefixes = metadata.getOrDefault("ignored-key-prefixes", List.of());
         List<String> rawPublicMaterialSuffixes = metadata.getOrDefault("public-material-suffixes", List.of());
+        List<String> rawUserNamedMapPrefixes = metadata.getOrDefault("user-named-map-prefixes", List.of());
 
         for (String prefix : rawIgnoredPrefixes) {
             if (prefix.contains("${")) {
@@ -149,6 +162,10 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
                 .toList();
 
         this.publicMaterialSuffixes = rawPublicMaterialSuffixes.stream()
+                .map(RelaxedProperties::canonicalize)
+                .toList();
+
+        this.userNamedMapPrefixes = rawUserNamedMapPrefixes.stream()
                 .map(RelaxedProperties::canonicalize)
                 .toList();
     }
@@ -372,7 +389,7 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     private void ensureConfigured() {
         if (highRiskKeys == null || secretKeyPatterns == null || ignoredValuePrefixes == null
                 || packagedValuePrefixes == null || ignoredKeySuffixes == null || ignoredKeyPrefixes == null
-                || publicMaterialSuffixes == null) {
+                || publicMaterialSuffixes == null || userNamedMapPrefixes == null) {
             throw new IllegalStateException("Rule " + RULE_NAME + " must be configured before execution.");
         }
     }
@@ -412,12 +429,31 @@ public final class HardcodedSecretsRule implements ConfigurableRule {
     }
 
     private boolean containsSecretPattern(String canonicalKey) {
+        String keyWithoutMapKey = withoutUserNamedMapKey(canonicalKey);
         for (String pattern : secretKeyPatterns) {
-            if (canonicalKey.contains(pattern)) {
+            if (keyWithoutMapKey.contains(pattern)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * The key without the segment that names an entry of a {@code user-named-map-prefixes} map
+     * ({@code spring.security.oauth2.client.registration.<id>.client-id} becomes
+     * {@code spring.security.oauth2.client.registration.client-id}); any other key unchanged. Only
+     * the first segment after the prefix is removed: a map key written with dots spans several,
+     * and the ones after it still count, as before.
+     */
+    private String withoutUserNamedMapKey(String canonicalKey) {
+        for (String prefix : userNamedMapPrefixes) {
+            if (canonicalKey.startsWith(prefix + ".")) {
+                int start = prefix.length() + 1;
+                int end = canonicalKey.indexOf('.', start);
+                return end < 0 ? prefix : prefix + canonicalKey.substring(end);
+            }
+        }
+        return canonicalKey;
     }
 
     private static boolean isNumeric(String value) {
