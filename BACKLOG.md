@@ -284,17 +284,6 @@ GitHub Action (`action.yml`) is that consumer once it adds annotations or
 SARIF.
 Until then, the documented semantics are enough.
 
-#### GitHub Action in the Marketplace (waiting for a need)
-
-The action lives in this repository's `action.yml`, used at a release tag
-(`uses: rgiovann/spring-config-guard@vX.Y.Z`): each release is an action
-release, with no separate versioning. The Marketplace can't list it, since
-a listed repository must have no workflow files and this one has CI and
-release workflows. Listing it would take a separate public repository
-(`spring-config-guard-action`) whose `action.yml` reuses this one's steps,
-with its own `v1`-style tags, pushed by the maintainer; worth it once
-being found in the Marketplace matters.
-
 #### `--config-name=<prefix>`: custom `spring.config.name`
 
 A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /

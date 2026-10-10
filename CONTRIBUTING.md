@@ -150,6 +150,15 @@ Publishing is automated by `.github/workflows/release.yml`.
 7. The assistant checks the workflow run and the published release, and
    reports the link.
 8. Set `pom.xml` to the next `-SNAPSHOT` version.
+9. Release the Marketplace action (skip for a pre-release). In
+   [`spring-config-guard-action`](https://github.com/rgiovann/spring-config-guard-action),
+   the assistant points `action.yml` at the new tag's commit, by its full
+   SHA, with `version: X.Y.Z`, updates the README's `@vX.Y.Z`, and commits
+   to `main` after approval; this repository's CI job `marketplace-action`
+   runs that `main` on the next push or pull request. The maintainer then
+   publishes the release `vX.Y.Z` there from the web UI (Releases → Draft a
+   new release, "Publish this Action to the GitHub Marketplace" ticked),
+   which creates its tag.
 
 The workflow creates the tag itself because tags can't be pushed from the
 assistant's sessions, and so the tag always points at the commit that was

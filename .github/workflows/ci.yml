@@ -59,3 +59,36 @@ jobs:
         run: |
           echo "::error::the action passed on demo-project, which has HIGH findings"
           exit 1
+
+  # The Marketplace action (rgiovann/spring-config-guard-action), which calls the action above at a
+  # release's commit. It runs that repository's main, which can't have workflows of its own.
+  marketplace-action:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: A clean project passes
+        uses: rgiovann/spring-config-guard-action@main
+        with:
+          path: demo-project-clean
+
+      - name: A misconfigured project runs (fail-on NONE)
+        uses: rgiovann/spring-config-guard-action@main
+        with:
+          path: demo-project
+          fail-on: NONE
+
+      # Same download and inputs as the step above, which passed, so a failure here comes from the findings.
+      - name: A misconfigured project fails
+        id: misconfigured
+        continue-on-error: true
+        uses: rgiovann/spring-config-guard-action@main
+        with:
+          path: demo-project
+
+      - name: Check that it failed
+        if: steps.misconfigured.outcome != 'failure'
+        run: |
+          echo "::error::the Marketplace action passed on demo-project, which has HIGH findings"
+          exit 1
