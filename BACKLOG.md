@@ -19,21 +19,21 @@ or in an ADR.
 
 ## Pending
 
-Next: the GitHub Action. OAuth2 Client login-flow URIs wait for their
-measurement.
+Next: the GitHub Action. OAuth2 Client login-flow URIs are measured and
+wait for the reporting decision.
 Everything else waits in Deferred for a real case or a need.
 
 ### OAuth2 Client login-flow URIs over HTTP
 
 SCG017 reports an OAuth2 Client provider's `http://` `token-uri` and
-`issuer-uri`, both measured on the wire (`VALIDATION.md`, "OAuth2 Client
-provider transport scenarios"). Still silent: `jwk-set-uri` (the keys the
-client validates the ID token with) and `user-info-uri` (where it sends
-the access token), used only in a login (`authorization_code`) flow.
-Measure them before reporting: a listener that answers the token endpoint
-with a token, so the flow reaches them, driven without a browser through
-the login redirect and its callback. `authorization-uri` stays out: the
-user's browser visits it, not the application.
+`issuer-uri`. Still silent: `jwk-set-uri` and `user-info-uri`, now
+measured in a login flow (`VALIDATION.md`, "OAuth2 Client login-flow
+transport scenarios"): over plain HTTP, whoever answers `jwk-set-uri`
+chooses which ID token the client accepts, and `user-info-uri` receives
+the user's access token and, in a plain OAuth2 login or for a claim the
+ID token doesn't carry, chooses the user. Next: decide whether and how
+SCG017 reports them. `authorization-uri` stays out: the user's browser
+visits it, not the application.
 
 ### GitHub Action for the Marketplace
 

@@ -1812,11 +1812,11 @@ either authentication method (C1, C2), and matches the scheme in any case
 endpoints (I1, I2); over plain HTTP, whoever answers can name any
 `token_endpoint`, and the client sends its secret there. The listener
 answers 404, so the application doesn't start in I1 and I2; the
-connection is made before that. Not run: `jwk-set-uri` and
-`user-info-uri`, used only in a login (`authorization_code`) flow, which
-needs a browser, and `authorization-uri`, which the user's browser
-visits, not the application. The script was run twice, with the same
-result.
+connection is made before that. Not run here: `jwk-set-uri` and
+`user-info-uri`, used only in a login (`authorization_code`) flow
+("OAuth2 Client login-flow transport scenarios"), and `authorization-uri`,
+which the user's browser visits, not the application. The script was run
+twice, with the same result.
 
 SCG017 reports an `http://` `token-uri` or `issuer-uri` of any provider as
 HIGH, each on its own, since Spring Boot uses both (`token-uri` overrides
@@ -1826,6 +1826,65 @@ its metadata may name other hosts (L17). An unresolved placeholder is
 INFO. `OAuth2InsecureTransportRuleTest` pins each row. The
 login-flow keys and `authorization-uri` stay silent (`BACKLOG.md`,
 "OAuth2 Client login-flow URIs over HTTP").
+
+## OAuth2 Client login-flow transport scenarios (Spring Boot 4.1.1, on the wire)
+
+Whether a Spring Boot OAuth2 client fetches its provider's JWK set and user
+info over plain HTTP during a login, and what the answer decides, was
+checked without an authorization server or a browser:
+`spring-env-benchmark/oauth2-login-transport-scenarios.sh` starts an app
+whose only security is the `oauth2Login` Spring Boot 4.1.1 auto-configures
+(Spring Security 7.1.1), and plays the browser with `curl`: it starts the
+login, reads `state` and `nonce` from the redirect to `authorization-uri`
+(never contacted), calls the login callback with them, and asks the app
+which user is logged in. `oauth2-login-transport/login_listener.py` on
+127.0.0.1:8301 answers the token endpoint (an access token and, for OpenID
+Connect, an ID token for `scg-user`, RS256-signed with a throwaway key),
+the JWK set and the user info, and records each request, and whether it
+carried the access token. `token-uri` is plain HTTP in every row, so the
+flow gets a token; that exchange is measured on its own (C1).
+
+OIDC rows use `scope=openid,profile` (U2: `openid` only), OAuth2 rows
+`scope=read`; both set `user-name-attribute=sub` unless the row says
+otherwise (Spring Security refuses an OIDC login with `user-info-uri` but
+no `user-name-attribute`: `missing_user_name_attribute`).
+
+|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire | Login |
+|---|---|---|---|
+|  J1 | OIDC, `jwk-set-uri=http://...` | keys fetched over HTTP | `scg-user` |
+|  J2 | OIDC, `jwk-set-uri=https://...` | TLS | (listener has no TLS) |
+|  J3 | OIDC, `jwk-set-uri=http://...`, keys that didn't sign the ID token | keys fetched over HTTP | refused |
+|  J4 | OAuth2, `jwk-set-uri=http://...` | never fetched | `scg-user` |
+|  U1 | OIDC, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
+|  U2 | OIDC, `scope=openid`, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
+|  U3 | OIDC, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | refused |
+|  U4 | OIDC, `user-name-attribute=email`, user info answers another `email` | HTTP, access token in the clear | `scg-user@scg.example` (the ID token's) |
+|  U5 | OIDC, `user-name-attribute=preferred_username`, user info answers `admin` | HTTP, access token in the clear | **`admin`** |
+|  U6 | OIDC, `user-info-uri=https://...` | TLS | (listener has no TLS) |
+|  N1 | OAuth2, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
+|  N2 | OAuth2, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | **`admin`** |
+|  N3 | OAuth2, `user-info-uri=https://...` | TLS | (listener has no TLS) |
+
+**`jwk-set-uri`.** An OIDC client checks the ID token's signature against
+the keys it fetches from `jwk-set-uri` at login (J1), and refuses a token
+those keys didn't sign (J3), so whoever answers an `http://` `jwk-set-uri`
+chooses the keys, and with them which ID token, and so which user, the
+client accepts. A plain OAuth2 login never fetches it (J4): there is no ID
+token.
+
+**`user-info-uri`.** The client sends the user's access token to it at
+every login, as a Bearer header (U1, N1). Spring Security 7.1.1 calls it
+whenever it is set on an `authorization_code` registration, whatever the
+scopes (U2; `OidcUserRequestUtils.shouldRetrieveUserInfo`). In a plain
+OAuth2 login the user info *is* the user: whoever answers an `http://`
+`user-info-uri` logs the user in as anyone (N2). In an OIDC login,
+`OidcUserService` refuses a user info whose `sub` differs from the ID
+token's (U3), and a claim the ID token carries wins over the user info's
+(U4; `OidcUserAuthority.collectClaims` applies the ID token's claims
+last), but a claim only the user info carries comes from whoever answers:
+named as `user-name-attribute`, it chooses the user's name (U5).
+
+The script was run twice, with the same result.
 
 ## TLS without server verification (Kafka and RabbitMQ)
 
