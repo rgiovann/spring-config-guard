@@ -284,6 +284,24 @@ GitHub Action (`action.yml`) is that consumer once it adds annotations or
 SARIF.
 Until then, the documented semantics are enough.
 
+#### GitHub Action in the Marketplace (waiting for a need)
+
+The action lives in this repository's `action.yml`, used at a release tag
+(`uses: rgiovann/spring-config-guard@vX.Y.Z`). The Marketplace can't list
+it: a listed repository can't have workflow files. Listing it would take a
+separate public repository holding only a wrapper `action.yml`, released
+with each SCG version, and accepting the Marketplace developer agreement,
+whose §5.4 warrants and §9 indemnifies that the product's name infringes no
+trademark. Spring's trademark policy (spring.io/trademarks) doesn't allow a
+software product name that includes "Spring" ("Foobar for Spring" is its
+example of an acceptable title), so listing first means renaming the
+project, keeping the SCG initials (Strict Config Guard was the name
+considered; no collision was found in a web search, and a trademark
+registry search wasn't done). The policy applies to the project's name
+already, Marketplace or not; the listing would add the agreement's
+warranty on top. Tried and set aside in 2026-10: worth it once being found
+in the Marketplace matters more than the rename's cost.
+
 #### `--config-name=<prefix>`: custom `spring.config.name`
 
 A project started with `-Dspring.config.name=myapp` uses `myapp.yml` /
