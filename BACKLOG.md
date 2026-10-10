@@ -19,31 +19,8 @@ or in an ADR.
 
 ## Pending
 
-Next: the GitHub Action.
-Everything else waits in Deferred for a real case or a need.
-
-### GitHub Action for the Marketplace
-
-Publish SCG as a GitHub Action (`uses: rgiovann/spring-config-guard-action@v1`)
-so a CI gate no longer needs the README's `curl` + `java -jar` step.
-
-* **In a separate repository** (`spring-config-guard-action`), as most
-  established CLI and security tools do: the action's own `action.yml` at
-  the root and its own `v1`-style tags, independent of this repository's CI
-  and release workflows. Confirm the Marketplace's current publishing
-  requirements (public repository, one action per repository, whether
-  workflow files are allowed, the developer agreement, 2FA) before creating
-  it.
-* **A composite action**: `actions/setup-java` (Java 21), download of a
-  pinned release jar with its sha256 checked, then SCG with the flags as
-  inputs (path, `fail-on`, `policy`, `config-server`, `json`). Each SCG
-  release means a matching action release.
-* **A CI gate first** (exit code and report). PR annotations and a SARIF
-  upload for code scanning come later: they place each finding on a file,
-  so they depend on "Per-property origin in findings" (Deferred).
-* **Order**: only after every rule is reviewed and released (the
-  maintainer's decision), since false positives in a CI gate are what drive
-  new users away first. Met with v1.15.0: every rule's review has shipped.
+Nothing is pending: everything waits in Deferred for a real case or a
+need.
 
 ## Deferred (post-1.0)
 
@@ -303,9 +280,20 @@ MINOR change (CONTRIBUTING.md, "Releases").
 
 Worth it only once something consumes the location — e.g. PR annotations
 or code-scanning upload, where a wrong file would mark the wrong place. The
-planned GitHub Action (Pending) is that consumer once it adds annotations or
+GitHub Action (`action.yml`) is that consumer once it adds annotations or
 SARIF.
 Until then, the documented semantics are enough.
+
+#### GitHub Action in the Marketplace (waiting for a need)
+
+The action lives in this repository's `action.yml`, used at a release tag
+(`uses: rgiovann/spring-config-guard@vX.Y.Z`): each release is an action
+release, with no separate versioning. The Marketplace can't list it, since
+a listed repository must have no workflow files and this one has CI and
+release workflows. Listing it would take a separate public repository
+(`spring-config-guard-action`) whose `action.yml` reuses this one's steps,
+with its own `v1`-style tags, pushed by the maintainer; worth it once
+being found in the Marketplace matters.
 
 #### `--config-name=<prefix>`: custom `spring.config.name`
 

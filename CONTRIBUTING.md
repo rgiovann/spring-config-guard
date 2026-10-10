@@ -122,8 +122,8 @@ Publishing is automated by `.github/workflows/release.yml`.
 1. Decide the version from the commits since the last tag, using the rules
    above.
 2. Set `pom.xml` to `X.Y.Z` (drop `-SNAPSHOT`).
-3. Update the pinned version in README's CI/CD Integration example (skip
-   for a pre-release).
+3. Update the pinned versions in README's CI/CD Integration examples, the
+   action's `@vX.Y.Z` and the `curl` download (skip for a pre-release).
 4. If the release has **Detection changes**, set the version
    `VALIDATION.md` states at its top to `vX.Y.Z`. The rows and counts a
    change moves are already updated, in the commit that moved them, so

@@ -1,0 +1,128 @@
+name: spring-config-guard
+description: Lint Spring Boot application.{yml,yaml,properties} files for security misconfigurations and fail the job on findings.
+author: Giovani L. Rozza
+branding:
+  icon: shield
+  color: green
+
+# The SCG version is the release tag this action is used at (uses: rgiovann/spring-config-guard@v1.20.0),
+# so pinning the action pins the rules. Used at a branch or a commit SHA, the version input is required.
+# The jar comes from that GitHub release and is checked against the sha256 input, or else against the
+# digest the release publishes for it.
+inputs:
+  path:
+    description: Directory to scan.
+    default: '.'
+  fail-on:
+    description: Lowest severity that fails the step (HIGH, MEDIUM, LOW or NONE).
+    default: HIGH
+  policy:
+    description: Policy file that suppresses accepted findings (--policy).
+    default: ''
+  config-server:
+    description: Scan a Spring Cloud Config Server backing repository (--config-server).
+    default: 'false'
+  version:
+    description: SCG version to run (X.Y.Z). Defaults to the release tag the action is used at.
+    default: ''
+  sha256:
+    description: Expected sha256 of the jar. Defaults to the digest the GitHub release publishes.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Download spring-config-guard
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_SHA256: ${{ inputs.sha256 }}
+        ACTION_REF: ${{ github.action_ref }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        version="$INPUT_VERSION"
+        if [ -z "$version" ]; then
+          if [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            version="${ACTION_REF#v}"
+          else
+            echo "::error::spring-config-guard is used at '${ACTION_REF:-a local path}', not a release tag: set the version input (X.Y.Z)"
+            exit 2
+          fi
+        fi
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error::version must be X.Y.Z, got '$version'"
+          exit 2
+        fi
+        repo=rgiovann/spring-config-guard
+        jar="$RUNNER_TEMP/spring-config-guard.jar"
+        curl -fsSL -o "$jar" "https://github.com/$repo/releases/download/v$version/spring-config-guard.jar" || {
+          echo "::error::could not download spring-config-guard v$version: is there a release with that version?"
+          exit 2
+        }
+        expected="$INPUT_SHA256"
+        if [ -z "$expected" ]; then
+          auth=()
+          [ -n "$GH_TOKEN" ] && auth=(-H "Authorization: Bearer $GH_TOKEN")
+          expected=$(curl -fsSL ${auth[@]+"${auth[@]}"} -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$repo/releases/tags/v$version" \
+            | jq -r '.assets[] | select(.name == "spring-config-guard.jar") | .digest // empty')
+          expected="${expected#sha256:}"
+        fi
+        if [ -z "$expected" ]; then
+          echo "::error::no sha256 for v$version: the release publishes no digest, set the sha256 input"
+          exit 2
+        fi
+        if command -v sha256sum > /dev/null; then
+          actual=$(sha256sum "$jar" | cut -d' ' -f1)
+        else
+          actual=$(shasum -a 256 "$jar" | cut -d' ' -f1)
+        fi
+        if [ "$actual" != "$(echo "$expected" | tr 'A-F' 'a-f')" ]; then
+          echo "::error::sha256 mismatch for spring-config-guard v$version: expected $expected, got $actual"
+          exit 2
+        fi
+        echo "spring-config-guard v$version, sha256 $actual"
+        echo "SCG_JAR=$jar" >> "$GITHUB_ENV"
+
+    - name: Run spring-config-guard
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_POLICY: ${{ inputs.policy }}
+        INPUT_CONFIG_SERVER: ${{ inputs.config-server }}
+      run: |
+        set -uo pipefail
+        args=("$INPUT_PATH" "--fail-on=$INPUT_FAIL_ON")
+        [ -n "$INPUT_POLICY" ] && args+=("--policy=$INPUT_POLICY")
+        [ "$INPUT_CONFIG_SERVER" = "true" ] && args+=("--config-server")
+        report="$RUNNER_TEMP/spring-config-guard-report.txt"
+        warnings="$RUNNER_TEMP/spring-config-guard-warnings.txt"
+        java -jar "$SCG_JAR" "${args[@]}" > "$report" 2> "$warnings"
+        status=$?
+        cat "$report"
+        cat "$warnings" >&2
+        {
+          echo "### spring-config-guard"
+          if [ -s "$report" ]; then
+            echo
+            echo '```'
+            cat "$report"
+            echo '```'
+          fi
+          if [ -s "$warnings" ]; then
+            echo
+            echo '```'
+            cat "$warnings"
+            echo '```'
+          fi
+          echo
+          echo "Exit code: $status (--fail-on=$INPUT_FAIL_ON)"
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"

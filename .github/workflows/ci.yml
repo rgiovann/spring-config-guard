@@ -22,3 +22,40 @@ jobs:
 
       - name: Build and test
         run: mvn -B package
+
+  # The action in action.yml, run from this checkout. A local action has no release tag to take its
+  # version from, so it runs a published release's jar: this checks the action's steps, not this
+  # commit's rules.
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: A clean project passes
+        uses: ./
+        with:
+          path: demo-project-clean
+          version: 1.19.0
+
+      - name: A misconfigured project runs (fail-on NONE)
+        uses: ./
+        with:
+          path: demo-project
+          fail-on: NONE
+          version: 1.19.0
+
+      # Same download and inputs as the step above, which passed, so a failure here comes from the findings.
+      - name: A misconfigured project fails
+        id: misconfigured
+        continue-on-error: true
+        uses: ./
+        with:
+          path: demo-project
+          version: 1.19.0
+
+      - name: Check that it failed
+        if: steps.misconfigured.outcome != 'failure'
+        run: |
+          echo "::error::the action passed on demo-project, which has HIGH findings"
+          exit 1

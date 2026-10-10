@@ -379,7 +379,9 @@ java -jar spring-config-guard.jar demo-project/config-server-showcase --config-s
 
 ## CI/CD Integration
 
-A GitHub Actions workflow that fails on `HIGH` findings:
+### GitHub Actions
+
+A workflow that fails on `HIGH` findings:
 
 ```yaml
 # .github/workflows/spring-config-guard.yml
@@ -391,23 +393,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
-      - name: Lint Spring Boot configuration
-        run: |
-          curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.19.0/spring-config-guard.jar
-          java -jar spring-config-guard.jar . --fail-on=HIGH
+      - uses: rgiovann/spring-config-guard@v1.20.0
 ```
 
-* **Pin a version** instead of `releases/latest`. A release can add or
-  remove findings, which can fail a build that didn't change, or let
-  through one that should fail. Upgrade on purpose, after reading the
-  release's **Detection changes** section
-  ([CHANGELOG.md](CHANGELOG.md)).
-* **Other CI systems** work the same way: SCG needs Java 21 and a shell
-  step, and reports through its exit code.
+The action sets up Java 21, downloads the jar of the release it is used at,
+checks its sha256, runs SCG and writes the report to the job summary. The
+step fails when SCG exits with `1` (findings at or above `fail-on`) or `2`
+(a usage or input error).
+
+| Input | Default | Description |
+|---|---|---|
+| `path` | `.` | Directory to scan. |
+| `fail-on` | `HIGH` | `--fail-on`: `HIGH`, `MEDIUM`, `LOW` or `NONE`. |
+| `policy` | | `--policy`: a policy file, relative to the workspace. |
+| `config-server` | `false` | `true` for `--config-server`. |
+| `version` | the release tag | The SCG version (`X.Y.Z`). Required only when the action is used at a branch or a commit SHA. |
+| `sha256` | the release's digest | The jar's expected sha256, to pin it yourself rather than trust the digest GitHub publishes with the release. |
+
+* **Pin a release tag** (`@v1.20.0`), never a branch: the tag decides the
+  rules that run. A release can add or remove findings, which can fail a
+  build that didn't change, or let through one that should fail. Upgrade on
+  purpose, after reading the release's **Detection changes** section
+  ([CHANGELOG.md](CHANGELOG.md)). The action is in this repository, so it
+  isn't listed in the GitHub Marketplace, and there is no floating `@v1`.
+* **Annotations and code scanning (SARIF)** aren't produced: a finding's
+  `sourceFile` is the evaluated configuration, not always the file that
+  writes the key ([Output Format](#output-format)).
+
+### Other CI systems
+
+SCG needs Java 21 and a shell step, and reports through its exit code:
+
+```bash
+curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.19.0/spring-config-guard.jar
+java -jar spring-config-guard.jar . --fail-on=HIGH
+```
+
+Pin a version here too, instead of `releases/latest`.
 
 ## Scope & Limitations
 
