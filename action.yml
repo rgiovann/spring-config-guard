@@ -71,7 +71,10 @@ runs:
           [ -n "$GH_TOKEN" ] && auth=(-H "Authorization: Bearer $GH_TOKEN")
           expected=$(curl -fsSL ${auth[@]+"${auth[@]}"} -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$repo/releases/tags/v$version" \
-            | jq -r '.assets[] | select(.name == "spring-config-guard.jar") | .digest // empty')
+            | jq -r '.assets[] | select(.name == "spring-config-guard.jar") | .digest // empty') || {
+            echo "::error::could not read the sha256 GitHub publishes for v$version: set the sha256 input"
+            exit 2
+          }
           expected="${expected#sha256:}"
         fi
         if [ -z "$expected" ]; then
@@ -104,8 +107,9 @@ runs:
         [ "$INPUT_CONFIG_SERVER" = "true" ] && args+=("--config-server")
         report="$RUNNER_TEMP/spring-config-guard-report.txt"
         warnings="$RUNNER_TEMP/spring-config-guard-warnings.txt"
-        java -jar "$SCG_JAR" "${args[@]}" > "$report" 2> "$warnings"
-        status=$?
+        # The runner's bash runs with -e: keep SCG's exit code instead of stopping on it.
+        status=0
+        java -jar "$SCG_JAR" "${args[@]}" > "$report" 2> "$warnings" || status=$?
         cat "$report"
         cat "$warnings" >&2
         {
