@@ -171,18 +171,12 @@ Confirm each behavior in its client (and how Spring Boot 4.1.1 maps the
 properties) before reporting, then decide whether they extend SCG012 or
 form a rule of their own.
 
-#### SCG011: weak TLS protocols and session IDs in URLs (decide with measurements)
+#### SCG011: session IDs in URLs (decide with measurements)
 
 Found in the second review of SCG011 (`VALIDATION.md`, "SCG011 transport
-scenarios"): these are silent today, and each needs a running app before
-it is reported.
+scenarios"): silent today, and it needs a running app before it is
+reported.
 
-* `server.ssl.enabled-protocols=TLSv1,TLSv1.1` or `server.ssl.protocol=TLSv1`.
-  The JDK disables TLS 1.0/1.1 by default (`jdk.tls.disabledAlgorithms`),
-  so check whether these take effect, fail the handshake or fail the
-  startup on Java 21 before deciding a severity. Clients have the same
-  setting: `spring-cloud-stream-samples`' `kafka-ssl-demo` writes
-  `ssl.enabled.protocols: TLSv1.2,TLSv1.1,TLSv1` for its Kafka binder.
 * `server.servlet.session.tracking-modes=url`: the session ID travels in the
   URL, where logs and the `Referer` header can leak it, and a link carrying
   one can fix a victim's session. Confirm on Tomcat and Jetty that it is
@@ -378,5 +372,10 @@ Not coming back unless a new, concrete use case appears.
   generic scanner can't tell a low-risk URL from one that enables forged
   tokens. The same reasoning kept Kafka (SCG014) and Vault (SCG016) as
   dedicated rules.
+* **TLS 1.0 and 1.1 settings** (`server.ssl.enabled-protocols`,
+  `server.ssl.protocol`, a Kafka client's `ssl.enabled.protocols`). On the
+  JDKs Spring Boot 3 and later run on, no value brings these protocols
+  back; only an edited `java.security` does, which SCG can't see
+  (`VALIDATION.md`, "TLS 1.0 and 1.1 on Java 21").
 * **Targeting a real profile named `base` in a Policy file.** Decided not to
   change; see README, "Other known limitations".

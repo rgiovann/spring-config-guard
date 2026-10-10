@@ -1486,9 +1486,9 @@ coverage warning on stderr:
 |  L4 | management port, `key-store`, `enabled: false` | `application-prod.yml`: `port: -1` | management HTTP, off in `prod` | HIGH in the base profile (correct)  |
 
 None of the reference projects has an SCG011 finding. Left open
-(BACKLOG.md): weak TLS protocols
-(`server.ssl.enabled-protocols`, `server.ssl.protocol`) and
-`server.servlet.session.tracking-modes=url`, silent today.
+(BACKLOG.md): `server.servlet.session.tracking-modes=url`, silent today.
+Weak TLS protocols (`server.ssl.enabled-protocols`, `server.ssl.protocol`)
+were measured and aren't reported ("TLS 1.0 and 1.1 on Java 21").
 
 ## SCG012 driver modes (JDBC drivers and Spring Boot's Redis configuration)
 
@@ -1932,6 +1932,81 @@ on a connection that uses TLS (`ssl.enabled`, a bundle or an `amqps://`
 address), and `validate-server-certificate` false when no key store,
 trust store or bundle is set, as MEDIUM; every other RabbitMQ row is
 silent, and each is pinned in `RabbitMqInsecureTransportRuleTest`.
+
+## TLS 1.0 and 1.1 on Java 21
+
+Whether a configuration can bring TLS 1.0 or 1.1 back, on the embedded
+server or on a Kafka client, was checked on the wire with
+`spring-env-benchmark/tls-protocol-scenarios.sh`, on OpenJDK 21.0.12. Its
+`java.security` lists `TLSv1, TLSv1.1` in `jdk.tls.disabledAlgorithms`,
+as every OpenJDK has since JDK 16 (JDK-8202343, also backported to older
+release lines); Spring Boot 3 and later need Java 17. Each scenario runs
+twice: on that JDK (stock), and with a `java.security` override that takes
+`TLSv1` and `TLSv1.1` out of the list (legacy). The legacy run is the
+control: it shows the harness sees TLS 1.0 when the JVM allows it.
+
+**Server.** Spring Boot 4.1.1 on Tomcat 11.0.24, Jetty 12.1.12 and
+Reactor Netty 1.3.7, on port 9443 with a key store (`S5`: an SSL bundle).
+`openssl s_client` connects once per version; each cell is the version
+negotiated, or `fail`. Every app started, in every row.
+
+| # | Configuration | Tomcat, Netty: stock | Tomcat, Netty: legacy | Jetty: stock and legacy |
+|---|---|---|---|---|
+| S0 | (none) | 1.2, 1.3 | **1.0**, **1.1**, 1.2, 1.3 | 1.2, 1.3 |
+| S1 | `server.ssl.enabled-protocols=TLSv1,TLSv1.1` | none | **1.0**, **1.1** | none |
+| S2 | `server.ssl.enabled-protocols=TLSv1.2,TLSv1.1,TLSv1` | 1.2 | **1.0**, **1.1**, 1.2 | 1.2 |
+| S3 | `server.ssl.protocol=TLSv1` | 1.2, 1.3 | **1.0**, **1.1**, 1.2, 1.3 | none |
+| S4 | `server.ssl.protocol=TLSv1.1` | 1.2, 1.3 | **1.0**, **1.1**, 1.2, 1.3 | none |
+| S5 | bundle, `options.enabled-protocols=TLSv1` | none | **1.0** | none |
+
+On the stock JDK no value brings TLS 1.0 or 1.1 back: the JDK drops them
+from whatever list is set, so a list naming only them leaves the server
+with no protocol (S1, S5). The app still starts and then refuses every
+handshake, which is an outage, not a weakness. On the legacy JVM, Tomcat
+and Netty accept 1.0 and 1.1 with no key set (S0), so no key adds a
+protocol the defaults don't already accept; S1 and S5 only take the newer
+ones away. Jetty refuses 1.0 and 1.1 on both JVMs, whatever the keys say
+(not traced further: no key changes it). `server.ssl.protocol` names the
+`SSLContext` algorithm, not the enabled protocols: Tomcat and Netty ignore
+it for that (S3, S4), and on Jetty it leaves no protocol at all.
+
+**Kafka client.** `kafka-tls/` (an `AdminClient` from the configuration
+Spring Boot 4.1.1 auto-configures for `KafkaAdmin`, kafka-clients 4.2.1,
+`security.protocol=SSL`) connects to an `openssl s_server` that accepts
+TLS 1.0 only (`-tls1`), or any version. The client trusts the server's
+self-signed certificate and its host name check is off, so the protocol is
+the only variable. `P` is `spring.kafka.properties.ssl.enabled.protocols`.
+
+| # | Configuration | Peer | Stock | Legacy |
+|---|---|---|---|---|
+| C0 | (none: `TLSv1.2,TLSv1.3`) | TLS 1.0 only | failed after the ClientHello | failed after the ClientHello |
+| C1 | `P=TLSv1.2,TLSv1.1,TLSv1` | TLS 1.0 only | failed after the ClientHello | **accepted, TLS 1.0** |
+| C2 | `P=TLSv1` | TLS 1.0 only | no ClientHello ("No appropriate protocol") | **accepted, TLS 1.0** |
+| C3 | `spring.kafka.ssl.protocol=TLSv1` | TLS 1.0 only | no ClientHello ("No appropriate protocol") | failed after the ClientHello |
+| C4 | `P=TLSv1.2,TLSv1.1,TLSv1` | any | accepted, TLS 1.2 | accepted, TLS 1.2 |
+| C5 | (none) | any | accepted, TLS 1.3 | accepted, TLS 1.3 |
+
+On the stock JDK the client can't negotiate 1.0 or 1.1 either (C1, C2,
+C3). Unlike the servers, its defaults leave them out, so on the legacy JVM
+the list `TLSv1.2,TLSv1.1,TLSv1` does widen it: a peer that speaks only
+TLS 1.0 is accepted (C1), while the defaults refuse it (C0). Against a
+modern peer the same list negotiates TLS 1.2, because it leaves TLS 1.3
+out (C4, C5). `spring.kafka.ssl.protocol` names the `SSLContext`
+algorithm and doesn't enable TLS 1.0 by itself (C3). The
+`spring-cloud-stream-samples` project's `kafka-ssl-demo` writes that list
+in its binder's `configuration` map, which wasn't run here: the binder
+isn't in the benchmark.
+
+The script was run twice, with the same result.
+
+**Not reported.** SCG has no check for these keys. On the JDKs Spring
+Boot 3 and later run on, no value brings TLS 1.0 or 1.1 back. They return
+only when the JVM's `java.security` is edited, which SCG can't see, and
+that edit is a deliberate step, usually taken to reach a legacy peer. On
+the server side, even on such a JVM, the keys add nothing the defaults
+don't already accept. The Kafka client list (C1) is the only case where a
+key widens what is accepted, and only on an edited JVM: reported, nearly
+every finding would describe a JVM nobody has edited.
 
 ## Loopback addresses in the transport rules
 
