@@ -46,7 +46,7 @@ per independently written file.
 | `spring-projects/spring-petclinic` | `818c413` | regular | 3 | 5 | — | — | 5 |
 | `spring-cloud/spring-cloud-stream-samples` | `2ff1168` | regular | 30 | 13 | 28 | 7 | 48 |
 | `jhipster/jhipster-sample-app` | `6b000b5` | regular | 5 | 10 | 3 | 10 | 23 |
-| `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 28 | — | 6 | 34 |
+| `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 28 | — | 8 | 36 |
 | `spring-projects/spring-ai-examples` | `7416412` | regular | 25 | 1 | 1 | 38 | 40 |
 
 `spring-petclinic-microservices-config` is a real Spring Cloud Config
@@ -271,8 +271,8 @@ reference documentation (10 `application.yml` files, 8 with findings):
 |---|---|---|---|---|
 | SCG006 | 25 | — | 1 | 26 |
 | SCG009 | — | — | 3 | 3 |
-| SCG017 | 3 | — | 2 | 5 |
-| **Total** | **28** | **—** | **6** | **34** |
+| SCG017 | 3 | — | 4 | 7 |
+| **Total** | **28** | **—** | **8** | **36** |
 
 The 25 SCG006 HIGH are secrets written in the samples: 11 client secrets
 of OAuth2 client registrations and authorization server clients
@@ -289,10 +289,11 @@ on a loopback host (L17), and `messages-resource`'s
 `jwk-set-uri: http://localhost:9000/oauth2/jwks` is INFO. On the OAuth2
 client side, `provider.spring.issuer-uri: http://localhost:9000` in
 `demo-client` and `users-resource` is HIGH, as an issuer URI on a loopback
-host is, and `sociallogin`'s `provider.okta.token-uri:
-${okta.base-url}/oauth2/v1/token` is INFO, since `okta.base-url` is
-`${OKTA_BASE_URL}`, without a default ("OAuth2 Client provider transport
-scenarios").
+host is, and `sociallogin`'s `provider.okta` `token-uri`, `jwk-set-uri`
+and `user-info-uri` (`${okta.base-url}/oauth2/v1/token`, and so on) are 3
+INFO, since `okta.base-url` is `${OKTA_BASE_URL}`, without a default
+("OAuth2 Client provider transport scenarios", "OAuth2 Client login-flow
+transport scenarios").
 
 ```bash
 git clone https://github.com/spring-projects/spring-authorization-server.git
@@ -340,7 +341,7 @@ checked without SCG's own code.
 | `spring-boot-admin` | 87 | Independent greps, file by file, for the 4 rules that fired | No |
 | `spring-cloud-stream-samples` | 48 | Every file with a password, secret or `security.protocol` read by hand | No |
 | `jhipster-sample-app` | 23 | Every file read; expected count derived by hand | No |
-| `spring-authorization-server` | 34 | Every file read; expected count derived by hand | No |
+| `spring-authorization-server` | 36 | Every file read; expected count derived by hand | No |
 | `spring-ai-examples` | 40 | Independent greps for every rule; every line with a secret-named key listed | No |
 
 **The small repositories** were read in full, with the expected findings
@@ -348,7 +349,7 @@ derived against every rule before comparing with SCG's output: 3 SCG001 +
 2 SCG006 = 5 in `spring-petclinic`; 32 SCG001 + 8 SCG006 + 8 SCG012 = 48
 in `spring-petclinic-microservices-config`; 6 SCG001 + 1 SCG002 +
 4 SCG006 + 2 SCG008 + 4 SCG009 + 6 SCG013 = 23 in `jhipster-sample-app`;
-26 SCG006 + 3 SCG009 + 5 SCG017 = 34 in `spring-authorization-server`, as
+26 SCG006 + 3 SCG009 + 7 SCG017 = 36 in `spring-authorization-server`, as
 explained in their sections.
 
 **The large repositories** were checked with plain `grep` (no shared logic
@@ -1823,9 +1824,9 @@ HIGH, each on its own, since Spring Boot uses both (`token-uri` overrides
 the endpoint discovery finds). The SCG column is for a remote host; on a
 loopback host, a `token-uri` is INFO and an `issuer-uri` stays HIGH, as
 its metadata may name other hosts (L17). An unresolved placeholder is
-INFO. `OAuth2InsecureTransportRuleTest` pins each row. The
-login-flow keys and `authorization-uri` stay silent (`BACKLOG.md`,
-"OAuth2 Client login-flow URIs over HTTP").
+INFO. `OAuth2InsecureTransportRuleTest` pins each row. The login-flow
+keys are reported too ("OAuth2 Client login-flow transport scenarios");
+`authorization-uri` stays silent.
 
 ## OAuth2 Client login-flow transport scenarios (Spring Boot 4.1.1, on the wire)
 
@@ -1849,21 +1850,21 @@ OIDC rows use `scope=openid,profile` (U2: `openid` only), OAuth2 rows
 otherwise (Spring Security refuses an OIDC login with `user-info-uri` but
 no `user-name-attribute`: `missing_user_name_attribute`).
 
-|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire | Login |
-|---|---|---|---|
-|  J1 | OIDC, `jwk-set-uri=http://...` | keys fetched over HTTP | `scg-user` |
-|  J2 | OIDC, `jwk-set-uri=https://...` | TLS | (listener has no TLS) |
-|  J3 | OIDC, `jwk-set-uri=http://...`, keys that didn't sign the ID token | keys fetched over HTTP | refused |
-|  J4 | OAuth2, `jwk-set-uri=http://...` | never fetched | `scg-user` |
-|  U1 | OIDC, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
-|  U2 | OIDC, `scope=openid`, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
-|  U3 | OIDC, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | refused |
-|  U4 | OIDC, `user-name-attribute=email`, user info answers another `email` | HTTP, access token in the clear | `scg-user@scg.example` (the ID token's) |
-|  U5 | OIDC, `user-name-attribute=preferred_username`, user info answers `admin` | HTTP, access token in the clear | **`admin`** |
-|  U6 | OIDC, `user-info-uri=https://...` | TLS | (listener has no TLS) |
-|  N1 | OAuth2, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` |
-|  N2 | OAuth2, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | **`admin`** |
-|  N3 | OAuth2, `user-info-uri=https://...` | TLS | (listener has no TLS) |
+|  # | Configuration (`spring.security.oauth2.client.provider.scg.*`) | On the wire | Login | SCG |
+|---|---|---|---|---|
+|  J1 | OIDC, `jwk-set-uri=http://...` | keys fetched over HTTP | `scg-user` | HIGH |
+|  J2 | OIDC, `jwk-set-uri=https://...` | TLS | (listener has no TLS) | silent |
+|  J3 | OIDC, `jwk-set-uri=http://...`, keys that didn't sign the ID token | keys fetched over HTTP | refused | HIGH |
+|  J4 | OAuth2, `jwk-set-uri=http://...` | never fetched | `scg-user` | HIGH (false positive) |
+|  U1 | OIDC, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` | HIGH |
+|  U2 | OIDC, `scope=openid`, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` | HIGH |
+|  U3 | OIDC, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | refused | HIGH |
+|  U4 | OIDC, `user-name-attribute=email`, user info answers another `email` | HTTP, access token in the clear | `scg-user@scg.example` (the ID token's) | HIGH |
+|  U5 | OIDC, `user-name-attribute=preferred_username`, user info answers `admin` | HTTP, access token in the clear | **`admin`** | HIGH |
+|  U6 | OIDC, `user-info-uri=https://...` | TLS | (listener has no TLS) | silent |
+|  N1 | OAuth2, `user-info-uri=http://...` | HTTP, access token in the clear | `scg-user` | HIGH |
+|  N2 | OAuth2, `user-info-uri=http://...`, user info answers `sub=admin` | HTTP, access token in the clear | **`admin`** | HIGH |
+|  N3 | OAuth2, `user-info-uri=https://...` | TLS | (listener has no TLS) | silent |
 
 **`jwk-set-uri`.** An OIDC client checks the ID token's signature against
 the keys it fetches from `jwk-set-uri` at login (J1), and refuses a token
@@ -1885,6 +1886,19 @@ last), but a claim only the user info carries comes from whoever answers:
 named as `user-name-attribute`, it chooses the user's name (U5).
 
 The script was run twice, with the same result.
+
+SCG017 reports an `http://` `jwk-set-uri` or `user-info-uri` of any
+provider as HIGH, each on its own: Spring Boot applies each key written on
+top of what `issuer-uri` discovers (`OAuth2ClientPropertiesMapper`). The
+SCG column is for a remote host; on a loopback host either is INFO, and
+an unresolved placeholder is INFO, as for `token-uri`. SCG doesn't read
+which registrations use a provider, their scopes or their grant types, so
+it reports a `jwk-set-uri` a plain OAuth2 login never fetches (J4) and,
+likewise, a `user-info-uri` on a provider no login uses: these keys exist
+only for a login, and the rows they would spare don't justify reading
+`scope` in all its forms. Every user-info row is HIGH, the OIDC ones
+included, since the access token is sent in the clear whatever the
+answer decides. `OAuth2InsecureTransportRuleTest` pins each row.
 
 ## TLS without server verification (Kafka and RabbitMQ)
 

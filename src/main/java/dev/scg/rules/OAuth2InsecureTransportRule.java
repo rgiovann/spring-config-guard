@@ -41,19 +41,28 @@ import java.util.Optional;
  * the clear, with {@code client_secret_basic} and {@code client_secret_post} alike, and
  * {@code issuer-uri} is fetched at startup to discover the provider's endpoints, so whoever answers
  * can name the token endpoint the secret is sent to (VALIDATION.md, "OAuth2 Client provider
- * transport scenarios"). Both are used, each for its own purpose ({@code token-uri} overrides the
- * discovered endpoint), so each is evaluated on its own, with the same severities: {@link Severity#HIGH},
- * INFO for an unresolved placeholder or a loopback {@code token-uri}. Not checked:
- * {@code jwk-set-uri} and {@code user-info-uri}, used only in a login flow that wasn't measured, and
- * {@code authorization-uri}, which the user's browser visits, not the application.
+ * transport scenarios"). In a login ({@code authorization_code}) flow, measured with the flow driven
+ * without a browser (VALIDATION.md, "OAuth2 Client login-flow transport scenarios"), an OpenID
+ * Connect client validates the ID token against the keys it fetches from {@code jwk-set-uri}, so
+ * whoever answers an {@code http://} one chooses the user, and the client sends the user's access
+ * token to {@code user-info-uri}, whose answer is the user in a plain OAuth2 login and, under OpenID
+ * Connect, decides any claim the ID token doesn't carry. Spring Boot applies each key written on top
+ * of what {@code issuer-uri} discovers ({@code OAuth2ClientPropertiesMapper}), so each is evaluated
+ * on its own, with the same severities: {@link Severity#HIGH}, INFO for an unresolved placeholder or a
+ * loopback host (not for {@code issuer-uri}). A provider's keys are checked whether or not a
+ * registration uses them: {@code jwk-set-uri} is fetched only in an OpenID Connect login and
+ * {@code user-info-uri} only in a login, but they exist for nothing else, so a provider that sets
+ * them without such a registration is rare enough not to justify reading the registrations' scopes
+ * and grant types. Not checked: {@code authorization-uri}, which the user's browser visits, not the
+ * application.
  * <p>
  * Deliberately a dedicated rule rather than an addition to {@link InsecureDatabaseTransportRule}'s
  * (SCG012) {@code uri-based}/{@code risky-schemes} list: the same {@code http://} signal causes a
  * qualitatively different, more severe outcome here that a generic scheme scanner can't express in
  * its message or severity.
  * <p>
- * Plain {@link Rule}, not {@link ConfigurableRule}: the four target keys are a fixed, closed fact of
- * Spring Boot's OAuth2 Resource Server support. Zero-Trust: checked regardless of active
+ * Plain {@link Rule}, not {@link ConfigurableRule}: the target keys are a fixed, closed fact of
+ * Spring Boot's OAuth2 Resource Server and Client support. Zero-Trust: checked regardless of active
  * profile.
  *
  * @see EnvironmentPlaceholder
@@ -75,6 +84,8 @@ public final class OAuth2InsecureTransportRule implements Rule {
             RelaxedProperties.canonicalize("spring.security.oauth2.client.provider.");
     private static final String CLIENT_TOKEN_URI = RelaxedProperties.canonicalize("token-uri");
     private static final String CLIENT_ISSUER_URI = RelaxedProperties.canonicalize("issuer-uri");
+    private static final String CLIENT_JWK_SET_URI = RelaxedProperties.canonicalize("jwk-set-uri");
+    private static final String CLIENT_USER_INFO_URI = RelaxedProperties.canonicalize("user-info-uri");
 
     private static final String RESOURCE_SERVER_CONSEQUENCE = """
             the application fetches it in plain HTTP. Whoever can read or rewrite that traffic can serve their own keys (or, for introspection, \
@@ -89,6 +100,15 @@ public final class OAuth2InsecureTransportRule implements Rule {
             the OAuth2 client discovers its provider's endpoints there at startup, in plain HTTP, so whoever can \
             rewrite that traffic can name the token endpoint the client sends its secret to.\
             """;
+    private static final String CLIENT_JWK_SET_CONSEQUENCE = """
+            the OAuth2 client fetches the keys it validates ID tokens with there at login, in plain HTTP, so \
+            whoever can rewrite that traffic can serve their own keys and log in as any user.\
+            """;
+    private static final String CLIENT_USER_INFO_CONSEQUENCE = """
+            the OAuth2 client sends the user's access token there at login, in plain HTTP, so whoever can read \
+            that traffic gets the token, and whoever can rewrite it can choose the logged-in user's attributes \
+            (the user itself, without OpenID Connect).\
+            """;
 
     @Override
     public String id() {
@@ -98,7 +118,7 @@ public final class OAuth2InsecureTransportRule implements Rule {
     @Override
     public String description() {
         return "Insecure transport (HTTP) configured for OAuth2 Resource Server token validation endpoints, "
-                + "or for an OAuth2 Client provider's token and issuer URIs";
+                + "or for an OAuth2 Client provider's token, issuer, JWK set and user-info URIs";
     }
 
     @Override
@@ -137,8 +157,9 @@ public final class OAuth2InsecureTransportRule implements Rule {
     }
 
     /**
-     * Each OAuth2 Client provider's {@code token-uri} and {@code issuer-uri}, under the key as
-     * written. Spring Boot uses both when both are set, so neither hides the other.
+     * Each OAuth2 Client provider's {@code token-uri}, {@code issuer-uri}, {@code jwk-set-uri} and
+     * {@code user-info-uri}, under the key as written. Spring Boot uses each one set, so none hides
+     * another.
      */
     private void checkClientProviders(EffectiveConfig config, List<Finding> findings) {
         config.properties().forEach((writtenKey, value) -> {
@@ -156,6 +177,10 @@ public final class OAuth2InsecureTransportRule implements Rule {
                 evaluateKey(writtenKey, value.strip(), null, false, CLIENT_TOKEN_CONSEQUENCE, config, findings);
             } else if (setting.equals(CLIENT_ISSUER_URI)) {
                 evaluateKey(writtenKey, value.strip(), null, true, CLIENT_ISSUER_CONSEQUENCE, config, findings);
+            } else if (setting.equals(CLIENT_JWK_SET_URI)) {
+                evaluateKey(writtenKey, value.strip(), null, false, CLIENT_JWK_SET_CONSEQUENCE, config, findings);
+            } else if (setting.equals(CLIENT_USER_INFO_URI)) {
+                evaluateKey(writtenKey, value.strip(), null, false, CLIENT_USER_INFO_CONSEQUENCE, config, findings);
             }
         });
     }

@@ -55,8 +55,8 @@ here and in the repository root.
 | `rabbit-transport-scenarios.sh` | SCG015 | SCG015 RabbitMQ transport scenarios | `rabbit-transport/` | `keytool` |
 | `vault-transport-scenarios.sh` | SCG016 | SCG016 Vault transport scenarios | `vault-transport/` | |
 | `jwt-transport-scenarios.sh` | SCG017 | SCG017 resource server transport scenarios | `jwt-transport/` | `openssl` |
-| `oauth2-client-transport-scenarios.sh` | (OAuth2 Client, `BACKLOG.md`) | OAuth2 Client provider transport scenarios | `oauth2-client-transport/` | |
-| `oauth2-login-transport-scenarios.sh` | (OAuth2 Client login flow, `BACKLOG.md`) | OAuth2 Client login-flow transport scenarios | `oauth2-login-transport/` | `openssl` |
+| `oauth2-client-transport-scenarios.sh` | SCG017 | OAuth2 Client provider transport scenarios | `oauth2-client-transport/` | |
+| `oauth2-login-transport-scenarios.sh` | SCG017 | OAuth2 Client login-flow transport scenarios | `oauth2-login-transport/` | `openssl` |
 | `tls-verification-scenarios.sh` | SCG014, SCG015 | TLS without server verification (Kafka and RabbitMQ) | `kafka-tls/`, `rabbit-transport/` | `keytool`, `openssl` |
 | `tls-protocol-scenarios.sh` | (none: not reported) | TLS 1.0 and 1.1 on Java 21 | `server-transport-tomcat/`, `-jetty/`, `-webflux/`, `kafka-tls/` | `keytool`, `openssl` |
 

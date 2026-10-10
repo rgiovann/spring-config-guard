@@ -622,12 +622,96 @@ class OAuth2InsecureTransportRuleTest {
                 .singleElement().satisfies(finding -> assertThat(finding.message()).contains("provider.scg.tokenUri"));
     }
 
+    // --- OAuth2 Client login flow (VALIDATION.md, "OAuth2 Client login-flow transport scenarios")
+
+    @ParameterizedTest(name = "jwk-set-uri={0}")
+    @ValueSource(strings = {"http://auth.example.com/jwks", "HTTP://auth.example.com/jwks"})
+    @DisplayName("J1, J3: an http:// jwk-set-uri is HIGH: whoever answers chooses the keys, and so the user")
+    void clientJwkSetUriOverHttpIsHigh(String value) {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "jwk-set-uri", value))))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message()).contains(PROVIDER + "jwk-set-uri").contains("log in as any user");
+                });
+    }
+
+    @ParameterizedTest(name = "user-info-uri={0}")
+    @ValueSource(strings = {"http://auth.example.com/userinfo", "HTTP://auth.example.com/userinfo"})
+    @DisplayName("U1, U5, N1, N2: an http:// user-info-uri is HIGH: it receives the access token, and its answer can choose the user")
+    void clientUserInfoUriOverHttpIsHigh(String value) {
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "user-info-uri", value))))
+                .singleElement().satisfies(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.HIGH);
+                    assertThat(finding.message()).contains(PROVIDER + "user-info-uri").contains("access token");
+                });
+    }
+
     @Test
-    @DisplayName("Out of scope: the login-flow keys (jwk-set-uri, user-info-uri), authorization-uri and registration keys are silent")
-    void clientOtherKeysSilent() {
+    @DisplayName("J2, U6, N3: https:// login-flow keys are silent")
+    void clientLoginFlowOverHttpsIsSilent() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "jwk-set-uri", "https://auth.example.com/jwks",
+                PROVIDER + "user-info-uri", "https://auth.example.com/userinfo")))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Each key written is used on top of issuer-uri discovery, so all four are reported")
+    void clientAllFourReported() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "issuer-uri", "http://auth.example.com",
+                PROVIDER + "token-uri", "http://auth.example.com/token",
+                PROVIDER + "jwk-set-uri", "http://auth.example.com/jwks",
+                PROVIDER + "user-info-uri", "http://auth.example.com/userinfo"))))
+                .hasSize(4).allSatisfy(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+    }
+
+    @Test
+    @DisplayName("J4: a jwk-set-uri is reported without a registration that uses it (scopes and grant types aren't read)")
+    void clientJwkSetUriReportedWithoutOidcRegistration() {
         assertThat(rule.check(configOf(Map.of(
                 PROVIDER + "jwk-set-uri", "http://auth.example.com/jwks",
-                PROVIDER + "user-info-uri", "http://auth.example.com/userinfo",
+                "spring.security.oauth2.client.registration.scg.scope", "read"))))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+    }
+
+    @Test
+    @DisplayName("Loopback: a jwk-set-uri or user-info-uri on a loopback host is INFO")
+    void clientLoginFlowLoopback() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "jwk-set-uri", "http://localhost:9000/oauth2/jwks",
+                PROVIDER + "user-info-uri", "http://127.0.0.1:9000/userinfo"))))
+                .hasSize(2).allSatisfy(finding -> {
+                    assertThat(finding.severity()).isEqualTo(Severity.INFO);
+                    assertThat(finding.message()).contains("loopback addresses");
+                });
+    }
+
+    @Test
+    @DisplayName("Placeholders: unresolved is INFO (spring-authorization-server's sociallogin sample), an http:// default HIGH")
+    void clientLoginFlowPlaceholders() {
+        assertThat(rule.check(configOf(Map.of(
+                PROVIDER + "jwk-set-uri", "${okta.base-url}/oauth2/v1/keys",
+                PROVIDER + "user-info-uri", "${okta.base-url}/oauth2/v1/userinfo"))))
+                .hasSize(2).allSatisfy(finding -> assertThat(finding.severity()).isEqualTo(Severity.INFO));
+        assertThat(rule.check(configOf(Map.of(PROVIDER + "user-info-uri", "${USER_INFO_URI:http://auth.example.com/userinfo}"))))
+                .singleElement().satisfies(finding -> assertThat(finding.severity()).isEqualTo(Severity.HIGH));
+    }
+
+    @Test
+    @DisplayName("Relaxed binding: camelCase login-flow keys are reported under the key as written")
+    void clientLoginFlowRelaxedKeys() {
+        assertThat(rule.check(configOf(Map.of(
+                "spring.security.oauth2.client.provider.scg.jwkSetUri", "http://auth.example.com/jwks",
+                "spring.security.oauth2.client.provider.scg.user_info_uri", "http://auth.example.com/userinfo"))))
+                .extracting(Finding::message)
+                .anySatisfy(message -> assertThat(message).contains("provider.scg.jwkSetUri"))
+                .anySatisfy(message -> assertThat(message).contains("provider.scg.user_info_uri"));
+    }
+
+    @Test
+    @DisplayName("Out of scope: authorization-uri, which the browser visits, and registration keys are silent")
+    void clientOtherKeysSilent() {
+        assertThat(rule.check(configOf(Map.of(
                 PROVIDER + "authorization-uri", "http://auth.example.com/authorize",
                 "spring.security.oauth2.client.registration.scg.redirect-uri", "http://app.example.com/login/oauth2/code/scg"))))
                 .isEmpty();
