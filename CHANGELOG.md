@@ -8,6 +8,30 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.20.0
+
+**Added**
+- A GitHub Action, in this repository's `action.yml`:
+  `uses: rgiovann/spring-config-guard@v1.20.0`. It sets up Java 21,
+  downloads the jar of the release it is used at, checks its sha256
+  (against the `sha256` input, or the digest the release publishes), runs
+  SCG and writes the report to the job summary. It fails the step with
+  SCG's exit code. Inputs: `path`, `fail-on`, `policy`, `config-server`,
+  `version` (needed only at a branch or a commit SHA) and `sha256`. See
+  README, "CI/CD Integration".
+- The action isn't listed in the GitHub Marketplace, since a listed
+  repository can't contain workflows, and it produces no annotations or
+  SARIF yet.
+
+**Detection changes**
+- None. The rules and their findings are those of v1.19.0.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.19.0...v1.20.0`.
+
 ## v1.19.0
 
 **Added**

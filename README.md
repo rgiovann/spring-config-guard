@@ -425,7 +425,7 @@ step fails when SCG exits with `1` (findings at or above `fail-on`) or `2`
 SCG needs Java 21 and a shell step, and reports through its exit code:
 
 ```bash
-curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.19.0/spring-config-guard.jar
+curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.20.0/spring-config-guard.jar
 java -jar spring-config-guard.jar . --fail-on=HIGH
 ```
 
