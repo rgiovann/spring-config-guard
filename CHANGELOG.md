@@ -8,6 +8,49 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.19.0
+
+**Added**
+- SCG017 reports an OAuth2 Client provider
+  (`spring.security.oauth2.client.provider.<name>.*`) that uses plain HTTP,
+  as HIGH:
+  - `token-uri`: the client sends its client secret there in the clear,
+    with `client_secret_basic` and `client_secret_post` alike;
+  - `issuer-uri`: fetched at startup to discover the provider's
+    endpoints, so whoever answers names the token endpoint the secret is
+    sent to;
+  - `jwk-set-uri`: an OpenID Connect client validates the ID token
+    against the keys it fetches there at login, so whoever answers
+    chooses the user;
+  - `user-info-uri`: the client sends the user's access token there at
+    login, and its answer is the user in a plain OAuth2 login, or decides
+    a claim the ID token doesn't carry.
+- Each key is checked on its own, since Spring Boot applies each one
+  written on top of `issuer-uri` discovery. A loopback host is INFO
+  (except `issuer-uri`, whose metadata may name other hosts), and so is a
+  value from an unresolved placeholder. Registrations aren't read, so a
+  `jwk-set-uri` on a provider no OpenID Connect login uses is reported
+  too. Measured on the wire against Spring Boot 4.1.1 and Spring Security
+  7.1.1, the login flow driven without a browser; see `VALIDATION.md`,
+  "OAuth2 Client provider transport scenarios" and "OAuth2 Client
+  login-flow transport scenarios".
+
+**Detection changes**
+- **More findings**: SCG017, as above (HIGH; a project that writes one of
+  these keys over `http://` to a remote host now fails the default
+  `--fail-on`).
+- On the reference corpus and the demo fixtures, against `v1.18.0`:
+  `spring-authorization-server` goes from 31 to 36 findings (two loopback
+  `issuer-uri` as HIGH, and the `sociallogin` sample's `token-uri`,
+  `jwk-set-uri` and `user-info-uri` from an unresolved placeholder as
+  INFO); every other finding is identical.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.18.0...v1.19.0`.
+
 ## v1.18.0
 
 **Added**
