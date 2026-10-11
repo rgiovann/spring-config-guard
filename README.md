@@ -393,7 +393,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: rgiovann/spring-config-guard@v1.20.0
+      - uses: rgiovann/spring-config-guard@v1.21.0
 ```
 
 The action sets up Java 21, downloads the jar of the release it is used at,
@@ -410,7 +410,7 @@ step fails when SCG exits with `1` (findings at or above `fail-on`) or `2`
 | `version` | the release tag | The SCG version (`X.Y.Z`). Required only when the action is used at a branch or a commit SHA. |
 | `sha256` | the release's digest | The jar's expected sha256, to pin it yourself rather than trust the digest GitHub publishes with the release. |
 
-* **Pin a release tag** (`@v1.20.0`), never a branch: the tag decides the
+* **Pin a release tag** (`@v1.21.0`), never a branch: the tag decides the
   rules that run. A release can add or remove findings, which can fail a
   build that didn't change, or let through one that should fail. Upgrade on
   purpose, after reading the release's **Detection changes** section
@@ -425,7 +425,7 @@ step fails when SCG exits with `1` (findings at or above `fail-on`) or `2`
 SCG needs Java 17 or later and a shell step, and reports through its exit code:
 
 ```bash
-curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.20.0/spring-config-guard.jar
+curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.21.0/spring-config-guard.jar
 java -jar spring-config-guard.jar . --fail-on=HIGH
 ```
 

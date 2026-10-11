@@ -8,6 +8,25 @@ Each section heading must be exactly `## vX.Y.Z`, matching the tag: the
 release workflow publishes that section's body as the GitHub release notes,
 and refuses to publish a tag without one.
 
+## v1.21.0
+
+**Added**
+- SCG runs on Java 17 or later; it required Java 21. Spring Boot 3's
+  minimum is Java 17, so teams on it no longer need a second JDK to run
+  the jar. The build compiles for Java 17 and CI tests on Java 17 and 21
+  (ARCHITECTURE.md, ADR-014). The GitHub Action is unchanged: it installs
+  its own Java.
+
+**Detection changes**
+- None. On the reference corpus and the demo projects, this release's
+  output, on Java 17 and on Java 21, is identical to v1.20.0's.
+
+**Breaking changes**
+- None. Report formats, CLI flags, exit codes and the Policy file schema are
+  unchanged.
+
+Full diff: `v1.20.0...v1.21.0`.
+
 ## v1.20.0
 
 **Added**
