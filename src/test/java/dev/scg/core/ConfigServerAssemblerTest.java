@@ -44,7 +44,7 @@ class ConfigServerAssemblerTest {
         List<EffectiveConfig> result = assembler.assemble(dir);
 
         assertThat(result).hasSize(1);
-        var properties = result.getFirst().properties();
+        var properties = result.get(0).properties();
         assertThat(properties).containsEntry("server.port", "8081"); // service wins
         assertThat(properties).containsEntry("management.endpoints.web.exposure.include", "*"); // inherited
     }
@@ -57,7 +57,7 @@ class ConfigServerAssemblerTest {
         List<EffectiveConfig> result = assembler.assemble(dir);
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().properties()).containsEntry("spring.h2.console.enabled", "true");
+        assertThat(result.get(0).properties()).containsEntry("spring.h2.console.enabled", "true");
     }
 
     @Test
@@ -71,7 +71,7 @@ class ConfigServerAssemblerTest {
         List<EffectiveConfig> result = assembler.assemble(dir);
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().sourceFile().getFileName().toString()).isEqualTo("customers-service.yml");
+        assertThat(result.get(0).sourceFile().getFileName().toString()).isEqualTo("customers-service.yml");
     }
 
     @Test
@@ -82,7 +82,7 @@ class ConfigServerAssemblerTest {
         List<EffectiveConfig> result = assembler.assemble(dir);
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().properties()).containsEntry("server.port", "8081");
+        assertThat(result.get(0).properties()).containsEntry("server.port", "8081");
     }
 
     @Test
@@ -228,9 +228,9 @@ class ConfigServerAssemblerTest {
         List<EffectiveConfig> result = assembler.assemble(dir);
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().properties()).isEqualTo(Map.of(
+        assertThat(result.get(0).properties()).isEqualTo(Map.of(
                 "from.yml", "y1", "from.properties", "p1", "shared", "from-properties"));
-        assertThat(result.getFirst().sourceFile()).isEqualTo(dir.resolve("svc.properties"));
+        assertThat(result.get(0).sourceFile()).isEqualTo(dir.resolve("svc.properties"));
     }
 
     @Test

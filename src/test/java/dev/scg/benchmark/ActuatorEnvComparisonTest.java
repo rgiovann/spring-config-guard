@@ -409,12 +409,11 @@ class ActuatorEnvComparisonTest {
     }
 
     private String fetch(String url) throws Exception {
-        try (HttpClient client = HttpClient.newHttpClient()) {
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
-            return response.body();
-        }
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), "Spring server must be up on port 8081");
+        return response.body();
     }
 
     /** SCG's {@code app.bracket-map.*} entries, keyed by the map key (the part after the prefix). */

@@ -129,11 +129,11 @@ class ProfileExpressionScenariosTest {
     private static List<EffectiveConfig> merge(String fixture) throws IOException {
         List<GroupedConfigFile> groups = groups(fixture);
         assertThat(groups).hasSize(1);
-        return new ProfileMerger().merge(groups.getFirst());
+        return new ProfileMerger().merge(groups.get(0));
     }
 
     private static int notEvaluated(String fixture) throws IOException {
-        return new ProfileMerger().documentsNotEvaluated(groups(fixture).getFirst()).size();
+        return new ProfileMerger().documentsNotEvaluated(groups(fixture).get(0)).size();
     }
 
     private static List<GroupedConfigFile> groups(String fixture) throws IOException {

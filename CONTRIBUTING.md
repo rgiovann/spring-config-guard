@@ -9,7 +9,9 @@ through in this project).
 
 ## Getting started
 
-Requires Java 21 and Maven.
+Requires Java 17 or later and Maven. The build compiles for Java 17
+(`maven.compiler.release`), so an API newer than Java 17 fails the build
+(ARCHITECTURE.md, ADR-014); CI runs the tests on Java 17 and 21.
 
 ```bash
 git clone https://github.com/rgiovann/spring-config-guard.git

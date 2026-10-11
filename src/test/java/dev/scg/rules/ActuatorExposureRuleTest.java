@@ -57,7 +57,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message())
                 .contains("threaddump")
@@ -76,7 +76,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message())
+        assertThat(findings.get(0).message())
                 .contains("explicitly lists sensitive endpoints")
                 .doesNotContain("contains '*'");
     }
@@ -91,7 +91,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message())
+        assertThat(findings.get(0).message())
                 .contains("contains '*' and exposes all endpoints via HTTP")
                 .contains("or replacing '*' with an explicit list");
     }
@@ -111,7 +111,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG001");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
 
@@ -158,7 +158,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        String message = findings.getFirst().message();
+        String message = findings.get(0).message();
         assertThat(message)
                 .doesNotContain("env")
                 .doesNotContain("shutdown")
@@ -187,7 +187,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("heapdump");
+        assertThat(findings.get(0).message()).contains("heapdump");
     }
 
     @Test
@@ -206,7 +206,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("shutdown");
+        assertThat(findings.get(0).message()).contains("shutdown");
     }
 
     @Test
@@ -230,7 +230,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("restart");
+        assertThat(findings.get(0).message()).contains("restart");
     }
 
     @Test
@@ -256,7 +256,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("restart");
+        assertThat(findings.get(0).message()).contains("restart");
     }
 
     @Test
@@ -286,7 +286,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("loggers");
+        assertThat(findings.get(0).message()).contains("loggers");
     }
 
     @Test
@@ -341,7 +341,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertEquals(1, findings.size());
-        assertEquals("SCG001", findings.getFirst().ruleId());
+        assertEquals("SCG001", findings.get(0).ruleId());
     }
 
     @Test
@@ -379,7 +379,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("heapdump");
+        assertThat(findings.get(0).message()).contains("heapdump");
     }
 
     // new tests added
@@ -473,7 +473,7 @@ class ActuatorExposureRuleTest {
         // sensitive-endpoints-reachable finding correctly still fires -- show-values=never only
         // means no *show-values* finding is added on top of it.
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
+        assertThat(findings.get(0).message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @Test
@@ -603,7 +603,7 @@ class ActuatorExposureRuleTest {
         // finding correctly still fires -- an unrecognized show-values value just means no
         // *show-values* finding is added on top of it.
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
+        assertThat(findings.get(0).message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @Test
@@ -616,7 +616,7 @@ class ActuatorExposureRuleTest {
         List<Finding> findings = rule.check(configWith(properties));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).doesNotContain("management.endpoint.<id>.show-values");
+        assertThat(findings.get(0).message()).doesNotContain("management.endpoint.<id>.show-values");
     }
 
     @ParameterizedTest

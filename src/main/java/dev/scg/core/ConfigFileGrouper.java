@@ -58,7 +58,7 @@ public final class ConfigFileGrouper {
             for (ConfigFile file : ordered) {
                 documents.addAll(sourceDocuments(file, profileFromFilename(file.path())));
             }
-            result.add(new GroupedConfigFile(ordered.getFirst().path(), documents));
+            result.add(new GroupedConfigFile(ordered.get(0).path(), documents));
         }
         return result;
     }

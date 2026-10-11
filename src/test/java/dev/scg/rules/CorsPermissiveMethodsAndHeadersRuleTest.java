@@ -133,7 +133,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
         List<Finding> findings = check(cors(ALLOWED_METHODS_KEY, "*", "true"));
 
         assertThat(severities(findings)).containsExactly(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains(ALLOWED_METHODS_KEY, CREDENTIALS, "allowed-headers");
+        assertThat(findings.get(0).message()).contains(ALLOWED_METHODS_KEY, CREDENTIALS, "allowed-headers");
     }
 
     @ParameterizedTest
@@ -166,7 +166,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
         List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, "*", "true"));
 
         assertThat(severities(findings)).containsExactly(Severity.LOW);
-        assertThat(findings.getFirst().message()).contains("exposes no header here");
+        assertThat(findings.get(0).message()).contains("exposes no header here");
     }
 
     @Test
@@ -175,7 +175,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
         List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, "*", null));
 
         assertThat(severities(findings)).containsExactly(Severity.LOW);
-        assertThat(findings.getFirst().message()).contains("anonymous requests");
+        assertThat(findings.get(0).message()).contains("anonymous requests");
     }
 
     @ParameterizedTest
@@ -185,7 +185,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
         List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, header, "true"));
 
         assertThat(severities(findings)).containsExactly(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains(header.strip());
+        assertThat(findings.get(0).message()).contains(header.strip());
     }
 
     @Test
@@ -217,7 +217,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
             List<Finding> findings = check(cors(EXPOSED_HEADERS_KEY, header, credentials));
 
             assertThat(severities(findings)).containsExactly(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains(header, "suggests a token or a session");
+            assertThat(findings.get(0).message()).contains(header, "suggests a token or a session");
         }
     }
 
@@ -242,7 +242,7 @@ class CorsPermissiveMethodsAndHeadersRuleTest {
         List<Finding> findings = check(cors(key, "${CORS_VALUE}", "true"));
 
         assertThat(severities(findings)).containsExactly(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("${CORS_VALUE}");
+        assertThat(findings.get(0).message()).contains("${CORS_VALUE}");
     }
 
     @Test

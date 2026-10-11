@@ -56,9 +56,9 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("debug", value));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().ruleId()).isEqualTo("SCG009");
-            assertThat(findings.getFirst().message())
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).ruleId()).isEqualTo("SCG009");
+            assertThat(findings.get(0).message())
                     .contains("'debug=" + value + "'")
                     .contains("request query strings and request and response bodies")
                     .contains("any value except exactly 'false'");
@@ -71,8 +71,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("trace", value));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().message()).contains("JdbcTemplate's bound parameter values");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).message()).contains("JdbcTemplate's bound parameter values");
         }
 
         @Test
@@ -81,7 +81,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("DEBUG", "true"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains("'DEBUG=true'");
+            assertThat(findings.get(0).message()).contains("'DEBUG=true'");
         }
 
         @Test
@@ -93,8 +93,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(properties);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().message()).contains("'debug='");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).message()).contains("'debug='");
         }
 
         @Test
@@ -103,8 +103,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("debug", "${DEBUG_ENABLED}"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("unresolved environment placeholder '${DEBUG_ENABLED}'");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("unresolved environment placeholder '${DEBUG_ENABLED}'");
         }
     }
 
@@ -134,7 +134,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = checkYaml(dir, yaml);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test
@@ -143,7 +143,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = checkYaml(dir, "debug: \"off\"\n");
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test
@@ -157,7 +157,7 @@ class VerboseLoggingRuleTest {
                     """);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().profileLabel()).isEqualTo("prod");
+            assertThat(findings.get(0).profileLabel()).isEqualTo("prod");
         }
     }
 
@@ -176,8 +176,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level.root", level));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().message())
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).message())
                     .contains("Root logger level set to '" + level.toUpperCase() + "'")
                     .contains(writes);
         }
@@ -199,7 +199,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("LOGGING.LEVEL.ROOT", "DEBUG"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test
@@ -208,7 +208,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level.root", "${LOG_LEVEL}"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
     }
 
@@ -235,8 +235,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of(key, level));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().message()).contains(writes).contains("'" + key + "'");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).message()).contains(writes).contains("'" + key + "'");
         }
 
         @Test
@@ -247,13 +247,13 @@ class VerboseLoggingRuleTest {
                     "logging.level.web", "debug"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test
         @DisplayName("N9: an ancestor names everything its descendants write at that level")
         void ancestorNamesEveryDescendant() {
-            String message = check(Map.of("logging.level.org", "trace")).getFirst().message();
+            String message = check(Map.of("logging.level.org", "trace")).get(0).message();
 
             assertThat(message)
                     .contains("request query strings")
@@ -279,8 +279,8 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level." + logger, level));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-            assertThat(findings.getFirst().message()).contains(writes);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).message()).contains(writes);
         }
 
         @ParameterizedTest
@@ -290,7 +290,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level." + logger, "debug"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @Test
@@ -302,7 +302,7 @@ class VerboseLoggingRuleTest {
                     "logging.level.org.apache.hc", "info"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @Test
@@ -313,7 +313,7 @@ class VerboseLoggingRuleTest {
                     "logging.level.org.apache.hc", "info"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains("request query strings").doesNotContain("outbound HTTP headers");
+            assertThat(findings.get(0).message()).contains("request query strings").doesNotContain("outbound HTTP headers");
         }
 
         @Test
@@ -324,7 +324,7 @@ class VerboseLoggingRuleTest {
                     "logging.level.web", "info"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @Test
@@ -333,7 +333,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level.ORG.SPRINGFRAMEWORK.WEB", "debug"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @ParameterizedTest
@@ -350,7 +350,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of(key, level));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @ParameterizedTest
@@ -363,7 +363,7 @@ class VerboseLoggingRuleTest {
         @Test
         @DisplayName("the message names the logger as written, not in its canonical form")
         void namesLoggerAsWritten() {
-            assertThat(check(Map.of("logging.level.org.hibernate.SQL", "debug")).getFirst().message())
+            assertThat(check(Map.of("logging.level.org.hibernate.SQL", "debug")).get(0).message())
                     .contains("Logger 'org.hibernate.SQL' set to DEBUG");
         }
 
@@ -373,7 +373,7 @@ class VerboseLoggingRuleTest {
             List<Finding> findings = check(Map.of("logging.level.org.springframework.web", "${WEB_LEVEL}"));
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
     }
 

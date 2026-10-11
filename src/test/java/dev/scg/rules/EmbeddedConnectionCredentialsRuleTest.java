@@ -102,7 +102,7 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.ruleId()).isEqualTo("SCG007");
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message()).contains("Embedded plaintext credential detected");
@@ -118,8 +118,8 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-            assertThat(findings.getFirst().message()).contains("originates from a static placeholder default");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).message()).contains("originates from a static placeholder default");
         }
 
         @Test
@@ -133,8 +133,8 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-            assertThat(findings.getFirst().message()).contains("originates from a static placeholder default");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).message()).contains("originates from a static placeholder default");
         }
 
         @ParameterizedTest
@@ -215,7 +215,7 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message()).contains(baseKey + "[1]");
         }
@@ -278,8 +278,8 @@ class EmbeddedConnectionCredentialsRuleTest {
 
             // A clean injection produces an observability INFO about an unresolvable placeholder, not HIGH.
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("relies on an unresolved environment placeholder");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("relies on an unresolved environment placeholder");
         }
 
         @Test
@@ -294,7 +294,7 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
 
         @Test
@@ -306,9 +306,9 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("empty default fallback");
-            assertThat(findings.getFirst().message()).doesNotContain("unresolved environment placeholder");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("empty default fallback");
+            assertThat(findings.get(0).message()).doesNotContain("unresolved environment placeholder");
         }
 
         @Test
@@ -320,9 +320,9 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("empty default fallback");
-            assertThat(findings.getFirst().message()).doesNotContain("unresolved environment placeholder");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("empty default fallback");
+            assertThat(findings.get(0).message()).doesNotContain("unresolved environment placeholder");
         }
 
         @Test
@@ -335,8 +335,8 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("credential placeholder that resolves to an empty value");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("credential placeholder that resolves to an empty value");
         }
 
         @Test
@@ -350,8 +350,8 @@ class EmbeddedConnectionCredentialsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("credential placeholder that resolves to an empty value");
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).message()).contains("credential placeholder that resolves to an empty value");
         }
 
         @Test

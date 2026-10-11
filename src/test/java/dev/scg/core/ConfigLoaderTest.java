@@ -277,10 +277,10 @@ class ConfigLoaderTest {
         // 3. Assert (using org.junit.jupiter.api.Assertions.*)
         assertEquals(1, configFiles.size(), "Should have found exactly 1 file");
 
-        ConfigFile configFile = configFiles.getFirst();
+        ConfigFile configFile = configFiles.get(0);
         assertEquals(propertiesFile, configFile.path());
 
-        Map<String, String> properties = configFile.documents().getFirst().properties();
+        Map<String, String> properties = configFile.documents().get(0).properties();
 
         assertNotNull(properties);
         assertEquals("8080", properties.get("server.port"));
@@ -356,7 +356,7 @@ class ConfigLoaderTest {
         List<ConfigFile> result = new ConfigLoader().loadDirectory(tempDir);
 
         assertEquals(1, result.size());
-        Map<String, String> props = result.getFirst().documents().getFirst().properties();
+        Map<String, String> props = result.get(0).documents().get(0).properties();
 
         assertEquals("8080", props.get("server.port"));
         assertEquals("Test Application com Acentuação", props.get("app.description"));
@@ -404,8 +404,8 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docsA.size(), "the final '---' alone should not generate a ghost document");
-        assertTrue(activation(docsA.getFirst()).isEmpty());
-        assertEquals("8080", docsA.getFirst().properties().get("server.port"));
+        assertTrue(activation(docsA.get(0)).isEmpty());
+        assertEquals("8080", docsA.get(0).properties().get("server.port"));
 
         // Sub-case B: two consecutive "---" (empty document in the middle of the file)
         List<ConfigDocument> docsB = parseYaml(tempDir, "caseB", """
@@ -508,8 +508,8 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(activation(docs.getFirst()).isEmpty());
-        assertTrue(docs.getFirst().properties().isEmpty());
+        assertTrue(activation(docs.get(0)).isEmpty());
+        assertTrue(docs.get(0).properties().isEmpty());
     }
 
     @Test
@@ -521,9 +521,9 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertTrue(activation(docs.getFirst()).isEmpty());
-        assertEquals("8080", docs.getFirst().properties().get("server.port"));
-        assertEquals("MeuApp", docs.getFirst().properties().get("app.name"));
+        assertTrue(activation(docs.get(0)).isEmpty());
+        assertEquals("8080", docs.get(0).properties().get("server.port"));
+        assertEquals("MeuApp", docs.get(0).properties().get("app.name"));
     }
 
     @Test
@@ -536,7 +536,7 @@ class ConfigLoaderTest {
             """);
 
         assertEquals(1, docs.size());
-        assertFalse(docs.getFirst().properties().containsKey("spring.config.activate.on-profile"),
+        assertFalse(docs.get(0).properties().containsKey("spring.config.activate.on-profile"),
                 "the metadata key should not remain in the business property map");
     }
 
@@ -611,7 +611,7 @@ class ConfigLoaderTest {
             key: value
             """);
 
-        ConfigDocument document = documents.getFirst();
+        ConfigDocument document = documents.get(0);
 
         boolean hasOnProfileKey = document.properties().keySet().stream()
                 .anyMatch(key -> RelaxedProperties.canonicalize(key)
@@ -683,15 +683,15 @@ class ConfigLoaderTest {
             List<ConfigDocument> docs = parseYaml(tempDir, "e10-" + value.hashCode(),
                     "spring.config.activate.on-profile:" + value + "\nkey: value\n");
 
-            assertEquals(Optional.empty(), activation(docs.getFirst()), "on-profile:" + value);
-            assertEquals(Map.of("key", "value"), docs.getFirst().properties(), "on-profile:" + value);
+            assertEquals(Optional.empty(), activation(docs.get(0)), "on-profile:" + value);
+            assertEquals(Map.of("key", "value"), docs.get(0).properties(), "on-profile:" + value);
         }
 
         Path propertiesDir = tempDir.resolve("e10-properties");
         Files.createDirectories(propertiesDir);
         List<ConfigDocument> properties = parseProperties(propertiesDir, "spring.config.activate.on-profile=\nkey=value\n");
-        assertEquals(Optional.empty(), activation(properties.getFirst()));
-        assertEquals(Map.of("key", "value"), properties.getFirst().properties());
+        assertEquals(Optional.empty(), activation(properties.get(0)));
+        assertEquals(Map.of("key", "value"), properties.get(0).properties());
     }
 
     @Test
@@ -719,8 +719,8 @@ class ConfigLoaderTest {
             List<ConfigDocument> docs = parseProperties(dir,
                     "spring.config.activate.on-profile" + key + "=prod\nserver.port=1\n");
 
-            assertEquals(Optional.empty(), activation(docs.getFirst()), key);
-            assertEquals("prod", docs.getFirst().properties().get("spring.config.activate.on-profile" + key), key);
+            assertEquals(Optional.empty(), activation(docs.get(0)), key);
+            assertEquals("prod", docs.get(0).properties().get("spring.config.activate.on-profile" + key), key);
         }
     }
 
@@ -732,7 +732,7 @@ class ConfigLoaderTest {
         Files.writeString(tempDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
-        return configFiles.getFirst().documents().getFirst().properties();
+        return configFiles.get(0).documents().get(0).properties();
     }
     /**
      * Analogous to parse(), but for .properties and returning the complete
@@ -745,7 +745,7 @@ class ConfigLoaderTest {
         Files.writeString(file, content);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(tempDir);
         assertEquals(1, configFiles.size());
-        return configFiles.getFirst().documents();
+        return configFiles.get(0).documents();
     }
     private List<ConfigDocument> parseYaml(Path tempDir, String subDirName, String yamlContent) throws IOException {
         Path subDir = tempDir.resolve(subDirName);
@@ -753,7 +753,7 @@ class ConfigLoaderTest {
         Files.writeString(subDir.resolve("application.yml"), yamlContent);
         List<ConfigFile> configFiles = new ConfigLoader().loadDirectory(subDir);
         assertEquals(1, configFiles.size());
-        return configFiles.getFirst().documents();
+        return configFiles.get(0).documents();
     }
 
 }

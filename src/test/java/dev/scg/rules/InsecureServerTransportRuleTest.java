@@ -37,7 +37,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG011");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("SSL is explicitly disabled");
@@ -54,9 +54,9 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("Session cookie 'Secure' flag is explicitly disabled");
-        assertThat(findings.getFirst().message()).contains("only takes effect with Spring Session");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("Session cookie 'Secure' flag is explicitly disabled");
+        assertThat(findings.get(0).message()).contains("only takes effect with Spring Session");
     }
 
     @Test
@@ -127,7 +127,7 @@ class InsecureServerTransportRuleTest {
 
         assertThat(findings).hasSize(2);
         assertThat(findings).allMatch(f -> f.severity() == Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved environment placeholder");
+        assertThat(findings.get(0).message()).contains("unresolved environment placeholder");
     }
 
     @Test
@@ -157,7 +157,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @ParameterizedTest
@@ -244,9 +244,9 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains("Management SSL is explicitly disabled");
-        assertThat(findings.getFirst().message()).contains("management.server.port");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains("Management SSL is explicitly disabled");
+        assertThat(findings.get(0).message()).contains("management.server.port");
     }
 
     @Test
@@ -273,8 +273,8 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("Session cookie 'HttpOnly' flag is explicitly disabled");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("Session cookie 'HttpOnly' flag is explicitly disabled");
     }
 
     @ParameterizedTest
@@ -288,8 +288,8 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("SameSite' attribute is explicitly set to 'None'");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("SameSite' attribute is explicitly set to 'None'");
     }
 
     @ParameterizedTest
@@ -376,7 +376,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -389,7 +389,7 @@ class InsecureServerTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test

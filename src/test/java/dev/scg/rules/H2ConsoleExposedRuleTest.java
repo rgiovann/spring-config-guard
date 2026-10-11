@@ -44,7 +44,7 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = check(Map.of(ENABLED, value));
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG002");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message())
@@ -76,8 +76,8 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = check(Map.of(ENABLED, "${H2_ENABLED}"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved environment placeholder");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("unresolved environment placeholder");
     }
 
     @Test
@@ -91,7 +91,7 @@ class H2ConsoleExposedRuleTest {
                 .toList();
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -114,8 +114,8 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = check(Map.of(ENABLED, "true", ALLOW_OTHERS, value));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message())
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message())
                 .contains("AGGRAVATING FACTOR")
                 .contains(ALLOW_OTHERS + "=" + value);
     }
@@ -127,8 +127,8 @@ class H2ConsoleExposedRuleTest {
         List<Finding> withFalse = check(Map.of(ENABLED, "true", ALLOW_OTHERS, value));
         List<Finding> absent = check(Map.of(ENABLED, "true"));
 
-        assertThat(withFalse.getFirst().message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
-        assertThat(absent.getFirst().message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
+        assertThat(withFalse.get(0).message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
+        assertThat(absent.get(0).message()).doesNotContain("AGGRAVATING FACTOR").contains("loopback clients only");
     }
 
     @Test
@@ -137,8 +137,8 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = check(Map.of(ENABLED, "true", ALLOW_OTHERS, "${ALLOW_REMOTE}"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message())
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message())
                 .doesNotContain("AGGRAVATING FACTOR")
                 .contains("if it resolves to true");
     }
@@ -151,9 +151,9 @@ class H2ConsoleExposedRuleTest {
         List<Finding> withPath = check(Map.of(ENABLED, "true", "spring.h2.console.path", "/db"));
 
         assertThat(withPassword).hasSize(1);
-        assertThat(withPassword.getFirst().message()).contains("AGGRAVATING FACTOR");
+        assertThat(withPassword.get(0).message()).contains("AGGRAVATING FACTOR");
         assertThat(withPath).hasSize(1);
-        assertThat(withPath.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(withPath.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -170,7 +170,7 @@ class H2ConsoleExposedRuleTest {
                 "spring.h2.console.settings.webAllowOthers", "true"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("AGGRAVATING FACTOR");
+        assertThat(findings.get(0).message()).contains("AGGRAVATING FACTOR");
     }
 
     @ParameterizedTest
@@ -182,6 +182,6 @@ class H2ConsoleExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 }

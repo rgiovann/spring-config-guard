@@ -98,7 +98,7 @@ public final class ConfigServerAssembler {
                     documents.addAll(ConfigFileGrouper.sourceDocuments(global, profile));
                 }
             }
-            result.add(new GroupedConfigFile(serviceFiles.getLast().path(), documents));
+            result.add(new GroupedConfigFile(serviceFiles.get(serviceFiles.size() - 1).path(), documents));
         }
         return result;
     }

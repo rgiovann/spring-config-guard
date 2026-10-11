@@ -133,7 +133,7 @@ class ProfileGroupScenariosTest {
         List<GroupedConfigFile> groups = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir));
 
         assertThat(keys(merge(dir), "dev")).isEqualTo(Map.of("k1", "base", "k2", "samples", "k3", "samples-dev"));
-        assertThat(new ProfileMerger().documentsNotEvaluated(groups.getFirst()))
+        assertThat(new ProfileMerger().documentsNotEvaluated(groups.get(0)))
                 .extracting(document -> document.document().properties())
                 .containsExactly(Map.of("k4", "samples-prod"));
     }
@@ -158,14 +158,14 @@ class ProfileGroupScenariosTest {
     private static List<EffectiveConfig> merge(Path dir) throws IOException {
         List<GroupedConfigFile> groups = new ConfigFileGrouper().group(new ConfigLoader().loadDirectory(dir));
         assertThat(groups).hasSize(1);
-        return new ProfileMerger().merge(groups.getFirst());
+        return new ProfileMerger().merge(groups.get(0));
     }
 
     /** The k1-k4 entries of the configuration with this label. */
     private static Map<String, String> keys(List<EffectiveConfig> configs, String label) {
         List<EffectiveConfig> matches = configs.stream().filter(config -> config.profileLabel().equals(label)).toList();
         assertThat(matches).hasSize(1);
-        Map<String, String> keys = new java.util.TreeMap<>(matches.getFirst().properties());
+        Map<String, String> keys = new java.util.TreeMap<>(matches.get(0).properties());
         keys.keySet().retainAll(List.of("k1", "k2", "k3", "k4"));
         return keys;
     }

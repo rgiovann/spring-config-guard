@@ -1143,3 +1143,50 @@ and it changes the base's active profiles, not only a profile's.
 ### Revisit if
 A real project uses `spring.profiles.include`, or a group declared under a
 condition SCG doesn't follow.
+
+---
+
+## ADR-014: Java 17 as the Minimum Runtime
+
+### Status
+Accepted (2026-10-11).
+
+### Context
+SCG required Java 21. Spring Boot 3's minimum is Java 17, and a team on
+Java 17 couldn't run the jar, locally or in a CI without the GitHub Action
+(which installs its own Java), without a second JDK. Compiled with
+`--release 17`, the production code used five things newer than Java 17:
+pattern matching in `ConfigLoader.flatten`'s `switch`, `getFirst()` (twice),
+`getLast()` and `reversed()`; the tests, about 300 `getFirst()` calls and a
+try-with-resources on `HttpClient`. SnakeYAML 2.2 and Jackson 2.18.2 already
+run on Java 17 (their base classes are Java 6 to 8 bytecode). A Docker
+image was the other way to drop the requirement, with a recurring cost:
+an image per release and a base image to keep free of known CVEs.
+
+### Decision
+SCG compiles with `maven.compiler.release=17`, which also makes javac refuse
+any API newer than Java 17, so the minimum is enforced by the build rather
+than by convention. CI runs the tests on Java 17 and 21; the release
+workflow builds and tests the published jar on Java 17. The GitHub Action
+keeps installing Java 21: its users don't see the runtime. The benchmark
+apps in `spring-env-benchmark/` stay on Java 21: they measure Spring Boot
+4.1.1, not SCG.
+
+### Consequences
+
+**Positive**
+* The jar runs on the JVM most Spring Boot 3 projects already have.
+* Measured unchanged: on the reference corpus and the demo projects, the
+  jar built for Java 17, run on Java 17 and on Java 21, produced the same
+  JSON, stderr and console output, byte for byte, as v1.20.0 on Java 21.
+
+**Negative / Trade-offs**
+* Language and library features of Java 18 to 21 are unavailable: pattern
+  matching in `switch`, record patterns, sequenced collections
+  (`getFirst()`, `reversed()`), an `AutoCloseable` `HttpClient`.
+* Two JDKs in CI instead of one.
+
+### Revisit if
+Java 17 is no longer the minimum of the Spring Boot versions SCG targets,
+or a feature newer than Java 17 would remove real complexity: raising the
+minimum again is a breaking change (a MAJOR release).

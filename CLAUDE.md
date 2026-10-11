@@ -12,7 +12,8 @@ It reads a project directory, builds the effective configuration per profile,
 runs `Rule` implementations against each configuration, and reports findings
 with an exit code suitable for CI gating.
 
-The project uses Java 21 and Maven. It does not depend on Spring Boot itself;
+The project runs on Java 17 or later (ADR-014) and builds with Maven. It does
+not depend on Spring Boot itself;
 it statically parses Spring Boot configuration files.
 
 ## Source of Truth

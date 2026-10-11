@@ -49,7 +49,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(profile, withCredentials(ORIGINS, "http://app.company.com"));
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG004");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("http://app.company.com", CREDENTIALS);
@@ -70,7 +70,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(Map.of(ORIGINS, "http://partner.example"));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.LOW);
-        assertThat(findings.getFirst().message()).contains("http://partner.example", "anonymous requests");
+        assertThat(findings.get(0).message()).contains("http://partner.example", "anonymous requests");
     }
 
     @ParameterizedTest
@@ -109,7 +109,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(PATTERNS, pattern));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains(pattern);
+        assertThat(findings.get(0).message()).contains(pattern);
     }
 
     @ParameterizedTest
@@ -189,7 +189,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(properties);
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("spring.graphql.cors.allowed-origins");
+        assertThat(findings.get(0).message()).contains("spring.graphql.cors.allowed-origins");
     }
 
     @Test
@@ -208,7 +208,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(ORIGINS, "http://${PARTNER_HOST}"));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("http://${PARTNER_HOST}");
+        assertThat(findings.get(0).message()).contains("http://${PARTNER_HOST}");
     }
 
     @Test
@@ -217,7 +217,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(ORIGINS, "${APP_ORIGIN},http://partner.example"));
 
         assertThat(findings).extracting(Finding::severity).containsExactly(Severity.MEDIUM, Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("http://partner.example").doesNotContain("APP_ORIGIN");
+        assertThat(findings.get(0).message()).contains("http://partner.example").doesNotContain("APP_ORIGIN");
     }
 
     @ParameterizedTest
@@ -242,7 +242,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(Map.of(ORIGINS, "${CORS_ALLOWED_ORIGINS}"));
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG004");
         assertThat(finding.severity()).isEqualTo(Severity.INFO);
         assertThat(finding.message()).contains("unresolved environment placeholder", "${CORS_ALLOWED_ORIGINS}");
@@ -275,7 +275,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(PATTERNS, "http://*.company.com"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains(PATTERNS);
+        assertThat(findings.get(0).message()).contains(PATTERNS);
     }
 
     @Test
@@ -284,7 +284,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(ORIGINS, "http://localhost.attacker.com"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("http://localhost.attacker.com");
+        assertThat(findings.get(0).message()).contains("http://localhost.attacker.com");
     }
 
     @Test
@@ -299,7 +299,7 @@ class CorsInsecureProtocolsRuleTest {
         List<Finding> findings = check(withCredentials(ORIGINS, "http://app.local:8080"));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("http://app.local:8080");
+        assertThat(findings.get(0).message()).contains("http://app.local:8080");
     }
 
     @Test

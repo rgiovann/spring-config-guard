@@ -43,7 +43,7 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("management.endpoints.web.cors.allowed-origins");
+        assertThat(findings.get(0).message()).contains("management.endpoints.web.cors.allowed-origins");
     }
 
     @Test
@@ -259,7 +259,7 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG003");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("domain-scoped wildcard");
@@ -292,10 +292,10 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> nonGlobalFindings = rule.check(nonGlobalConfig);
 
         assertThat(globalFindings).hasSize(1);
-        assertThat(globalFindings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(globalFindings.get(0).severity()).isEqualTo(Severity.HIGH);
 
         assertThat(nonGlobalFindings).hasSize(1);
-        assertThat(nonGlobalFindings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(nonGlobalFindings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -453,7 +453,7 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @ParameterizedTest
@@ -478,7 +478,7 @@ class CorsWildcardWithCredentialsRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test

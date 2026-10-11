@@ -143,7 +143,7 @@ public final class ProfileExpression {
     private static Node merge(String expression, List<Node> elements, Operator operator) {
         assertWellFormed(expression, !elements.isEmpty());
         if (elements.size() == 1) {
-            return elements.getFirst();
+            return elements.get(0);
         }
         // As in Spring, names side by side with no operator combine as OR.
         return operator == Operator.AND ? new And(List.copyOf(elements)) : new Or(List.copyOf(elements));

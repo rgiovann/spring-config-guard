@@ -144,7 +144,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.ruleId()).isEqualTo("SCG012");
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message())
@@ -164,7 +164,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message())
+            assertThat(findings.get(0).message())
                     .contains("sslmode=disable")
                     .contains("CWE-319");
         }
@@ -180,7 +180,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains("encrypt=false");
+            assertThat(findings.get(0).message()).contains("encrypt=false");
         }
     }
 
@@ -199,7 +199,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("verifyservercertificate=false")
@@ -220,7 +220,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("trustservercertificate=true")
@@ -239,7 +239,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message()).contains("CWE-295");
         }
@@ -258,7 +258,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
             assertThat(finding.message())
                     .contains("verifypeer=none")
@@ -276,7 +276,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains("CWE-319");
+            assertThat(findings.get(0).message()).contains("CWE-319");
         }
     }
 
@@ -295,7 +295,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message())
                     .contains("http://")
@@ -325,7 +325,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
 
         @Test
@@ -364,7 +364,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
 
         @Test
@@ -389,7 +389,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
 
         @Test
@@ -421,7 +421,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
 
         @ParameterizedTest
@@ -453,7 +453,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
         }
     }
 
@@ -472,7 +472,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.INFO);
             assertThat(finding.message()).contains("unresolved environment placeholder '${DB_URL}'");
         }
@@ -488,7 +488,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message())
                     .contains("usessl=false")
@@ -544,7 +544,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains("usessl=false");
+            assertThat(findings.get(0).message()).contains("usessl=false");
         }
 
         @ParameterizedTest
@@ -560,7 +560,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.HIGH);
             assertThat(finding.message())
                     .contains(baseKey + "[1]")
@@ -591,7 +591,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
 
         @Test
@@ -752,7 +752,7 @@ class InsecureDatabaseTransportRuleTest {
             List<Finding> findings = check("spring.datasource.url", url);
 
             assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-            assertThat(findings.getFirst().message()).contains("loopback addresses");
+            assertThat(findings.get(0).message()).contains("loopback addresses");
         }
 
         @Test

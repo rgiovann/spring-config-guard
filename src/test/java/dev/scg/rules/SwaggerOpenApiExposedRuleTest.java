@@ -45,7 +45,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG008");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("Both OpenAPI docs")
@@ -85,8 +85,8 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("OpenAPI docs").doesNotContain("Both OpenAPI docs");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("OpenAPI docs").doesNotContain("Both OpenAPI docs");
     }
 
     @Test
@@ -100,7 +100,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -114,7 +114,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("AGGRAVATING FACTOR");
+        assertThat(findings.get(0).message()).contains("AGGRAVATING FACTOR");
     }
 
     @Test
@@ -125,7 +125,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).doesNotContain("AGGRAVATING FACTOR");
+        assertThat(findings.get(0).message()).doesNotContain("AGGRAVATING FACTOR");
     }
 
     @Test
@@ -138,8 +138,8 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved environment placeholder");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("unresolved environment placeholder");
     }
 
     @Test
@@ -179,7 +179,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
@@ -191,7 +191,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().ruleId()).isEqualTo("SCG008");
+        assertThat(findings.get(0).ruleId()).isEqualTo("SCG008");
     }
 
     @Test
@@ -216,7 +216,7 @@ class SwaggerOpenApiExposedRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     // Checked in a running Spring Boot 4.1.1 app with SpringDoc 3.1.1 (VALIDATION.md, "SCG008 SpringDoc scenarios")

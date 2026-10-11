@@ -107,7 +107,7 @@ class VerboseErrorResponseRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().message()).contains(key + "=" + riskyValue);
+            assertThat(findings.get(0).message()).contains(key + "=" + riskyValue);
         }
 
         @Test
@@ -191,7 +191,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG010");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("spring.web.error.include-stacktrace=" + enumValue);
@@ -212,7 +212,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
@@ -240,7 +240,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG010");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("spring.web.error.include-exception=" + truthyValue);
@@ -257,7 +257,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
@@ -271,7 +271,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -284,7 +284,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.INFO);
         assertThat(finding.message()).contains("unresolved environment placeholder '${SHOW_STACKTRACE}'");
     }
@@ -300,7 +300,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -313,7 +313,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -362,7 +362,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
@@ -397,7 +397,7 @@ class VerboseErrorResponseRuleTest {
                     """);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
 
         @Test
@@ -448,7 +448,7 @@ class VerboseErrorResponseRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest

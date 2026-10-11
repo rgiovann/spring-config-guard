@@ -163,7 +163,7 @@ class DemoProjectShowcaseTest {
 
         List<Finding> findings = new ObjectMapper().readValue(output, new TypeReference<>() {});
         assertEquals(1, findings.size());
-        assertEquals("SCG002", findings.getFirst().ruleId());
+        assertEquals("SCG002", findings.get(0).ruleId());
 
         assertTrue(errContent.toString(StandardCharsets.UTF_8).contains(CONFIG_IMPORT_WARNING),
                 "The coverage warning is printed unconditionally by Main, independent of --json -- "

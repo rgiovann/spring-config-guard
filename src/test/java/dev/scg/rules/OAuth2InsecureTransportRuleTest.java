@@ -51,7 +51,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG017");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains(ISSUER_URI_KEY).contains("authentication bypass");
@@ -67,8 +67,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY).contains("authentication bypass");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY).contains("authentication bypass");
     }
 
     @Test
@@ -82,8 +82,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY).doesNotContain(ISSUER_URI_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY).doesNotContain(ISSUER_URI_KEY);
     }
 
     @Test
@@ -97,8 +97,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY);
     }
 
     @Test
@@ -139,8 +139,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY);
     }
 
     @Test
@@ -155,7 +155,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains(JWK_SET_URI_KEY);
+        assertThat(findings.get(0).message()).contains(JWK_SET_URI_KEY);
     }
 
     @Test
@@ -169,8 +169,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(ISSUER_URI_KEY);
     }
 
     @Test
@@ -183,8 +183,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(PUBLIC_KEY_LOCATION_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(PUBLIC_KEY_LOCATION_KEY);
     }
 
     @ParameterizedTest
@@ -209,8 +209,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(ISSUER_URI_KEY);
     }
 
     @Test
@@ -246,7 +246,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains(ISSUER_URI_KEY).doesNotContain(PUBLIC_KEY_LOCATION_KEY);
+        assertThat(findings.get(0).message()).contains(ISSUER_URI_KEY).doesNotContain(PUBLIC_KEY_LOCATION_KEY);
     }
 
     @Test
@@ -275,8 +275,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains(INTROSPECTION_URI_KEY).contains("client secret");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains(INTROSPECTION_URI_KEY).contains("client secret");
     }
 
     @Test
@@ -300,7 +300,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains(INTROSPECTION_URI_KEY);
+        assertThat(findings.get(0).message()).contains(INTROSPECTION_URI_KEY);
     }
 
     @Test
@@ -313,7 +313,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -347,7 +347,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -360,8 +360,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved placeholder");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("unresolved placeholder");
     }
 
     @Test
@@ -374,8 +374,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved placeholder");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("unresolved placeholder");
     }
 
     @Test
@@ -399,8 +399,8 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains("static placeholder fallback");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains("static placeholder fallback");
     }
 
     @Test
@@ -413,7 +413,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -426,7 +426,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -450,7 +450,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -463,7 +463,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @ParameterizedTest
@@ -509,7 +509,7 @@ class OAuth2InsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -541,7 +541,7 @@ class OAuth2InsecureTransportRuleTest {
                 JWK_SET_URI_KEY, "http://localhost:8080/oauth2/jwks")));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("loopback addresses");
+        assertThat(findings.get(0).message()).contains("loopback addresses");
     }
 
     @Test

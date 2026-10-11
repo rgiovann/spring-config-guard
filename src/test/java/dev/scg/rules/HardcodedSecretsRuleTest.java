@@ -99,7 +99,7 @@ class HardcodedSecretsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
     }
 
@@ -285,7 +285,7 @@ class HardcodedSecretsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
     }
 
@@ -472,7 +472,7 @@ class HardcodedSecretsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            Finding finding = findings.getFirst();
+            Finding finding = findings.get(0);
             assertThat(finding.severity()).isEqualTo(Severity.INFO);
             assertThat(finding.message()).contains("Core Spring Boot sensitive property 'spring.datasource.password' is declared blank");
         }
@@ -562,7 +562,7 @@ class HardcodedSecretsRuleTest {
             List<Finding> findings = rule.check(config);
 
             assertThat(findings).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
         }
     }
 

@@ -95,7 +95,7 @@ default for the properties it checks.
 
 ## Quick start
 
-Requires Java 21 or later.
+Requires Java 17 or later.
 
 ```bash
 curl -fLO https://github.com/rgiovann/spring-config-guard/releases/latest/download/spring-config-guard.jar
@@ -422,7 +422,7 @@ step fails when SCG exits with `1` (findings at or above `fail-on`) or `2`
 
 ### Other CI systems
 
-SCG needs Java 21 and a shell step, and reports through its exit code:
+SCG needs Java 17 or later and a shell step, and reports through its exit code:
 
 ```bash
 curl -fLO https://github.com/rgiovann/spring-config-guard/releases/download/v1.20.0/spring-config-guard.jar
@@ -498,7 +498,7 @@ They aren't false negatives of a rule.
   add `--config-server`.
 * **`Usage error: Unknown argument: ...`.** The project path must come
   before the options.
-* **`UnsupportedClassVersionError`.** The JVM is older than Java 21.
+* **`UnsupportedClassVersionError`.** The JVM is older than Java 17.
 * **A finding names a file that doesn't contain the property.** See
   [What `sourceFile` points to](#what-sourcefile-points-to).
 * **A warning on stderr but no finding.** Coverage warnings report what SCG

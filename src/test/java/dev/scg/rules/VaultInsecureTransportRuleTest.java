@@ -55,7 +55,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG016");
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("'spring.cloud.vault.scheme=http'");
@@ -87,7 +87,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("'spring.cloud.vault.uri=http://vault.internal:8200'");
     }
@@ -175,7 +175,7 @@ class VaultInsecureTransportRuleTest {
         // uri takes precedence over scheme -- an insecure uri isn't rescued by a secure scheme.
         List<Finding> findings = rule.check(config);
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("uri=http://");
+        assertThat(findings.get(0).message()).contains("uri=http://");
     }
 
     @Test
@@ -199,7 +199,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("scheme=http");
+        assertThat(findings.get(0).message()).contains("scheme=http");
     }
 
     @Test
@@ -212,7 +212,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.INFO);
         assertThat(finding.message()).contains("unresolved environment placeholder '${VAULT_URI}'");
     }
@@ -228,7 +228,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -241,7 +241,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -275,7 +275,7 @@ class VaultInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("scheme=http");
+        assertThat(findings.get(0).message()).contains("scheme=http");
     }
 
     @Test
@@ -345,7 +345,7 @@ class VaultInsecureTransportRuleTest {
                 URI_KEY, "http://127.0.0.1:8200")));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("loopback addresses");
+        assertThat(findings.get(0).message()).contains("loopback addresses");
     }
 
     @Test

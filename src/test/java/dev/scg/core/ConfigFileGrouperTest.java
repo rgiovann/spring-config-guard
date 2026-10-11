@@ -41,7 +41,7 @@ class ConfigFileGrouperTest {
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
         assertThat(groups).hasSize(1);
-        assertThat(groups.getFirst().documents())
+        assertThat(groups.get(0).documents())
                 .extracting(SourceDocument::file, SourceDocument::fileProfile)
                 .containsExactly(
                         tuple(dir.resolve("application.yml"), Optional.empty()),
@@ -62,7 +62,8 @@ class ConfigFileGrouperTest {
                 custom.key: value
                 """);
 
-        SourceDocument staging = grouper.group(loader.loadDirectory(dir)).getFirst().documents().getLast();
+        List<SourceDocument> documents = grouper.group(loader.loadDirectory(dir)).get(0).documents();
+        SourceDocument staging = documents.get(documents.size() - 1);
 
         assertThat(staging.fileProfile()).contains("staging");
         assertThat(staging.appliesTo(Set.of("staging"))).isFalse();
@@ -246,7 +247,7 @@ class ConfigFileGrouperTest {
     private List<EffectiveConfig> merge(Path dir) throws IOException {
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
         assertThat(groups).hasSize(1);
-        return new ProfileMerger().merge(groups.getFirst());
+        return new ProfileMerger().merge(groups.get(0));
     }
 
     private Map<String, String> properties(Path dir, String label) throws IOException {
@@ -256,7 +257,7 @@ class ConfigFileGrouperTest {
     private static EffectiveConfig configFor(List<EffectiveConfig> configs, String label) {
         List<EffectiveConfig> matches = configs.stream().filter(config -> config.profileLabel().equals(label)).toList();
         assertThat(matches).hasSize(1);
-        return matches.getFirst();
+        return matches.get(0);
     }
 
     @Test
@@ -282,7 +283,7 @@ class ConfigFileGrouperTest {
 
         List<GroupedConfigFile> groups = grouper.group(loader.loadDirectory(dir));
 
-        assertThat(groups.getFirst().documents())
+        assertThat(groups.get(0).documents())
                 .extracting(document -> document.file().getFileName().toString())
                 .containsExactly("application.yaml", "application.yml", "application.properties",
                         "application-a.yml", "application-a.properties", "application-b.properties");

@@ -23,8 +23,9 @@
     </licenses>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <!-- release (not source/target) also makes javac refuse any API newer than Java 17
+             (ARCHITECTURE.md, ADR-014). -->
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Default: exclude the "benchmark" group (ActuatorEnvComparisonTest)

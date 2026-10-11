@@ -58,7 +58,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG015");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set")
@@ -75,7 +75,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -89,7 +89,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("leaves the RabbitMQ connection unencrypted");
     }
@@ -155,7 +155,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains(SSL_BUNDLE_KEY, "${SCG_BUNDLE}");
+        assertThat(findings.get(0).message()).contains(SSL_BUNDLE_KEY, "${SCG_BUNDLE}");
     }
 
     @Test
@@ -270,7 +270,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.INFO);
         assertThat(finding.message()).contains("unresolved environment placeholder '${RABBIT_SSL}'");
     }
@@ -297,8 +297,8 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
-        assertThat(findings.getFirst().message()).contains("leaves the RabbitMQ connection unencrypted");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).message()).contains("leaves the RabbitMQ connection unencrypted");
     }
 
     @Test
@@ -312,8 +312,8 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("'spring.rabbitmq.ssl.enabled' is not explicitly set");
     }
 
     @Test
@@ -328,7 +328,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -342,7 +342,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @ParameterizedTest
@@ -369,7 +369,7 @@ class RabbitMqInsecureTransportRuleTest {
                 Map.of(HOST_KEY, "rabbit.internal", "spring.rabbitmq.port", "5671"))) {
             List<Finding> findings = check(properties);
             assertThat(findings).as(properties.toString()).hasSize(1);
-            assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+            assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
         }
     }
 
@@ -413,7 +413,7 @@ class RabbitMqInsecureTransportRuleTest {
                 .toList();
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @Test
@@ -439,7 +439,7 @@ class RabbitMqInsecureTransportRuleTest {
         List<Finding> findings = check(Map.of(HOST_KEY, host));
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("loopback addresses");
+        assertThat(findings.get(0).message()).contains("loopback addresses");
     }
 
     @Test

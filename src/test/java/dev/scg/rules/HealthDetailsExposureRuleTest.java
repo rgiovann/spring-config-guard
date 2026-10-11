@@ -46,7 +46,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, value));
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG013");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains(KEY + "=" + value).contains("to any caller").contains("/actuator/health");
@@ -60,8 +60,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, value));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("authenticated users").contains("anonymous callers get the status only");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("authenticated users").contains("anonymous callers get the status only");
     }
 
     @Test
@@ -70,8 +70,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "when-authorized", "management.endpoint.health.roles", "ADMIN"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("with one of the roles 'ADMIN'");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("with one of the roles 'ADMIN'");
     }
 
     @ParameterizedTest
@@ -87,8 +87,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "${SHOW_DETAILS}"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("unresolved environment placeholder '${SHOW_DETAILS}'");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("unresolved environment placeholder '${SHOW_DETAILS}'");
     }
 
     @Test
@@ -97,8 +97,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(COMPONENTS, "always"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("names and status of its components").contains("any caller");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("names and status of its components").contains("any caller");
     }
 
     @Test
@@ -107,8 +107,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(COMPONENTS, "when-authorized"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("to authenticated users");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).message()).contains("to authenticated users");
     }
 
     @Test
@@ -123,7 +123,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "always", COMPONENTS, "when-authorized"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -132,8 +132,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(GROUP + ".include", "db", GROUP + ".show-details", "always"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("Health group 'custom' (/actuator/health/custom)");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("Health group 'custom' (/actuator/health/custom)");
     }
 
     @Test
@@ -142,7 +142,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(GROUP + ".include", "db", GROUP + ".show-components", "always"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -154,7 +154,7 @@ class HealthDetailsExposureRuleTest {
                 GROUP + ".additional-path", "server:/healthz"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).contains("and server:/healthz");
+        assertThat(findings.get(0).message()).contains("and server:/healthz");
     }
 
     @Test
@@ -163,7 +163,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(GROUP + ".include", "db", GROUP + ".show-details", "when-authorized"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.INFO);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.INFO);
     }
 
     @Test
@@ -172,7 +172,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "always", GROUP + ".include", "db"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).startsWith("The health endpoint");
+        assertThat(findings.get(0).message()).startsWith("The health endpoint");
     }
 
     @Test
@@ -181,7 +181,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "always", GROUP + ".show-components", "never"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).startsWith("The health endpoint");
+        assertThat(findings.get(0).message()).startsWith("The health endpoint");
     }
 
     @Test
@@ -207,7 +207,7 @@ class HealthDetailsExposureRuleTest {
                 GROUP + ".show-components", "${UNSET:}"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).startsWith("The health endpoint");
+        assertThat(findings.get(0).message()).startsWith("The health endpoint");
     }
 
     @Test
@@ -216,8 +216,8 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of("management.endpoint.health.group.a.b.show-details", "always"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("Health group 'a.b' (/actuator/health/a.b)");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("Health group 'a.b' (/actuator/health/a.b)");
     }
 
     @Test
@@ -228,9 +228,9 @@ class HealthDetailsExposureRuleTest {
         listInReverseOrder.put("management.endpoint.health.roles[1]", "OPS");
         listInReverseOrder.put("management.endpoint.health.roles[0]", "ADMIN");
 
-        assertThat(check(listInReverseOrder).getFirst().message()).contains("with one of the roles 'ADMIN,OPS'");
+        assertThat(check(listInReverseOrder).get(0).message()).contains("with one of the roles 'ADMIN,OPS'");
         assertThat(check(Map.of(KEY, "when-authorized", "management.endpoint.health.roles", "OPS, ADMIN"))
-                .getFirst().message()).contains("with one of the roles 'ADMIN,OPS'");
+                .get(0).message()).contains("with one of the roles 'ADMIN,OPS'");
     }
 
     @Test
@@ -245,7 +245,7 @@ class HealthDetailsExposureRuleTest {
         List<Finding> findings = check(Map.of(KEY, "${SHOW_DETAILS}", GROUP + ".show-components", "always"));
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().message()).startsWith("The health endpoint").contains("${SHOW_DETAILS}");
+        assertThat(findings.get(0).message()).startsWith("The health endpoint").contains("${SHOW_DETAILS}");
     }
 
     @Test

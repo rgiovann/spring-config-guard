@@ -35,8 +35,8 @@ class ProfileMergerTest {
         List<EffectiveConfig> result = merge(file);
 
         assertEquals(1, result.size());
-        assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.getFirst().profileLabel());
-        assertEquals("8080", result.getFirst().properties().get("server.port"));
+        assertEquals(ProfileMerger.BASE_PROFILE_LABEL, result.get(0).profileLabel());
+        assertEquals("8080", result.get(0).properties().get("server.port"));
     }
 
     @Test

@@ -225,8 +225,8 @@ Not confirmed:
 
 * The rule table's descriptions were checked only for each rule's set of
   severities, not re-audited rule by rule against the code.
-* Troubleshooting's `UnsupportedClassVersionError` on a JVM older than 21
-  follows from the jar's class version (65) and was not reproduced.
+* Troubleshooting's `UnsupportedClassVersionError` on a JVM older than 17
+  follows from the jar's class version (61) and was not reproduced.
 * The CI example installs Java 21 with `actions/setup-java`, so it doesn't
   depend on the runner's default JDK, which wasn't checked.
 * Checkov 3.3.24 lists `yaml` and `json` frameworks, which the old README
@@ -339,7 +339,7 @@ Not coming back unless a new, concrete use case appears.
 * **CSRF disabled.** Done in a `SecurityFilterChain` bean in Java, not
   through a property — no config-file signal exists.
 * **Springfox** (`springfox.documentation.*`). Legacy and incompatible with
-  Spring Boot 3 / Java 21, the project's target.
+  Spring Boot 3, the project's target.
 * **Insecure SMTP transport** (`spring.mail.properties.mail.smtp.*`). Two
   alternative secure setups (STARTTLS on 587 or implicit SSL on 465) under a
   generic nested map make it costlier than the other transport rules, with no

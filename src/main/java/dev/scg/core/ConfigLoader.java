@@ -360,47 +360,44 @@ public final class ConfigLoader {
                          String prefix,
                          Map<String, String> flat) {
 
-        switch (yamlNode) {
-            case null -> {
-                if (!prefix.isEmpty()) {
-                    flat.put(prefix + NULL_SCALAR_SENTINEL_SUFFIX, "true");
+        if (yamlNode == null) {
+            if (!prefix.isEmpty()) {
+                flat.put(prefix + NULL_SCALAR_SENTINEL_SUFFIX, "true");
+            }
+        } else if (yamlNode instanceof Map<?, ?> map) {
+
+            if (map.isEmpty()) {
+                flat.put(prefix + EMPTY_MAP_SENTINEL_SUFFIX, "true");
+                return;
+            }
+
+            for (var entry : map.entrySet()) {
+
+                // Same join rule as Spring's own YAML loader: a key starting with '[' (a quoted
+                // "[0]" index or "[a.b]" map key) attaches to its parent without a dot, so
+                // "x" + "[0]" is x[0], not x.[0]. See ARCHITECTURE.md, ADR-008.
+                String key = entry.getKey().toString();
+                String child = prefix.isEmpty() || key.startsWith("[")
+                        ? prefix + key
+                        : prefix + "." + key;
+
+                flatten(entry.getValue(), child, flat);
+            }
+        } else if (yamlNode instanceof List<?> list) {
+
+            if (list.isEmpty()) {
+                // An explicitly empty list leaves
+                // no trace if we simply iterate over nothing. Emit
+                // a sentinel so ProfileMerger can distinguish
+                // "profile redefined as empty" from "profile did not mention it at all".
+                flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
+            } else {
+                for (int i = 0; i < list.size(); i++) {
+                    flatten(list.get(i), prefix + "[" + i + "]", flat);
                 }
             }
-            case Map<?, ?> map -> {
-
-                if (map.isEmpty()) {
-                    flat.put(prefix + EMPTY_MAP_SENTINEL_SUFFIX, "true");
-                    return;
-                }
-
-                for (var entry : map.entrySet()) {
-
-                    // Same join rule as Spring's own YAML loader: a key starting with '[' (a quoted
-                    // "[0]" index or "[a.b]" map key) attaches to its parent without a dot, so
-                    // "x" + "[0]" is x[0], not x.[0]. See ARCHITECTURE.md, ADR-008.
-                    String key = entry.getKey().toString();
-                    String child = prefix.isEmpty() || key.startsWith("[")
-                            ? prefix + key
-                            : prefix + "." + key;
-
-                    flatten(entry.getValue(), child, flat);
-                }
-            }
-            case List<?> list -> {
-
-                if (list.isEmpty()) {
-                    // An explicitly empty list leaves
-                    // no trace if we simply iterate over nothing. Emit
-                    // a sentinel so ProfileMerger can distinguish
-                    // "profile redefined as empty" from "profile did not mention it at all".
-                    flat.put(prefix + EMPTY_LIST_SENTINEL_SUFFIX, "true");
-                } else {
-                    for (int i = 0; i < list.size(); i++) {
-                        flatten(list.get(i), prefix + "[" + i + "]", flat);
-                    }
-                }
-            }
-            default -> flat.put(prefix, String.valueOf(yamlNode));
+        } else {
+            flat.put(prefix, String.valueOf(yamlNode));
         }
 
     }

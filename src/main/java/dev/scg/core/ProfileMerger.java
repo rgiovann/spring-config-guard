@@ -121,7 +121,11 @@ public final class ProfileMerger {
         while (!stack.isEmpty()) {
             String current = stack.pop();
             if (active.add(current)) {
-                groups.getOrDefault(current, List.of()).reversed().forEach(stack::push);
+                // Pushed last first, so the group's first member is expanded first.
+                List<String> members = groups.getOrDefault(current, List.of());
+                for (int i = members.size() - 1; i >= 0; i--) {
+                    stack.push(members.get(i));
+                }
             }
         }
         return List.copyOf(active);

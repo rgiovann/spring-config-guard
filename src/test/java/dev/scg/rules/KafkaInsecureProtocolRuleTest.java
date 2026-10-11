@@ -54,7 +54,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.ruleId()).isEqualTo("SCG014");
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("Kafka clients default to 'PLAINTEXT'")
@@ -75,8 +75,8 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
-        assertThat(findings.getFirst().message()).contains("'spring.kafka.security.protocol' is not explicitly set");
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).message()).contains("'spring.kafka.security.protocol' is not explicitly set");
     }
 
     @Test
@@ -103,7 +103,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("transmits Kafka cluster traffic in plaintext without encryption or authentication");
     }
@@ -121,7 +121,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.HIGH);
         assertThat(finding.message()).contains("uses SASL authentication over an unencrypted transport protocol, exposing both client credentials and payload traffic");
     }
@@ -139,7 +139,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -169,7 +169,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.MEDIUM);
         assertThat(finding.message()).contains("'spring.kafka.security.protocol' is not explicitly set");
     }
@@ -201,7 +201,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        Finding finding = findings.getFirst();
+        Finding finding = findings.get(0);
         assertThat(finding.severity()).isEqualTo(Severity.INFO);
         assertThat(finding.message()).contains("unresolved environment placeholder '${KAFKA_PROTOCOL}'");
     }
@@ -216,7 +216,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -259,7 +259,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.HIGH);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.HIGH);
     }
 
     @Test
@@ -285,7 +285,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).hasSize(1);
-        assertThat(findings.getFirst().severity()).isEqualTo(Severity.MEDIUM);
+        assertThat(findings.get(0).severity()).isEqualTo(Severity.MEDIUM);
     }
 
     @ParameterizedTest
@@ -425,7 +425,7 @@ class KafkaInsecureProtocolRuleTest {
         List<Finding> findings = rule.check(config);
 
         assertThat(findings).singleElement().extracting(Finding::severity).isEqualTo(Severity.INFO);
-        assertThat(findings.getFirst().message()).contains("advertised listeners");
+        assertThat(findings.get(0).message()).contains("advertised listeners");
     }
 
     @Test
