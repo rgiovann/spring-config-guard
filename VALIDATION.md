@@ -14,6 +14,12 @@ evidence, each reproducible from this repository:
   time, with the scripts in `spring-env-benchmark/` (its
   [README](spring-env-benchmark/README.md) lists them and what each needs).
 
+> **Compared with CodeQL, Semgrep and SonarQube**: the same configuration
+> files run through SCG and Semgrep's own Spring rules, CodeQL's query read
+> from its source, and what each tool covers, in
+> [COMPARISON.md](COMPARISON.md). It is kept apart from this file because it
+> depends on those tools' versions, not on SCG's.
+
 Every number and every **SCG** column in this document is the result of
 **SCG v1.19.0**. Most scenario rows are pinned by a test named after
 them, so a change in behavior fails the build before it can make this

@@ -46,7 +46,8 @@ assumptions.
 The conversation with the maintainer may be in Portuguese (pt-BR).
 Everything written to the repository is in English, whatever the
 conversation language: code, comments, Javadoc, tests, documentation
-(`README`, `ARCHITECTURE`, `VALIDATION`, `BACKLOG`, `CHANGELOG`, skills),
+(`README`, `ARCHITECTURE`, `VALIDATION`, `COMPARISON`, `BACKLOG`,
+`CHANGELOG`, skills),
 commit messages and release notes.
 
 ## Commit Messages
@@ -80,7 +81,7 @@ log:
   only those.
   For documentation alone, scope by the document: `docs(backlog)`,
   `docs(validation)`, `docs(readme)`, `docs(adr)`, `docs(changelog)`,
-  `docs(claude)`, `docs(skills)`.
+  `docs(claude)`, `docs(skills)`, `docs(comparison)`.
 * Body: a bullet list, not prose paragraphs. Each bullet names a concrete
   change and, where it isn't obvious from the diff, *why* — a design
   decision, a bug that was fixed, a trade-off — not a restatement of the

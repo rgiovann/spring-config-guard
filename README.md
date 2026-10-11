@@ -93,6 +93,10 @@ builds the configuration. In the example above:
 SCG's rules are written for these semantics, and each one knows Spring's
 default for the properties it checks.
 
+[COMPARISON.md](COMPARISON.md) runs the same files through Semgrep's own
+Spring rules and compares SCG with CodeQL and SonarQube, including where
+those tools do more.
+
 ## Quick start
 
 Requires Java 17 or later.

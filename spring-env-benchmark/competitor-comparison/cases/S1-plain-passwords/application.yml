@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://db.internal:5432/app
+    username: app
+    password: Tr0ub4dor-Prod-2026
+  mail:
+    password: mailPassw0rd!
+app:
+  jwt:
+    secret: c2VjcmV0LXNpZ25pbmcta2V5LWZvci1qd3QtdG9rZW5z
