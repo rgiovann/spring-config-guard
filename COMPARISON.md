@@ -25,8 +25,9 @@ checked against; a later version may behave differently.
   configuration.
 * **Spring's semantics.** SCG merges profiles, applies relaxed binding and
   resolves `${VAR:default}` placeholders before judging a value. The other
-  tools match a file's text. On 12 Actuator cases, SCG was right in all 12;
-  Semgrep's rules were right in 7, missed 2, and were noisy in 3.
+  tools match a file's text. On 12 Actuator cases, each checked against a
+  running Spring Boot 4.1.1 application, SCG was right in all 12; Semgrep's
+  rules were right in 7, missed 2 real exposures, and were noisy in 3.
 * **Where the other tools do more**: they analyse the application's code,
   recognise hundreds of token formats in any file, and report into code
   scanning with file and line. CodeQL also sees the build: it stays silent
@@ -43,27 +44,41 @@ ran Semgrep's four Spring Actuator rules
 generic secret rules (`generic/secrets/`, ported from gitleaks). SCG ran
 with its defaults.
 
-| # | Configuration | Semgrep | SCG |
-|---|---|---|---|
-| A1 | `management.endpoints.web.exposure.include=*` | found | SCG001 HIGH |
-| A2 | the same in nested YAML, `include: "*"` | found | SCG001 HIGH |
-| A3 | a dotted key in YAML: `management.endpoints.web.exposure.include: "*"` | **missed** (the YAML rule matches the nested form only) | SCG001 HIGH |
-| A4 | a YAML flow mapping: `exposure: { include: "*" }` | found | SCG001 HIGH |
-| A5 | `management.endpoints.web.exposure.include = *` | found, plus a second finding naming `" *"` as an endpoint | SCG001 HIGH |
-| A6 | `…exposure.include=${ACTUATOR_EXPOSE:*}` | a warning about an endpoint named `${ACTUATOR_EXPOSE:*}`, not "fully enabled" | SCG001 HIGH (the default is `*`) |
-| A7 | a comma-separated list in YAML: `include: health,env,heapdump` | **missed** (the YAML rule matches a sequence only) | SCG001 HIGH |
-| A8 | `…exposure.include=health,info` | a warning (anything but `health` counts as dangerous) | silent (neither endpoint is sensitive) |
-| A9 | `include: [health, env, heapdump]` | found (`env`, `heapdump`) | SCG001 HIGH |
-| A10 | `include=*` in `application.properties`, `include=health` in `application-prod.properties` | found, on the base file | SCG001 HIGH for the base only: `prod` is clean |
-| A11 | `include=*` in `application-prod.properties` only | found | SCG001 HIGH `[profile: prod]` |
-| A12 | `include: "*"` in an `on-profile: prod` document of `application.yml` | found, on the file | SCG001 HIGH `[profile: prod]` |
+For each A case, the script also starts a Spring Boot 4.1.1 application
+with Actuator, with the case directory as its only configuration
+(`--spring.config.location`), and lists the endpoints `/actuator` links
+to: the **Spring** column is what Spring actually exposes over HTTP, so
+each finding, and each missing one, is checked against Spring rather than
+against the other tool. "All" is the 12 endpoints that application has
+(`beans`, `conditions`, `configprops`, `env`, `health`, `info`, `loggers`,
+`mappings`, `metrics`, `sbom`, `scheduledtasks`, `threaddump`);
+`heapdump` isn't among them. With no configuration, it exposes `health`
+only.
+
+| # | Configuration | Spring Boot 4.1.1 exposes | Semgrep | SCG |
+|---|---|---|---|---|
+| A1 | `management.endpoints.web.exposure.include=*` | all | found | SCG001 HIGH |
+| A2 | the same in nested YAML, `include: "*"` | all | found | SCG001 HIGH |
+| A3 | a dotted key in YAML: `management.endpoints.web.exposure.include: "*"` | all | **missed** (the YAML rule matches the nested form only) | SCG001 HIGH |
+| A4 | a YAML flow mapping: `exposure: { include: "*" }` | all | found | SCG001 HIGH |
+| A5 | `management.endpoints.web.exposure.include = *` | all | found, plus a second finding naming `" *"` as an endpoint | SCG001 HIGH |
+| A6 | `…exposure.include=${ACTUATOR_EXPOSE:*}`, variable unset | all | a warning about an endpoint named `${ACTUATOR_EXPOSE:*}`, not "fully enabled" | SCG001 HIGH (the default is `*`) |
+| A7 | a comma-separated list in YAML: `include: health,env,heapdump` | `env`, `health` | **missed** (the YAML rule matches a sequence only) | SCG001 HIGH |
+| A8 | `…exposure.include=health,info` | `health`, `info` | a warning (anything but `health` counts as dangerous) | silent (neither endpoint is sensitive) |
+| A9 | `include: [health, env, heapdump]` | `env`, `health` | found (`env`, `heapdump`) | SCG001 HIGH |
+| A10 | `include=*` in `application.properties`, `include=health` in `application-prod.properties` | base: all; `prod`: `health` | found, on the base file | SCG001 HIGH for the base only: `prod` is clean |
+| A11 | `include=*` in `application-prod.properties` only | base: `health`; `prod`: all | found | SCG001 HIGH `[profile: prod]` |
+| A12 | `include: "*"` in an `on-profile: prod` document of `application.yml` | base: `health`; `prod`: all | found, on the file | SCG001 HIGH `[profile: prod]` |
 | S1 | `spring.datasource.password`, `spring.mail.password` and `app.jwt.secret` written in `application.yml` | 2 of 3: the datasource password and the JWT secret; `spring.mail.password: mailPassw0rd!` **missed** | SCG006 HIGH, all 3 |
 | S2 | `spring.data.mongodb.uri=mongodb://admin:S3cretPwd@…`, a JDBC URL with `sslmode=disable` | **nothing** | SCG007 HIGH (the URI's password), SCG012 HIGH (`sslmode=disable`) |
 
+Spring confirms that the two cases Semgrep misses are real exposures: A3
+exposes everything, as the nested form does, and A7 exposes `env`.
 Semgrep's rules are literal patterns over one file's text: they match the
 forms they were written for, and read anything else as text (A5, A6, A8).
 A10 to A12 show the difference that is left when both find the exposure:
-Semgrep reports the file, SCG reports the profiles it affects.
+Semgrep reports the file, SCG reports the profiles it affects, and those
+are the profiles in which Spring exposes the endpoints.
 
 Every Spring rule area other than Actuator was checked by searching the
 whole registry, at the commit above, for the property names: there is no
@@ -148,8 +163,10 @@ mvn -q package -DskipTests
 spring-env-benchmark/competitor-comparison-scenarios.sh
 ```
 
-The script fetches semgrep-rules at the pinned commit, runs both tools on
-every case, and prints each finding with its rule and file (Semgrep) or
-rule, severity and profile (SCG). It was run twice, with the same result.
+The script fetches semgrep-rules at the pinned commit, builds the
+benchmark application if needed, and for every case prints the endpoints
+Spring exposes (A cases), each Semgrep finding with its rule, file and
+line, and each SCG finding with its rule, severity and profile. It was run
+twice, with the same result.
 CodeQL and SonarQube aren't run: CodeQL needs a database built from a Java
 project, and SonarQube a server.

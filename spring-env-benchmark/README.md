@@ -58,7 +58,7 @@ here and in the repository root.
 | `oauth2-client-transport-scenarios.sh` | SCG017 | OAuth2 Client provider transport scenarios | `oauth2-client-transport/` | |
 | `oauth2-login-transport-scenarios.sh` | SCG017 | OAuth2 Client login-flow transport scenarios | `oauth2-login-transport/` | `openssl` |
 | `tls-verification-scenarios.sh` | SCG014, SCG015 | TLS without server verification (Kafka and RabbitMQ) | `kafka-tls/`, `rabbit-transport/` | `keytool`, `openssl` |
-| `competitor-comparison-scenarios.sh` | (Semgrep, COMPARISON.md) | COMPARISON.md, "Semgrep, measured" | `competitor-comparison/cases/` (fixtures, no app) | Semgrep 1.180.0, SCG's jar |
+| `competitor-comparison-scenarios.sh` | (Semgrep, COMPARISON.md) | COMPARISON.md, "Semgrep, measured" | this directory's, with `competitor-comparison/cases/` | Semgrep 1.180.0, SCG's jar |
 | `tls-protocol-scenarios.sh` | (none: not reported) | TLS 1.0 and 1.1 on Java 21 | `server-transport-tomcat/`, `-jetty/`, `-webflux/`, `kafka-tls/` | `keytool`, `openssl` |
 
 The transport scripts (SCG015 to SCG017, the two OAuth2 Client ones, and
