@@ -221,7 +221,10 @@ secure.
   recursively. A placeholder without a default can't be known at lint time.
   Rules treat it as a possible risk instead of assuming it is safe. For
   example, SCG006 reports a credential that depends on an unresolved
-  placeholder as `INFO`.
+  placeholder as `INFO`. That includes a placeholder naming another
+  property of the configuration (`${app.db.password}`): Spring resolves it
+  to that property's value, while SCG treats it like an environment
+  variable without a default.
 
 The merge semantics are checked against the `Environment` of a running
 Spring Boot app ([VALIDATION.md](VALIDATION.md)).

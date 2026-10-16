@@ -65,6 +65,21 @@ that such a console answers another address without a login, and what the
 forwarded requests come from `127.0.0.1`. A third-party starter is in
 scope, as SpringDoc is for SCG008.
 
+### CORS in an application-defined namespace (decide with measurements)
+
+SCG003 to SCG005 read the two CORS configurations Spring Boot binds from
+properties, Actuator's and Spring for GraphQL's. An application can bind
+properties of its own into a `CorsConfiguration` (a `<prefix>.cors.*`
+group with `allowed-origin-patterns`, `allow-credentials` and the like,
+applied with `http.cors(...)`), and SCG reads those keys only as names:
+`allowed-origin-patterns=*` with `allow-credentials=true` there is
+silent, while the same pair under `management.endpoints.web.cors` is
+HIGH. Found while scanning real applications (2026-10-16). A rule can't
+prove that a prefix feeds a `CorsConfiguration`, so a match would be INFO
+(CLAUDE.md, "Findings"). To decide: which key names make such a group (the
+`CorsConfiguration` setters'), whether SCG004 and SCG005 read it too, and
+the noise on the reference projects.
+
 ## Deferred (post-1.0)
 
 Technically viable, deliberately postponed. **Triage criterion:** does the
@@ -91,6 +106,24 @@ turned up, but that no reference project or demo writes with the risky
 value, and no user has reported (as of 2026-10-05). Each is noted with
 what it would take; it moves back to Pending when a real case appears, so
 the reviews' leftovers don't grow into a queue that never empties.
+
+#### Placeholders that name another property (waiting for a real case)
+
+Spring resolves `${app.db.password}` against the `Environment`, so to that
+property's value when the configuration defines it (checked in a running
+Spring Boot 4.1.1 app: `app.ref=${app.source}` with
+`app.source=${UNSET:postgres}` resolves to `postgres`).
+`EnvironmentPlaceholder` resolves a placeholder against its own default
+only, so SCG treats it as unknowable, and SCG006 reports INFO where the
+value is known. In every case found, the property named is a credential
+SCG006 reports itself: two Liquibase parameters in `apache/fineract`
+(`6ee8135`) and two client secrets in `YunaiV/ruoyi-vue-pro` (`ac022b1`,
+`${wx.mp.secret}`), in its `dev` and `local` profiles. No secret goes
+unreported; only its copy is understated. Resolving it would take each
+profile's merged configuration into placeholder resolution, with cycles,
+relaxed binding of the named key and Spring's other sources
+(`${random.uuid}`, `${user.home}`), so it waits for a case where the
+property named isn't reported itself.
 
 #### Profile activation left out (waiting for a real case)
 

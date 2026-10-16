@@ -3,7 +3,7 @@
 What SCG reports, checked against what Spring actually does. Three kinds of
 evidence, each reproducible from this repository:
 
-* **Reference projects**: eight public repositories, pinned to a commit,
+* **Reference projects**: nine public repositories, pinned to a commit,
   scanned with the documented command; every finding was checked against
   the files (below).
 * **The pipeline**: `ProfileMerger`'s effective configuration compared with
@@ -21,7 +21,7 @@ evidence, each reproducible from this repository:
 > depends on those tools' versions, not on SCG's.
 
 Every number and every **SCG** column in this document is the result of
-**SCG v1.19.0**. Most scenario rows are pinned by a test named after
+**SCG v1.21.0**. Most scenario rows are pinned by a test named after
 them, so a change in behavior fails the build before it can make this
 document wrong. The rest, mostly in the sections of SCG001, SCG003,
 SCG007–SCG009, SCG011 and SCG012, are covered by tests that don't name
@@ -54,14 +54,18 @@ per independently written file.
 | `jhipster/jhipster-sample-app` | `6b000b5` | regular | 5 | 10 | 3 | 10 | 23 |
 | `spring-projects/spring-authorization-server` | `4283973` | regular | 8 | 28 | — | 8 | 36 |
 | `spring-projects/spring-ai-examples` | `7416412` | regular | 25 | 1 | 1 | 38 | 40 |
+| `apache/fineract` | `6ee8135` | regular | 2 | 10 | 2 | 20 | 32 |
 
 `spring-petclinic-microservices-config` is a real Spring Cloud Config
 Server backing repository, scanned the way it is consumed; it is the case
 that motivated [Config Server Mode](README.md#config-server-mode), since
 none of its service files match the `application*` naming the regular
-mode looks for. The other seven are sample, test and teaching code: they
-stress-test precision on real-world configuration, and are not a security
-assessment of those projects.
+mode looks for. `apache/fineract` is a production application, a core
+banking platform whose configuration is almost all `${VAR:default}`
+placeholders, so it tests what SCG makes of each default. The other seven
+are sample, test and teaching code. All nine stress-test precision on
+real-world configuration, and are not a security assessment of those
+projects.
 
 ## spring-petclinic/spring-petclinic-microservices-config
 
@@ -334,6 +338,54 @@ git -C spring-ai-examples checkout 74164123ba2d13cba7ae185a460b133914106b69
 java -jar target/spring-config-guard.jar spring-ai-examples --json --fail-on=NONE
 ```
 
+## apache/fineract
+
+Run against Apache Fineract (2 `application*.properties` files outside
+`src/test/`, both in `fineract-provider`: `application.properties`, 922
+lines with 492 placeholders that have a default, and
+`application-liquibase-only.properties`, the `liquibase-only` profile):
+
+| Rule | HIGH | MEDIUM | INFO | Total |
+|---|---|---|---|---|
+| SCG006 | 10 | — | 20 | 30 |
+| SCG008 | — | 2 | — | 2 |
+| **Total** | **10** | **2** | **20** | **32** |
+
+Each finding is reported twice, in the base and in `liquibase-only`,
+which inherits the whole base file: 16 properties. HIGH: five credentials
+whose default is a literal, `spring.datasource.hikari.password` and
+`fineract.tenant.password` (`postgres`), `fineract.tenant.master-password`
+and `fineract.database.defaultMasterPassword` (`fineract`), and
+`server.ssl.key-store-password` (`openmf`). INFO: seven credentials with an
+empty default (`${FINERACT_CONTENT_S3_SECRET_KEY:}` and the like), which
+only the runtime sets; `fineract.cache.custom-templates.userTFAccessToken.ttl=2h`,
+a duration in a key that contains a pattern without ending in one; and
+two Liquibase parameters that name another property,
+`${fineract.tenant.password}` and `${fineract.tenant.read-only-password}`.
+Spring resolves such a placeholder to that property's value (`postgres`
+for the first, checked in a running Spring Boot 4.1.1 app through
+`/actuator/env`), but SCG resolves a placeholder against its own default
+only, so it reports INFO where the value is known; the property named is
+reported itself (BACKLOG.md, "Placeholders that name another property").
+SCG008: `springdoc.api-docs.enabled=${SPRINGDOC_API_DOCS_ENABLED:true}`.
+
+Silent, and checked: Actuator exposes `health,info,prometheus`, none of
+them sensitive for SCG001, and its CORS allows `*` without credentials
+(C5, "SCG003 CORS scenarios"); `server.ssl.enabled` defaults to `true`;
+the JDBC URL (`jdbc:postgresql://localhost:5432/fineract_tenants`) names
+no TLS mode, outside SCG012's scope (BACKLOG.md, "SCG012 cases left
+open"); the JMS brokers are `tcp://127.0.0.1:61616`; the OTLP URL
+(`http://tempo:4318/v1/traces`) is a collector address, deferred
+(BACKLOG.md). Properties under Fineract's own `fineract.*` namespace have
+no Spring Boot semantics for SCG's rules to read, except SCG006's key
+names.
+
+```bash
+git clone https://github.com/apache/fineract.git
+git -C fineract checkout 6ee8135ec39a2f4a80a3973c1038014b40c4bad0
+java -jar target/spring-config-guard.jar fineract --json --fail-on=NONE
+```
+
 ## Independent precision check (false positive / false negative review)
 
 Whether each finding above is correct, and whether a risk was missed,
@@ -349,6 +401,7 @@ checked without SCG's own code.
 | `jhipster-sample-app` | 23 | Every file read; expected count derived by hand | No |
 | `spring-authorization-server` | 36 | Every file read; expected count derived by hand | No |
 | `spring-ai-examples` | 40 | Independent greps for every rule; every line with a secret-named key listed | No |
+| `fineract` | 32 | Every finding's line read; every Actuator, server, datasource, messaging, OTLP and SpringDoc key read, its default resolved by hand | No |
 
 **The small repositories** were read in full, with the expected findings
 derived against every rule before comparing with SCG's output: 3 SCG001 +
