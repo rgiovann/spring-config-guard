@@ -19,8 +19,51 @@ or in an ADR.
 
 ## Pending
 
-Nothing is pending: everything waits in Deferred for a real case or a
-need.
+### Druid's monitoring console (decide with measurements)
+
+Found while scanning real applications that use Alibaba's Druid connection
+pool (2026-10-16): its Spring Boot starter (`druid-spring-boot-starter`,
+`druid-spring-boot-3-starter`) can serve a web console, `StatViewServlet`,
+showing the pool's SQL statistics, the requested URIs, the sessions and the
+datasource's settings: a diagnostic console like H2's (SCG002), which no
+rule covers. What follows comes from the starter's source (`alibaba/druid`
+at `fa8dc99`), not yet from a running application:
+
+* The console is registered only with
+  `spring.datasource.druid.stat-view-servlet.enabled=true`, at
+  `stat-view-servlet.url-pattern` (`/druid/*` by default).
+* Without `stat-view-servlet.allow`, the starter allows `127.0.0.1` only.
+  An `allow` that is empty after trimming leaves the allow list empty, and
+  then every address not in `stat-view-servlet.deny` is allowed.
+* Without `stat-view-servlet.login-username`, the console asks for no
+  login.
+
+The case a rule would report is a console reachable from any address
+without a login: enabled, `allow` empty or wide, no `login-username`. A key
+written with no value counts as empty, not as absent: Spring Boot's YAML
+loader turns it into an empty string (`VALIDATION.md`, "ProfileMerger
+correctness benchmark"), which the starter passes on.
+
+`YunaiV/ruoyi-vue-pro` (`ac022b1`) has that case in its `dev` and `local`
+profiles: `stat-view-servlet.enabled: true` with `allow:` and
+`login-username:` written empty, `allow` commented (in Chinese) "leave
+empty to allow all access". It excludes the starter's
+`DruidDataSourceAutoConfigure`, which imports the console's configuration,
+but `dynamic-datasource-spring-boot-starter`, which it uses, imports that
+configuration again (`DruidDynamicDataSourceConfiguration`,
+`baomidou/dynamic-datasource` at `dfd8caa`). Two other projects come
+close: `elunez/eladmin` (`55fbf70`) enables the console without a login in
+its `dev` profile, but without `allow`, so for `127.0.0.1` only, and its
+`prod` profile writes `allow:` empty with `login-password: 123456`, which
+SCG006 already reports; `macrozheng/mall` (`dcaa93b`) writes
+`login-username` and `login-password` but never enables the console.
+
+Before a rule, confirm in a running application, at the versions those
+projects use (Druid 1.2.19, 1.2.24 and 1.2.28; dynamic-datasource 4.5.0),
+that such a console answers another address without a login, and what the
+`127.0.0.1` default means behind a reverse proxy on the same host, whose
+forwarded requests come from `127.0.0.1`. A third-party starter is in
+scope, as SpringDoc is for SCG008.
 
 ## Deferred (post-1.0)
 
